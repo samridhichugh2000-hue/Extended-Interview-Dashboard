@@ -1,0 +1,570 @@
+'use client';
+import { useState } from 'react';
+import {
+  STATUS, decorate, NAV, TITLES, PATHS, CARD_DEFS, STATUS_MAP, METRIC_HEADS,
+  WORRY_BANDS, POS_SIGNALS, NEG_SIGNALS, NJ_QUESTIONS,
+} from '../lib/data';
+
+const card = { border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 16 };
+
+export default function DashboardClient({ employees, responses }) {
+  const [screen, setScreen] = useState('overview');
+  const [dept, setDept] = useState('Sales');
+  const [filter, setFilter] = useState(null);
+  const [modal, setModal] = useState(null);
+
+  const go = (s, d) => { setScreen(s); if (d) setDept(d); setFilter(null); };
+
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex' }}>
+      <Sidebar screen={screen} dept={dept} go={go} />
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        <Topbar screen={screen} dept={dept} />
+        <div style={{ padding: '26px 28px 60px', flex: 1 }}>
+          {screen === 'overview' && <Overview employees={employees} go={go} setModal={setModal} />}
+          {screen === 'dept' && <Dept employees={employees} dept={dept} filter={filter} setFilter={setFilter} setModal={setModal} />}
+          {screen === 'papip' && <PaPip employees={employees} filter={filter} setFilter={setFilter} setModal={setModal} />}
+          {screen === 'worryindex' && <WorryIndex employees={employees} setModal={setModal} />}
+          {screen === 'reports' && <Reports employees={employees} responses={responses} />}
+        </div>
+      </div>
+      {modal && <EmployeeModal emp={modal} onClose={() => setModal(null)} />}
+    </div>
+  );
+}
+
+/* ---------- app chrome ---------- */
+
+function Sidebar({ screen, dept, go }) {
+  return (
+    <div style={{ width: 240, flex: 'none', background: 'linear-gradient(180deg,rgba(99,102,241,0.10),rgba(168,85,247,0.04))', borderRight: '1px solid rgba(255,255,255,0.07)', padding: '22px 14px', display: 'flex', flexDirection: 'column', gap: 26, position: 'sticky', top: 0, height: '100vh' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 8px' }}>
+        <div className="disp" style={{ width: 34, height: 34, borderRadius: 9, background: 'linear-gradient(135deg,#6366F1,#A855F7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14, color: '#fff' }}>EI</div>
+        <div><div className="disp" style={{ fontWeight: 600, fontSize: 15, letterSpacing: '-0.01em' }}>EI Dashboard</div><div style={{ fontSize: 10.5, color: '#6E7488' }}>Extended Interview</div></div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        <div className="mono" style={{ fontSize: 9.5, letterSpacing: '.16em', color: '#5C6178', padding: '0 10px 8px' }}>MONITOR</div>
+        {NAV.map((n) => {
+          const active = screen === n.screen && (!n.dept || n.dept === dept);
+          return (
+            <div key={n.label} onClick={() => go(n.screen, n.dept)}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 10px', borderRadius: 9, cursor: 'pointer', fontSize: 13.5, background: active ? 'rgba(99,102,241,0.22)' : 'transparent', color: active ? '#FFFFFF' : '#9BA1B8', fontWeight: active ? 600 : 400, borderLeft: `2px solid ${active ? '#6366F1' : 'transparent'}` }}>
+              <span>{n.label}</span>
+              <span className="mono" style={{ fontSize: 11, color: '#6E7488' }}>{n.count}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ marginTop: 'auto', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: 14, background: 'rgba(255,255,255,0.02)' }}>
+        <div style={{ fontSize: 11.5, color: '#8A90A8', lineHeight: 1.5 }}>Next weekly send</div>
+        <div className="mono" style={{ fontSize: 13, color: '#14B8A6', marginTop: 4 }}>Mon 09:00 IST</div>
+      </div>
+    </div>
+  );
+}
+
+function Topbar({ screen, dept }) {
+  const t = TITLES[screen];
+  const title = screen === 'dept' ? dept : t[0];
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 28px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+      <div>
+        <div className="disp" style={{ fontSize: 21, fontWeight: 600, letterSpacing: '-0.02em' }}>{title}</div>
+        <div style={{ fontSize: 12.5, color: '#6E7488', marginTop: 2 }}>{t[1]}</div>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, border: '1px solid rgba(20,184,166,0.3)', background: 'rgba(20,184,166,0.08)', padding: '6px 12px', borderRadius: 999 }}>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#14B8A6', animation: 'livepulse 1.8s infinite' }} />
+          <span className="mono" style={{ fontSize: 10.5, letterSpacing: '.1em', color: '#14B8A6' }}>LIVE</span>
+        </div>
+        <div className="mono" style={{ fontSize: 11.5, color: '#6E7488' }}>27 Jul 2026</div>
+        <div className="hoverbtn" style={{ border: '1px solid rgba(255,255,255,0.12)', borderRadius: 9, padding: '7px 14px', fontSize: 12.5, color: '#C7CBDA', cursor: 'pointer' }}>Refresh</div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- screens ---------- */
+
+function Overview({ employees, go, setModal }) {
+  const counts = { Sales: 18, Trainer: 15, 'PT Team': 9 };
+  const chips = [
+    { label: 'Sales', count: counts.Sales, bg: 'rgba(99,102,241,0.14)', border: 'rgba(99,102,241,0.35)', color: '#A5A7FA', dept: 'Sales' },
+    { label: 'Trainer', count: counts.Trainer, bg: 'rgba(168,85,247,0.14)', border: 'rgba(168,85,247,0.35)', color: '#D8B4FE', dept: 'Trainer' },
+    { label: 'PT', count: counts['PT Team'], bg: 'rgba(20,184,166,0.14)', border: 'rgba(20,184,166,0.35)', color: '#5EEAD4', dept: 'PT Team' },
+  ];
+  const reviewQueue = employees.slice(0, 5).map(decorate);
+  const paPipList = employees.filter((e) => e.status !== 'In Progress').map((e) => ({ name: e.name, due: e.due, type: e.status === 'PIP Issued' ? 'PIP' : 'PA', ...STATUS[e.status] }));
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.25fr 1fr 1fr', gap: 16 }}>
+        <div style={{ border: '1px solid rgba(99,102,241,0.28)', background: 'linear-gradient(150deg,rgba(99,102,241,0.16),rgba(99,102,241,0.03))', borderRadius: 16, padding: 20, animation: 'floatcard 6s ease-in-out infinite' }}>
+          <div style={{ fontSize: 12, color: '#A8AEC4' }}>New Joiners Under Watch</div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, margin: '8px 0 4px' }}><span className="disp" style={{ fontSize: 38, fontWeight: 600, letterSpacing: '-0.03em' }}>42</span><span style={{ fontSize: 11.5, color: '#6E7488' }}>joined last 6 months</span></div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            {chips.map((c) => (
+              <div key={c.label} onClick={() => go('dept', c.dept)} style={{ cursor: 'pointer', border: `1px solid ${c.border}`, background: c.bg, color: c.color, borderRadius: 8, padding: '6px 11px', fontSize: 12, display: 'flex', gap: 7, alignItems: 'center' }}>
+                <span>{c.label}</span><span className="mono" style={{ fontWeight: 600 }}>{c.count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div onClick={() => go('worryindex')} style={{ cursor: 'pointer', border: '1px solid rgba(244,63,94,0.25)', background: 'linear-gradient(150deg,rgba(244,63,94,0.13),rgba(244,63,94,0.02))', borderRadius: 16, padding: 20, animation: 'floatcard 6s ease-in-out infinite .6s' }}>
+          <div style={{ fontSize: 12, color: '#A8AEC4' }}>Worry Index · Critical</div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, margin: '8px 0 12px' }}><span className="disp" style={{ fontSize: 38, fontWeight: 600, letterSpacing: '-0.03em' }}>7</span><span style={{ fontSize: 11.5, color: '#F43F5E' }}>▲ 2 this week</span></div>
+          <div style={{ display: 'flex', gap: 4, height: 8 }}>
+            <div style={{ flex: 7, background: '#F43F5E', borderRadius: 3 }} />
+            <div style={{ flex: 11, background: '#F59E0B', borderRadius: 3 }} />
+            <div style={{ flex: 13, background: '#6366F1', borderRadius: 3 }} />
+            <div style={{ flex: 11, background: '#14B8A6', borderRadius: 3 }} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, color: '#6E7488', marginTop: 7 }}><span>Critical 7</span><span>Low 11</span><span>Medium 13</span><span>Good 11</span></div>
+        </div>
+        <div style={{ border: '1px solid rgba(245,158,11,0.25)', background: 'linear-gradient(150deg,rgba(245,158,11,0.13),rgba(245,158,11,0.02))', borderRadius: 16, padding: 20, animation: 'floatcard 6s ease-in-out infinite 1.2s' }}>
+          <div style={{ fontSize: 12, color: '#A8AEC4' }}>Feedback Pending</div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, margin: '8px 0 4px' }}><span className="disp" style={{ fontSize: 38, fontWeight: 600, letterSpacing: '-0.03em' }}>9</span><span style={{ fontSize: 11.5, color: '#6E7488' }}>managers overdue</span></div>
+          <div style={{ marginTop: 12, border: '1px solid rgba(245,158,11,0.4)', color: '#F59E0B', borderRadius: 8, padding: '7px 12px', fontSize: 12, textAlign: 'center', cursor: 'pointer' }}>Send reminder to all</div>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1.55fr 1fr', gap: 16, alignItems: 'start' }}>
+        <div style={{ ...card, overflow: 'hidden' }}>
+          <div style={{ padding: '16px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div><div className="disp" style={{ fontSize: 15, fontWeight: 600 }}>NJ Review Queue</div><div style={{ fontSize: 11.5, color: '#6E7488', marginTop: 2 }}>Top 5 by priority — PIP, then PA, then In Progress</div></div>
+            <span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>click a row →</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.6fr .8fr 1.1fr .9fr .7fr', padding: '10px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 10, letterSpacing: '.1em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            <span>Employee</span><span>Team</span><span>Manager</span><span>Status</span><span style={{ textAlign: 'right' }}>Score</span>
+          </div>
+          {reviewQueue.map((e) => (
+            <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: '1.6fr .8fr 1.1fr .9fr .7fr', padding: '13px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontWeight: 600 }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id} · day {e.tenure}</span></div>
+              <span style={{ color: '#A8AEC4', fontSize: 12.5 }}>{e.team}</span>
+              <span style={{ color: '#A8AEC4', fontSize: 12.5 }}>{e.manager}</span>
+              <span style={{ justifySelf: 'start', fontSize: 11, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` }}>{e.status}</span>
+              <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontWeight: 600, color: e.bandColor }}>{e.scoreStr}</span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ ...card, overflow: 'hidden' }}>
+          <div style={{ padding: '16px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}><div className="disp" style={{ fontSize: 15, fontWeight: 600 }}>Employee Status</div><div style={{ fontSize: 11.5, color: '#6E7488', marginTop: 2 }}>PA / PIP cases · 6 open</div></div>
+          <div style={{ maxHeight: 296, overflow: 'auto' }}>
+            {paPipList.map((p) => (
+              <div key={p.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 18px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                <div><div style={{ fontSize: 13, fontWeight: 600 }}>{p.name}</div><div style={{ fontSize: 11, color: '#6E7488', marginTop: 2 }}>due {p.due}</div></div>
+                <span style={{ fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: p.bg, color: p.color, border: `1px solid ${p.border}` }}>{p.type}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Dept({ employees, dept, filter, setFilter, setModal }) {
+  const deptEmp = employees.filter((e) => e.team === dept);
+  const pool = deptEmp.length ? deptEmp : employees;
+  const filtered = filter ? pool.filter((e) => e.status === filter) : pool;
+  const statusCards = (CARD_DEFS[dept] || CARD_DEFS.Sales).map(([label, count, color]) => ({
+    label, count, color,
+    active: filter && STATUS_MAP[label] === filter,
+    filterVal: STATUS_MAP[label] || null,
+  }));
+  const mh = METRIC_HEADS[dept] || METRIC_HEADS.Sales;
+  const rows = filtered.map((e) => {
+    const d = decorate(e);
+    return { ...d, v1: e.v[0], v2: e.v[1], v3: e.v[2], c3: e.score < 0 ? '#F87171' : '#5EEAD4' };
+  });
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 10 }}>
+        {statusCards.map((s) => (
+          <div key={s.label} onClick={() => s.filterVal && setFilter(filter === s.filterVal ? null : s.filterVal)}
+            style={{ cursor: s.filterVal ? 'pointer' : 'default', border: `1px solid ${s.active ? s.color : 'rgba(255,255,255,0.09)'}`, background: s.active ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.025)', borderRadius: 12, padding: '13px 14px' }}>
+            <div className="disp" style={{ fontSize: 24, fontWeight: 600, color: s.color, letterSpacing: '-0.02em' }}>{s.count}</div>
+            <div style={{ fontSize: 11, color: '#A8AEC4', marginTop: 3, lineHeight: 1.3 }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div style={{ flex: 1, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#6E7488' }}>Search by name or employee ID…</div>
+        <div style={{ border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#8A90A8' }}>DOJ: 01 Feb 2026 → 27 Jul 2026</div>
+        <div onClick={() => setFilter(null)} style={{ border: '1px solid rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.1)', color: '#A5A7FA', borderRadius: 10, padding: '10px 14px', fontSize: 13, cursor: 'pointer' }}>
+          {filter ? `Filter: ${filter} ×` : 'No filter applied'}
+        </div>
+      </div>
+
+      <div style={{ ...card, overflow: 'hidden' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr .75fr 1fr .55fr repeat(3,.6fr) .8fr .9fr', padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <span>Employee</span><span>DOJ</span><span>Manager</span><span>Day</span><span style={{ textAlign: 'right' }}>{mh[0]}</span><span style={{ textAlign: 'right' }}>{mh[1]}</span><span style={{ textAlign: 'right' }}>{mh[2]}</span><span>Status</span><span style={{ textAlign: 'right' }}>Actions</span>
+        </div>
+        {rows.map((e) => (
+          <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: '1.5fr .75fr 1fr .55fr repeat(3,.6fr) .8fr .9fr', padding: '13px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontWeight: 600 }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id}</span></div>
+            <span style={{ color: '#A8AEC4', fontSize: 12 }}>{e.doj}</span>
+            <span style={{ color: '#A8AEC4', fontSize: 12 }}>{e.manager}</span>
+            <span className="mono" style={{ fontSize: 11, color: '#8A90A8' }}>{e.tenure}</span>
+            <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: '#C7CBDA' }}>{e.v1}</span>
+            <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: '#C7CBDA' }}>{e.v2}</span>
+            <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: e.c3 }}>{e.v3}</span>
+            <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` }}>{e.status}</span>
+            <div style={{ justifySelf: 'end', display: 'flex', gap: 6, alignItems: 'center' }} onClick={(ev) => ev.stopPropagation()}>
+              <span style={{ fontSize: 10.5, color: '#F59E0B', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 7, padding: '4px 8px' }}>{e.alert}</span>
+              <span style={{ fontSize: 10.5, color: '#8A90A8', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 7, padding: '4px 8px' }}>Close</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PaPip({ employees, filter, setFilter, setModal }) {
+  const tabs = [['All Departments', 6, null], ['Sales', 3, 'Sales'], ['Trainer', 2, 'Trainer'], ['PT Team', 1, 'PT Team']].map(([label, count, d]) => ({
+    label, count, val: d, active: filter === d || (!filter && !d),
+  }));
+  const rows = employees.filter((e) => e.status !== 'In Progress').filter((e) => !filter || e.team === filter).map(decorate);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16 }}>
+        <div style={{ border: '1px solid rgba(168,85,247,0.28)', background: 'linear-gradient(150deg,rgba(168,85,247,0.14),rgba(168,85,247,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>Total PA / PIP cases</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6 }}>6</div></div>
+        <div style={{ border: '1px solid rgba(245,158,11,0.28)', background: 'linear-gradient(150deg,rgba(245,158,11,0.13),rgba(245,158,11,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>PA Issued</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6, color: '#F59E0B' }}>4</div></div>
+        <div style={{ border: '1px solid rgba(244,63,94,0.28)', background: 'linear-gradient(150deg,rgba(244,63,94,0.13),rgba(244,63,94,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>PIP Issued</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6, color: '#F43F5E' }}>2</div></div>
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {tabs.map((t) => (
+          <div key={t.label} onClick={() => setFilter(t.val)} style={{ cursor: 'pointer', border: `1px solid ${t.active ? 'rgba(99,102,241,0.45)' : 'rgba(255,255,255,0.1)'}`, background: t.active ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.03)', color: t.active ? '#FFFFFF' : '#9BA1B8', borderRadius: 999, padding: '8px 16px', fontSize: 13, display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span>{t.label}</span><span className="mono" style={{ fontSize: 11, opacity: 0.75 }}>{t.count}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ ...card, overflow: 'hidden' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr .7fr .8fr .8fr 1.9fr .7fr', padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <span>Employee</span><span>Type</span><span>Issued</span><span>Review by</span><span>Worry parameters breached</span><span style={{ textAlign: 'right' }}>Score</span>
+        </div>
+        {rows.map((e) => (
+          <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: '1.4fr .7fr .8fr .8fr 1.9fr .7fr', padding: '14px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontWeight: 600 }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id} · {e.team}</span></div>
+            <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` }}>{e.short}</span>
+            <span style={{ fontSize: 12, color: '#A8AEC4' }}>{e.issued}</span>
+            <span style={{ fontSize: 12, color: '#A8AEC4' }}>{e.due}</span>
+            <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+              {e.breaches.map((b) => <span key={b} style={{ fontSize: 10.5, color: '#F87171', background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.25)', borderRadius: 6, padding: '3px 7px' }}>{b}</span>)}
+            </div>
+            <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontWeight: 600, color: e.bandColor }}>{e.scoreStr}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function WorryIndex({ employees, setModal }) {
+  const ranked = employees.map(decorate).sort((a, b) => a.score - b.score);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+      <div>
+        <div className="disp" style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>Bands</div>
+        <div style={{ fontSize: 12.5, color: '#8A90A8', marginBottom: 14 }}>Every signal carries a credit weight — minor ±0.5, average ±1, major ±2. The running total places the NJ in one of four bands.</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
+          {WORRY_BANDS.map((b) => (
+            <div key={b.label} style={{ border: `1px solid ${b.color}4D`, background: `${b.color}12`, borderRadius: 14, padding: 18 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <div className="disp" style={{ fontSize: 17, fontWeight: 600, color: b.color }}>{b.label}</div>
+                <div className="disp" style={{ fontSize: 20, fontWeight: 600, color: b.color }}>{b.count}</div>
+              </div>
+              <div className="mono" style={{ fontSize: 12, color: '#8A90A8', marginTop: 4 }}>{b.range}</div>
+              <div style={{ fontSize: 12.5, color: '#8A90A8', marginTop: 8, lineHeight: 1.5 }}>{b.desc}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ ...card, overflow: 'hidden' }}>
+        <div style={{ padding: '16px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+          <div className="disp" style={{ fontSize: 15, fontWeight: 600 }}>Every NJ, ranked worst to best</div>
+          <div style={{ fontSize: 11.5, color: '#6E7488', marginTop: 2 }}>2026-W30 · click a row for the full signal breakdown</div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr .9fr .7fr .8fr 2fr', padding: '10px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 10, letterSpacing: '.1em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+          <span>Employee</span><span>Team</span><span style={{ textAlign: 'right' }}>Score</span><span>Band</span><span>Trend</span>
+        </div>
+        {ranked.map((e) => (
+          <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: '1.5fr .9fr .7fr .8fr 2fr', padding: '13px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontWeight: 600 }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id}</span></div>
+            <span style={{ color: '#A8AEC4', fontSize: 12.5 }}>{e.team}</span>
+            <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontWeight: 600, color: e.bandColor }}>{e.scoreStr}</span>
+            <span style={{ justifySelf: 'start', fontSize: 11, padding: '4px 9px', borderRadius: 999, background: `${e.bandColor}1F`, color: e.bandColor, border: `1px solid ${e.bandColor}55` }}>{e.bandLabel}</span>
+            <span style={{ fontSize: 12, color: '#8A90A8' }}>{e.trendNote}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 22 }}>
+        <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 16, background: 'rgba(20,184,166,0.03)', overflow: 'hidden' }}>
+          <div style={{ padding: '14px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)' }} className="mono">
+            <span style={{ fontSize: 10.5, letterSpacing: '.14em', color: '#14B8A6', textTransform: 'uppercase' }}>Positive signals</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr .9fr .5fr', padding: '9px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.08em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            <span>Signal</span><span>Applies to</span><span style={{ textAlign: 'right' }}>Weight</span>
+          </div>
+          {POS_SIGNALS.map((s) => (
+            <div key={s.label} style={{ display: 'grid', gridTemplateColumns: '1fr .9fr .5fr', padding: '10px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+              <span style={{ fontSize: 13, color: '#C7CBDA' }}>{s.label}</span>
+              <span style={{ fontSize: 11, color: '#6E7488' }}>{s.teams}</span>
+              <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12.5, color: '#14B8A6' }}>{s.w}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 16, background: 'rgba(244,63,94,0.03)', overflow: 'hidden' }}>
+          <div style={{ padding: '14px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)' }} className="mono">
+            <span style={{ fontSize: 10.5, letterSpacing: '.14em', color: '#F43F5E', textTransform: 'uppercase' }}>Negative signals</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr .9fr .5fr', padding: '9px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.08em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            <span>Signal</span><span>Applies to</span><span style={{ textAlign: 'right' }}>Weight</span>
+          </div>
+          {NEG_SIGNALS.map((s) => (
+            <div key={s.label} style={{ display: 'grid', gridTemplateColumns: '1fr .9fr .5fr', padding: '10px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+              <span style={{ fontSize: 13, color: '#C7CBDA' }}>{s.label}</span>
+              <span style={{ fontSize: 11, color: '#6E7488' }}>{s.teams}</span>
+              <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12.5, color: '#F87171' }}>{s.w}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Reports({ employees, responses }) {
+  const [expanded, setExpanded] = useState(null);
+  const [emailPreview, setEmailPreview] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [report15, setReport15] = useState(null); // dept name or null
+
+  const flashToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, position: 'relative' }}>
+      {toast && (
+        <div style={{ position: 'fixed', top: 24, right: 28, zIndex: 60, border: '1px solid rgba(20,184,166,0.4)', background: '#0F2320', color: '#5EEAD4', borderRadius: 10, padding: '10px 16px', fontSize: 13, boxShadow: '0 12px 30px -10px rgba(0,0,0,0.6)' }}>
+          {toast}
+        </div>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <div style={{ border: '1px solid rgba(99,102,241,0.25)', background: 'linear-gradient(150deg,rgba(99,102,241,0.12),transparent)', borderRadius: 16, padding: 22 }}>
+          <div className="disp" style={{ fontSize: 16, fontWeight: 600 }}>Weekly Report</div>
+          <div style={{ fontSize: 13, color: '#8A90A8', marginTop: 6, lineHeight: 1.5 }}>Auto-sent every Monday 09:00 IST via cron. Progress questions to every active NJ, feedback link to every manager.</div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+            <span onClick={() => setEmailPreview(true)} className="hoverbtn" style={{ border: '1px solid rgba(99,102,241,0.45)', color: '#A5A7FA', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, cursor: 'pointer' }}>Preview email</span>
+            <span onClick={() => flashToast('Weekly report sent to 42 new joiners and their managers.')} className="hoverbtn" style={{ border: '1px solid rgba(255,255,255,0.12)', color: '#C7CBDA', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, cursor: 'pointer' }}>Send now</span>
+          </div>
+        </div>
+        <div style={{ border: '1px solid rgba(20,184,166,0.25)', background: 'linear-gradient(150deg,rgba(20,184,166,0.1),transparent)', borderRadius: 16, padding: 22 }}>
+          <div className="disp" style={{ fontSize: 16, fontWeight: 600 }}>15-Day Report</div>
+          <div style={{ fontSize: 13, color: '#8A90A8', marginTop: 6, lineHeight: 1.5 }}>On-demand snapshot per department: status movement, new PA/PIP cases, worry score deltas since last run.</div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
+            {['Sales', 'Trainer', 'PT Team'].map((d) => (
+              <span key={d} onClick={() => setReport15(d)} className="hoverbtn" style={{ border: '1px solid rgba(20,184,166,0.45)', color: '#5EEAD4', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, cursor: 'pointer' }}>Generate · {d}</span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {emailPreview && <EmailPreviewModal onClose={() => setEmailPreview(false)} />}
+      {report15 && <Report15Modal employees={employees} dept={report15} onClose={() => setReport15(null)} />}
+      <div style={{ ...card, overflow: 'hidden' }}>
+        <div style={{ padding: '15px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <span className="disp" style={{ fontSize: 15, fontWeight: 600 }}>Weekly response tracker · 2026-W30</span>
+          <span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>click a row to read the response →</span>
+        </div>
+        {responses.map((r) => {
+          const canExpand = r.state === 'Received';
+          const open = expanded === r.name;
+          const st = r.state === 'Overdue' ? STATUS['PIP Issued'] : STATUS['Confirmed'];
+          return (
+            <div key={r.name} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+              <div className={canExpand ? 'hoverrow' : ''} onClick={() => canExpand && setExpanded(open ? null : r.name)} style={{ display: 'grid', gridTemplateColumns: '1.3fr .8fr .8fr 1fr 1fr', padding: '13px 18px', alignItems: 'center', fontSize: 13, cursor: canExpand ? 'pointer' : 'default' }}>
+                <span style={{ fontWeight: 600 }}>{r.name}</span>
+                <span style={{ color: '#8A90A8', fontSize: 12 }}>sent {r.sent}</span>
+                <span style={{ color: '#8A90A8', fontSize: 12 }}>{r.received}</span>
+                <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: st.bg, color: st.color, border: `1px solid ${st.border}` }}>{r.state}</span>
+                <span style={{ textAlign: 'right', fontSize: 12, color: '#A8AEC4' }}>AI rating: <span style={{ color: st.color }}>{r.ai}</span>{canExpand && <span style={{ marginLeft: 8, color: '#6E7488' }}>{open ? '▲' : '▼'}</span>}</span>
+              </div>
+              {open && canExpand && (
+                <div style={{ padding: '4px 18px 16px 18px', background: 'rgba(255,255,255,0.02)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div>
+                    <div className="mono" style={{ fontSize: 10.5, color: '#6366F1', marginBottom: 3 }}>{r.q1}</div>
+                    <div style={{ fontSize: 13, color: '#C7CBDA', lineHeight: 1.5 }}>{r.a1}</div>
+                  </div>
+                  <div>
+                    <div className="mono" style={{ fontSize: 10.5, color: '#6366F1', marginBottom: 3 }}>{r.q2}</div>
+                    <div style={{ fontSize: 13, color: '#C7CBDA', lineHeight: 1.5 }}>{r.a2}</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function EmailPreviewModal({ onClose }) {
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 560, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span className="disp" style={{ fontSize: 17, fontWeight: 600 }}>Weekly report — email preview</span>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15 }}>×</div>
+        </div>
+        <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ fontSize: 12, color: '#6E7488' }}>
+            <div><span className="mono">From:</span> ei-dashboard@koenig.internal</div>
+            <div><span className="mono">Subject:</span> Your week 30 check-in — 2 quick questions</div>
+          </div>
+          <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 12, padding: 18, background: 'rgba(255,255,255,0.02)', fontSize: 13.5, color: '#C7CBDA', lineHeight: 1.6 }}>
+            <p style={{ marginBottom: 12 }}>Hi there,</p>
+            <p style={{ marginBottom: 12 }}>Quick check-in for this week — two questions, takes under a minute:</p>
+            {NJ_QUESTIONS.map((q) => (
+              <div key={q.team} style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 11, color: q.color, marginBottom: 3 }}>{q.team} track</div>
+                <div>1. {q.q1}</div>
+                <div>2. {q.q2}</div>
+              </div>
+            ))}
+            <p style={{ color: '#8A90A8', fontSize: 12.5 }}>Reply by Monday EOD — no response applies an automatic shoddy mark.</p>
+          </div>
+          <div style={{ fontSize: 11.5, color: '#6E7488' }}>Manager is CC-ed on every send. This preview reflects what goes out Monday 09:00 IST.</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Report15Modal({ employees, dept, onClose }) {
+  const cards = CARD_DEFS[dept] || CARD_DEFS.Sales;
+  const emp = employees.filter((e) => e.team === dept).map(decorate);
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 680, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span className="disp" style={{ fontSize: 17, fontWeight: 600 }}>15-Day Report — {dept}</span>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15 }}>×</div>
+        </div>
+        <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 18 }}>
+          <div style={{ fontSize: 12.5, color: '#8A90A8' }}>Snapshot generated for 13 Jul 2026 → 27 Jul 2026.</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
+            {cards.map(([label, count, color]) => (
+              <div key={label} style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.025)', borderRadius: 12, padding: '12px 13px' }}>
+                <div className="disp" style={{ fontSize: 22, fontWeight: 600, color, letterSpacing: '-0.02em' }}>{count}</div>
+                <div style={{ fontSize: 10.5, color: '#A8AEC4', marginTop: 3, lineHeight: 1.3 }}>{label}</div>
+              </div>
+            ))}
+          </div>
+          <div>
+            <div className="mono" style={{ fontSize: 10, letterSpacing: '.12em', color: '#5C6178', textTransform: 'uppercase', marginBottom: 10 }}>Worry score movement</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {emp.map((e) => (
+                <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
+                  <span>{e.name}</span>
+                  <span style={{ fontSize: 12, color: '#8A90A8', flex: 1, textAlign: 'right', marginRight: 12 }}>{e.status}</span>
+                  <span className="mono" style={{ fontWeight: 600, color: e.bandColor, width: 50, textAlign: 'right' }}>{e.scoreStr}</span>
+                </div>
+              ))}
+              {!emp.length && <div style={{ fontSize: 12.5, color: '#6E7488' }}>No employees in this department in the mock dataset.</div>}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- modal ---------- */
+
+function EmployeeModal({ emp, onClose }) {
+  const d = decorate(emp);
+  const bandPct = Math.round(Math.max(0, Math.min(1, (emp.score + 12) / 24)) * 100) + '%';
+  const weeks = emp.weeks.map((w) => ({ ...w, color: w.state.indexOf('No') === 0 ? '#F87171' : w.state.indexOf('low') > -1 ? '#F59E0B' : '#5EEAD4' }));
+  const feedback = emp.feedback.map((f) => ({ ...f, color: f.quality === 'below' ? '#F87171' : f.quality === 'above' ? '#5EEAD4' : '#A5A7FA' }));
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 50 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 820, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '24px 28px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <span className="disp" style={{ fontSize: 23, fontWeight: 600, letterSpacing: '-0.02em' }}>{d.name}</span>
+              <span style={{ fontSize: 10.5, padding: '4px 10px', borderRadius: 999, background: d.statusBg, color: d.statusColor, border: `1px solid ${d.statusBorder}` }}>{d.status}</span>
+            </div>
+            <div className="mono" style={{ fontSize: 12, color: '#6E7488', marginTop: 6 }}>{d.id} · {d.team} · manager {d.manager} · day {d.tenure} of 180</div>
+          </div>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+        </div>
+        <div style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 24 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.35fr', gap: 22, alignItems: 'start' }}>
+            <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, padding: 20, background: 'rgba(255,255,255,0.02)' }}>
+              <div style={{ fontSize: 11.5, color: '#8A90A8' }}>Worry Index</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 9, margin: '6px 0 14px' }}><span className="disp" style={{ fontSize: 42, fontWeight: 600, color: d.bandColor, letterSpacing: '-0.03em' }}>{d.scoreStr}</span><span style={{ fontSize: 12.5, color: d.bandColor }}>{d.bandLabel}</span></div>
+              <div style={{ height: 8, borderRadius: 4, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}><div style={{ height: '100%', width: bandPct, background: d.bandColor, borderRadius: 4 }} /></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#5C6178', marginTop: 6 }}><span>−12</span><span>0</span><span>+12</span></div>
+              <div style={{ marginTop: 16, fontSize: 12.5, color: '#8A90A8', lineHeight: 1.55 }}>{emp.trendNote}</div>
+            </div>
+            <div>
+              <div className="mono" style={{ fontSize: 10, letterSpacing: '.12em', color: '#5C6178', textTransform: 'uppercase', marginBottom: 10 }}>Signal breakdown</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                {emp.signals.map((s) => (
+                  <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span style={{ flex: 1, fontSize: 13, color: '#C7CBDA' }}>{s.label}</span>
+                    <span className="mono" style={{ fontSize: 10, color: '#5C6178' }}>{s.weight}</span>
+                    <span style={{ width: 56, textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12.5, fontWeight: 600, color: s.pts.indexOf('−') === 0 ? '#F87171' : '#5EEAD4' }}>{s.pts}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, padding: 18, background: 'rgba(255,255,255,0.02)' }}>
+              <div className="disp" style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Weekly progress emails</div>
+              {weeks.map((w) => (
+                <div key={w.week} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 12.5 }}>
+                  <span className="mono" style={{ color: '#8A90A8' }}>{w.week}</span>
+                  <span style={{ color: w.color }}>{w.state}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, padding: 18, background: 'rgba(255,255,255,0.02)' }}>
+              <div className="disp" style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Manager feedback</div>
+              {feedback.map((f) => (
+                <div key={f.milestone} style={{ padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}><span className="mono" style={{ color: '#8A90A8' }}>{f.milestone}</span><span style={{ color: f.color }}>{f.quality}</span></div>
+                  <div style={{ fontSize: 12, color: '#8A90A8', marginTop: 4, lineHeight: 1.45 }}>{f.comment}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, padding: 18, background: 'rgba(255,255,255,0.02)' }}>
+            <div className="disp" style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>HR notes</div>
+            <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '12px 14px', fontSize: 13, color: '#A8AEC4', lineHeight: 1.55, background: 'rgba(0,0,0,0.2)' }}>{emp.hrNote}</div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+              <span style={{ border: '1px solid rgba(245,158,11,0.45)', color: '#F59E0B', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, cursor: 'pointer' }}>Send feedback alert</span>
+              <span style={{ border: '1px solid rgba(244,63,94,0.45)', color: '#F87171', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, cursor: 'pointer' }}>Issue PIP</span>
+              <span style={{ border: '1px solid rgba(20,184,166,0.45)', color: '#5EEAD4', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, cursor: 'pointer' }}>Mark closed</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
