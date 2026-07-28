@@ -17,7 +17,12 @@ export default async function Page() {
   const [employees, responses, newJoiners] = await Promise.all([
     getEmployees(),
     getWeeklyResponses('2026-W30'),
-    getNewJoiners(from, to),
+    // External API — degrade to an empty list rather than take down the whole
+    // dashboard if Koenig is unreachable or its env vars aren't configured.
+    getNewJoiners(from, to).catch((err) => {
+      console.error('Koenig NJ API failed:', err.message);
+      return [];
+    }),
   ]);
   return <DashboardClient employees={employees} responses={responses} newJoiners={newJoiners} />;
 }
