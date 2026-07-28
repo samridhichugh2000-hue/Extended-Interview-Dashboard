@@ -7,7 +7,7 @@ import {
 
 const card = { border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 16 };
 
-export default function DashboardClient({ employees, responses }) {
+export default function DashboardClient({ employees, responses, newJoiners }) {
   const [screen, setScreen] = useState('overview');
   const [dept, setDept] = useState('Sales');
   const [filter, setFilter] = useState(null);
@@ -17,11 +17,11 @@ export default function DashboardClient({ employees, responses }) {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex' }}>
-      <Sidebar screen={screen} dept={dept} go={go} />
+      <Sidebar screen={screen} dept={dept} go={go} njCount={newJoiners.length} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <Topbar screen={screen} dept={dept} />
         <div style={{ padding: '26px 28px 60px', flex: 1 }}>
-          {screen === 'overview' && <Overview employees={employees} go={go} setModal={setModal} />}
+          {screen === 'overview' && <Overview employees={employees} newJoiners={newJoiners} go={go} setModal={setModal} />}
           {screen === 'dept' && <Dept employees={employees} dept={dept} filter={filter} setFilter={setFilter} setModal={setModal} />}
           {screen === 'papip' && <PaPip employees={employees} filter={filter} setFilter={setFilter} setModal={setModal} />}
           {screen === 'worryindex' && <WorryIndex employees={employees} setModal={setModal} />}
@@ -35,7 +35,7 @@ export default function DashboardClient({ employees, responses }) {
 
 /* ---------- app chrome ---------- */
 
-function Sidebar({ screen, dept, go }) {
+function Sidebar({ screen, dept, go, njCount }) {
   return (
     <div style={{ width: 240, flex: 'none', background: 'linear-gradient(180deg,rgba(99,102,241,0.10),rgba(168,85,247,0.04))', borderRight: '1px solid rgba(255,255,255,0.07)', padding: '22px 14px', display: 'flex', flexDirection: 'column', gap: 26, position: 'sticky', top: 0, height: '100vh' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 8px' }}>
@@ -46,11 +46,12 @@ function Sidebar({ screen, dept, go }) {
         <div className="mono" style={{ fontSize: 9.5, letterSpacing: '.16em', color: '#5C6178', padding: '0 10px 8px' }}>MONITOR</div>
         {NAV.map((n) => {
           const active = screen === n.screen && (!n.dept || n.dept === dept);
+          const count = n.screen === 'overview' ? njCount : n.count;
           return (
             <div key={n.label} onClick={() => go(n.screen, n.dept)}
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 10px', borderRadius: 9, cursor: 'pointer', fontSize: 13.5, background: active ? 'rgba(99,102,241,0.22)' : 'transparent', color: active ? '#FFFFFF' : '#9BA1B8', fontWeight: active ? 600 : 400, borderLeft: `2px solid ${active ? '#6366F1' : 'transparent'}` }}>
               <span>{n.label}</span>
-              <span className="mono" style={{ fontSize: 11, color: '#6E7488' }}>{n.count}</span>
+              <span className="mono" style={{ fontSize: 11, color: '#6E7488' }}>{count}</span>
             </div>
           );
         })}
@@ -86,7 +87,7 @@ function Topbar({ screen, dept }) {
 
 /* ---------- screens ---------- */
 
-function Overview({ employees, go, setModal }) {
+function Overview({ employees, newJoiners, go, setModal }) {
   const counts = { Sales: 18, Trainer: 15, 'PT Team': 9 };
   const chips = [
     { label: 'Sales', count: counts.Sales, bg: 'rgba(99,102,241,0.14)', border: 'rgba(99,102,241,0.35)', color: '#A5A7FA', dept: 'Sales' },
@@ -101,7 +102,7 @@ function Overview({ employees, go, setModal }) {
       <div style={{ display: 'grid', gridTemplateColumns: '1.25fr 1fr 1fr', gap: 16 }}>
         <div style={{ border: '1px solid rgba(99,102,241,0.28)', background: 'linear-gradient(150deg,rgba(99,102,241,0.16),rgba(99,102,241,0.03))', borderRadius: 16, padding: 20, animation: 'floatcard 6s ease-in-out infinite' }}>
           <div style={{ fontSize: 12, color: '#A8AEC4' }}>New Joiners Under Watch</div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, margin: '8px 0 4px' }}><span className="disp" style={{ fontSize: 38, fontWeight: 600, letterSpacing: '-0.03em' }}>42</span><span style={{ fontSize: 11.5, color: '#6E7488' }}>joined last 6 months</span></div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, margin: '8px 0 4px' }}><span className="disp" style={{ fontSize: 38, fontWeight: 600, letterSpacing: '-0.03em' }}>{newJoiners.length}</span><span style={{ fontSize: 11.5, color: '#6E7488' }}>joined last 6 months</span></div>
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
             {chips.map((c) => (
               <div key={c.label} onClick={() => go('dept', c.dept)} style={{ cursor: 'pointer', border: `1px solid ${c.border}`, background: c.bg, color: c.color, borderRadius: 8, padding: '6px 11px', fontSize: 12, display: 'flex', gap: 7, alignItems: 'center' }}>
