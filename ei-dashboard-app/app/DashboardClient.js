@@ -7,7 +7,7 @@ import {
 
 const card = { border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 16 };
 
-export default function DashboardClient({ employees, responses, newJoiners }) {
+export default function DashboardClient({ employees, responses, newJoiners, deptCounts }) {
   const [screen, setScreen] = useState('overview');
   const [dept, setDept] = useState('Sales');
   const [filter, setFilter] = useState(null);
@@ -17,11 +17,11 @@ export default function DashboardClient({ employees, responses, newJoiners }) {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex' }}>
-      <Sidebar screen={screen} dept={dept} go={go} njCount={newJoiners.length} />
+      <Sidebar screen={screen} dept={dept} go={go} njCount={newJoiners.length} deptCounts={deptCounts} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <Topbar screen={screen} dept={dept} />
         <div style={{ padding: '26px 28px 60px', flex: 1 }}>
-          {screen === 'overview' && <Overview employees={employees} newJoiners={newJoiners} go={go} setModal={setModal} />}
+          {screen === 'overview' && <Overview employees={employees} newJoiners={newJoiners} deptCounts={deptCounts} go={go} setModal={setModal} />}
           {screen === 'dept' && <Dept employees={employees} dept={dept} filter={filter} setFilter={setFilter} setModal={setModal} />}
           {screen === 'papip' && <PaPip employees={employees} filter={filter} setFilter={setFilter} setModal={setModal} />}
           {screen === 'worryindex' && <WorryIndex employees={employees} setModal={setModal} />}
@@ -35,7 +35,7 @@ export default function DashboardClient({ employees, responses, newJoiners }) {
 
 /* ---------- app chrome ---------- */
 
-function Sidebar({ screen, dept, go, njCount }) {
+function Sidebar({ screen, dept, go, njCount, deptCounts }) {
   return (
     <div style={{ width: 240, flex: 'none', background: 'linear-gradient(180deg,rgba(99,102,241,0.10),rgba(168,85,247,0.04))', borderRight: '1px solid rgba(255,255,255,0.07)', padding: '22px 14px', display: 'flex', flexDirection: 'column', gap: 26, position: 'sticky', top: 0, height: '100vh' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 8px' }}>
@@ -46,7 +46,7 @@ function Sidebar({ screen, dept, go, njCount }) {
         <div className="mono" style={{ fontSize: 9.5, letterSpacing: '.16em', color: '#5C6178', padding: '0 10px 8px' }}>MONITOR</div>
         {NAV.map((n) => {
           const active = screen === n.screen && (!n.dept || n.dept === dept);
-          const count = n.screen === 'overview' ? njCount : n.count;
+          const count = n.screen === 'overview' ? njCount : n.dept && deptCounts[n.dept] !== undefined ? deptCounts[n.dept] : n.count;
           return (
             <div key={n.label} onClick={() => go(n.screen, n.dept)}
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 10px', borderRadius: 9, cursor: 'pointer', fontSize: 13.5, background: active ? 'rgba(99,102,241,0.22)' : 'transparent', color: active ? '#FFFFFF' : '#9BA1B8', fontWeight: active ? 600 : 400, borderLeft: `2px solid ${active ? '#6366F1' : 'transparent'}` }}>
@@ -87,8 +87,8 @@ function Topbar({ screen, dept }) {
 
 /* ---------- screens ---------- */
 
-function Overview({ employees, newJoiners, go, setModal }) {
-  const counts = { Sales: 18, Trainer: 15, 'PT Team': 9 };
+function Overview({ employees, newJoiners, deptCounts, go, setModal }) {
+  const counts = deptCounts;
   const chips = [
     { label: 'Sales', count: counts.Sales, bg: 'rgba(99,102,241,0.14)', border: 'rgba(99,102,241,0.35)', color: '#A5A7FA', dept: 'Sales' },
     { label: 'Trainer', count: counts.Trainer, bg: 'rgba(168,85,247,0.14)', border: 'rgba(168,85,247,0.35)', color: '#D8B4FE', dept: 'Trainer' },

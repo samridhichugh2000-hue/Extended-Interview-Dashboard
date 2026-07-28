@@ -14,7 +14,7 @@ function sixMonthsAgo() {
 
 export default async function Page() {
   const { from, to } = sixMonthsAgo();
-  const [employees, responses, newJoiners] = await Promise.all([
+  const [employees, responses, rawNewJoiners] = await Promise.all([
     getEmployees(),
     getWeeklyResponses('2026-W30'),
     // External API — degrade to an empty list rather than take down the whole
@@ -24,5 +24,12 @@ export default async function Page() {
       return [];
     }),
   ]);
-  return <DashboardClient employees={employees} responses={responses} newJoiners={newJoiners} />;
+
+  // "Blue Collared" is excluded from every section, so drop it before it
+  // reaches the UI at all.
+  const newJoiners = rawNewJoiners.filter((nj) => nj.section !== null);
+  const deptCounts = { Sales: 0, Trainer: 0, 'PT Team': 0 };
+  for (const nj of newJoiners) deptCounts[nj.section]++;
+
+  return <DashboardClient employees={employees} responses={responses} newJoiners={newJoiners} deptCounts={deptCounts} />;
 }

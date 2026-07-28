@@ -54,5 +54,16 @@ export async function getNewJoiners(from, to) {
     name: r['Employee Name'],
     joiningDate: r['Joining Date'],
     managerName: r['Manager Name'],
+    department: r['Department'],
+    section: classifySection(r['Department']),
   }));
+}
+
+// Bifurcates the raw Koenig "Department" value into the dashboard's three
+// sections. "Blue Collared" is excluded entirely — it isn't tracked here.
+export function classifySection(department) {
+  if (department === 'Blue Collared') return null;
+  if (department === 'Sales') return 'Sales';
+  if (department === 'Training Delivery Inhouse') return 'Trainer';
+  return 'PT Team';
 }
