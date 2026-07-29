@@ -15,7 +15,9 @@
     "sync:util": "node scripts/sync-util.mjs",
     "sync:exam": "node scripts/sync-exam.mjs",
     "backfill:email": "node scripts/backfill-email.mjs",
-    "sync:negfeedback": "node scripts/sync-negfeedback.mjs"
+    "sync:negfeedback": "node scripts/sync-negfeedback.mjs",
+    "sync:assignments": "node scripts/sync-assignments.mjs",
+    "sync:skills": "node scripts/sync-skills.mjs"
   },
   "dependencies": {
     "@libsql/client": "^0.14.0",

@@ -171,6 +171,8 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
   const [scModal, setScModal] = useState(null);
   const [examModal, setExamModal] = useState(null);
   const [negFbModal, setNegFbModal] = useState(null);
+  const [assignmentsModal, setAssignmentsModal] = useState(null);
+  const [skillsModal, setSkillsModal] = useState(null);
   const deptEmp = employees.filter((e) => e.team === dept);
   const pool = deptEmp.length ? deptEmp : employees;
   const filtered = filter ? pool.filter((e) => e.status === filter) : pool;
@@ -181,7 +183,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
   }));
   const baseHeads = METRIC_HEADS[dept] || METRIC_HEADS.Sales;
   const mh = dept === 'Sales' ? [...baseHeads, 'Neg. Audits', 'SCs Raised']
-    : dept === 'Trainer' ? [...baseHeads, 'Exams', 'Neg. Feedback']
+    : dept === 'Trainer' ? [...baseHeads, 'Exams', 'Neg. Feedback', 'Assignments', 'Skills']
     : baseHeads;
   const rows = filtered.map((e) => {
     const d = decorate(e);
@@ -213,6 +215,16 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
         value: e.negFeedback ?? '—',
         color: e.negFeedback > 0 ? '#F87171' : e.negFeedback === 0 ? '#5EEAD4' : '#6E7488',
         onClick: e.negFeedback > 0 ? () => setNegFbModal(e) : null,
+      });
+      cells.push({
+        value: e.assignmentsCount ?? '—',
+        color: e.assignmentsCount > 0 ? '#5EEAD4' : '#6E7488',
+        onClick: e.assignmentsCount > 0 ? () => setAssignmentsModal(e) : null,
+      });
+      cells.push({
+        value: e.skillsCount ?? '—',
+        color: e.skillsCount > 0 ? '#5EEAD4' : '#6E7488',
+        onClick: e.skillsCount > 0 ? () => setSkillsModal(e) : null,
       });
     }
     return { ...d, cells };
@@ -270,6 +282,8 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
       {scModal && <ScListModal emp={scModal} onClose={() => setScModal(null)} />}
       {examModal && <ExamSummaryModal emp={examModal} onClose={() => setExamModal(null)} />}
       {negFbModal && <NegFeedbackModal emp={negFbModal} onClose={() => setNegFbModal(null)} />}
+      {assignmentsModal && <AssignmentsModal emp={assignmentsModal} onClose={() => setAssignmentsModal(null)} />}
+      {skillsModal && <SkillsModal emp={skillsModal} onClose={() => setSkillsModal(null)} />}
     </div>
   );
 }
@@ -382,6 +396,65 @@ function NegFeedbackModal({ emp, onClose }) {
             </div>
           ))}
           {!emp.negFeedbackDetails.length && <div style={{ fontSize: 12.5, color: '#6E7488' }}>No detail on file for these reports.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AssignmentsModal({ emp, onClose }) {
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 680, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — assignments</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>{emp.assignmentsCount} {emp.assignmentsCount === 1 ? 'assignment' : 'assignments'} delivered</div>
+          </div>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+        </div>
+        <div style={{ padding: '8px 24px 24px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr .6fr .8fr', padding: '10px 0', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+            <span>Course</span><span>Start</span><span>End</span><span>Pax</span><span>Mode</span>
+          </div>
+          {emp.assignmentsDetails.map((a) => (
+            <div key={a.assignmentId} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr .6fr .8fr', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
+              <span style={{ color: '#C7CBDA' }}>{a.courseName}</span>
+              <span style={{ color: '#A8AEC4' }}>{a.startDate || '—'}</span>
+              <span style={{ color: '#A8AEC4' }}>{a.endDate || '—'}</span>
+              <span className="mono" style={{ color: '#A8AEC4' }}>{a.totalPax ?? '—'}</span>
+              <span style={{ color: '#5EEAD4' }}>{a.deliveryMode || '—'}</span>
+            </div>
+          ))}
+          {!emp.assignmentsDetails.length && <div style={{ fontSize: 12.5, color: '#6E7488', paddingTop: 12 }}>No assignment records on file.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SkillsModal({ emp, onClose }) {
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 560, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — skills</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>{emp.skillsCount} {emp.skillsCount === 1 ? 'course' : 'courses'} marked</div>
+          </div>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+        </div>
+        <div style={{ padding: '8px 24px 24px' }}>
+          {emp.skillsDetails.map((s) => (
+            <div key={s.courseId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
+              <span style={{ color: '#C7CBDA' }}>{s.courseName}</span>
+              <div style={{ display: 'flex', gap: 6, flex: 'none' }}>
+                {s.isDuplicate && <span style={{ fontSize: 10.5, color: '#F59E0B', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 6, padding: '3px 7px' }}>Duplicate</span>}
+                {s.isDiscontinued && <span style={{ fontSize: 10.5, color: '#F87171', border: '1px solid rgba(244,63,94,0.35)', borderRadius: 6, padding: '3px 7px' }}>Discontinued</span>}
+              </div>
+            </div>
+          ))}
+          {!emp.skillsDetails.length && <div style={{ fontSize: 12.5, color: '#6E7488', paddingTop: 12 }}>No skill records on file.</div>}
         </div>
       </div>
     </div>
