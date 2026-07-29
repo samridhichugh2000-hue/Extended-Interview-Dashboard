@@ -33,7 +33,10 @@ CREATE TABLE IF NOT EXISTS employees (
   assignments_count INTEGER,    -- count of training assignments delivered (Trainer only)
   assignments_details TEXT,     -- JSON array of {assignmentId, courseName, startDate, endDate, totalPax, deliveryMode, batchType}
   skills_count INTEGER,         -- count of skills/courses marked (Trainer only)
-  skills_details TEXT           -- JSON array of {courseId, courseName, isDuplicate, isDiscontinued}
+  skills_details TEXT,          -- JSON array of {courseId, courseName, isDuplicate, isDiscontinued}
+  tech_calls_count INTEGER,     -- count of tech calls attended (Sales only)
+  tech_calls_details TEXT,      -- JSON array of raw call records (field names unconfirmed — no live sample data)
+  tech_calls_converted INTEGER  -- count of tech calls converted (Trainer only)
 );
 
 CREATE TABLE IF NOT EXISTS pip_status (

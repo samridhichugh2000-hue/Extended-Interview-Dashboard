@@ -57,6 +57,9 @@ for (const stmt of [
   'ALTER TABLE employees ADD COLUMN assignments_details TEXT',
   'ALTER TABLE employees ADD COLUMN skills_count INTEGER',
   'ALTER TABLE employees ADD COLUMN skills_details TEXT',
+  'ALTER TABLE employees ADD COLUMN tech_calls_count INTEGER',
+  'ALTER TABLE employees ADD COLUMN tech_calls_details TEXT',
+  'ALTER TABLE employees ADD COLUMN tech_calls_converted INTEGER',
 ]) {
   try {
     await db.execute(stmt);
