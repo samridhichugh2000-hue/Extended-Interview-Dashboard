@@ -173,6 +173,8 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
   const [negFbModal, setNegFbModal] = useState(null);
   const [assignmentsModal, setAssignmentsModal] = useState(null);
   const [skillsModal, setSkillsModal] = useState(null);
+  const [techCallsModal, setTechCallsModal] = useState(null);
+  const [techCallsConvModal, setTechCallsConvModal] = useState(null);
   const deptEmp = employees.filter((e) => e.team === dept);
   const pool = deptEmp.length ? deptEmp : employees;
   const filtered = filter ? pool.filter((e) => e.status === filter) : pool;
@@ -182,8 +184,8 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
     filterVal: STATUS_MAP[label] || null,
   }));
   const baseHeads = METRIC_HEADS[dept] || METRIC_HEADS.Sales;
-  const mh = dept === 'Sales' ? [...baseHeads, 'Neg. Audits', 'SCs Raised']
-    : dept === 'Trainer' ? [...baseHeads, 'Exams', 'Neg. Feedback', 'Assignments', 'Skills']
+  const mh = dept === 'Sales' ? [...baseHeads, 'Neg. Audits', 'SCs Raised', 'Tech Calls']
+    : dept === 'Trainer' ? [...baseHeads, 'Exams', 'Neg. Feedback', 'Assignments', 'Skills', 'Tech Calls']
     : baseHeads;
   const rows = filtered.map((e) => {
     const d = decorate(e);
@@ -202,6 +204,11 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
         value: e.scRaised ?? '—',
         color: e.scRaised > 0 ? '#5EEAD4' : '#6E7488',
         onClick: e.scRaised > 0 ? () => setScModal(e) : null,
+      });
+      cells.push({
+        value: e.techCallsCount ?? '—',
+        color: e.techCallsCount > 0 ? '#5EEAD4' : '#6E7488',
+        onClick: e.techCallsCount > 0 ? () => setTechCallsModal(e) : null,
       });
     }
     if (dept === 'Trainer') {
@@ -225,6 +232,11 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
         value: e.skillsCount ?? '—',
         color: e.skillsCount > 0 ? '#5EEAD4' : '#6E7488',
         onClick: e.skillsCount > 0 ? () => setSkillsModal(e) : null,
+      });
+      cells.push({
+        value: e.techCallsConverted ?? '—',
+        color: e.techCallsConverted > 0 ? '#5EEAD4' : '#6E7488',
+        onClick: e.techCallsConverted !== null && e.techCallsConverted !== undefined ? () => setTechCallsConvModal(e) : null,
       });
     }
     return { ...d, cells };
@@ -280,6 +292,8 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
       </div>
       {auditModal && <AuditRemarksModal emp={auditModal} onClose={() => setAuditModal(null)} />}
       {scModal && <ScListModal emp={scModal} onClose={() => setScModal(null)} />}
+      {techCallsModal && <TechCallsModal emp={techCallsModal} onClose={() => setTechCallsModal(null)} />}
+      {techCallsConvModal && <TechCallsConvertedModal emp={techCallsConvModal} onClose={() => setTechCallsConvModal(null)} />}
       {examModal && <ExamSummaryModal emp={examModal} onClose={() => setExamModal(null)} />}
       {negFbModal && <NegFeedbackModal emp={negFbModal} onClose={() => setNegFbModal(null)} />}
       {assignmentsModal && <AssignmentsModal emp={assignmentsModal} onClose={() => setAssignmentsModal(null)} />}
@@ -340,6 +354,63 @@ function ScListModal({ emp, onClose }) {
             </div>
           ))}
           {!emp.scDetails.length && <div style={{ fontSize: 12.5, color: '#6E7488', paddingTop: 12 }}>No SC records on file.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Field names for a real tech-call record are unconfirmed (every live probe
+// returned the API's "no matching record" placeholder rather than actual
+// data), so each record renders as a generic key/value dump instead of
+// named columns — whatever shape real data has will still display.
+function TechCallsModal({ emp, onClose }) {
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 560, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — tech calls</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>{emp.techCallsCount} tech {emp.techCallsCount === 1 ? 'call' : 'calls'} attended</div>
+          </div>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+        </div>
+        <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {emp.techCallsDetails.map((call, i) => (
+            <div key={i} style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {Object.entries(call).map(([k, v]) => (
+                <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 12.5 }}>
+                  <span style={{ color: '#8A90A8' }}>{k}</span>
+                  <span style={{ color: '#C7CBDA', textAlign: 'right' }}>{v === null || v === undefined || v === '' ? '—' : String(v)}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+          {!emp.techCallsDetails.length && <div style={{ fontSize: 12.5, color: '#6E7488' }}>No tech call records on file.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// This feed only ever returns a single summary count — no per-call list
+// exists to drill into, unlike the Sales tech-call feed.
+function TechCallsConvertedModal({ emp, onClose }) {
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 440, border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — tech calls converted</div>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+        </div>
+        <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 12, padding: '18px 20px', textAlign: 'center' }}>
+            <div className="disp" style={{ fontSize: 34, fontWeight: 600, color: '#5EEAD4' }}>{emp.techCallsConverted}</div>
+            <div style={{ fontSize: 11.5, color: '#A8AEC4', marginTop: 4 }}>Converted tech calls</div>
+          </div>
+          <div style={{ fontSize: 12, color: '#6E7488', lineHeight: 1.5 }}>
+            The source API only reports a total converted count for this feed — no per-call date or detail is available to show.
+          </div>
         </div>
       </div>
     </div>
