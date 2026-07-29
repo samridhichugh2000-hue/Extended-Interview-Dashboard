@@ -46,6 +46,7 @@ export async function getEmployees() {
     return {
       id: e.id,
       name: e.name,
+      email: e.email,
       team: e.team,
       manager: e.manager,
       doj: e.doj,
@@ -55,13 +56,24 @@ export async function getEmployees() {
       issued: pip?.issued_on || '—',
       due: pip?.review_by || '—',
       breaches: pip?.breaches ? JSON.parse(pip.breaches) : [],
-      v: [e.metric1, e.metric2, e.metric3],
+      v: [e.metric1, e.metric2, e.metric3, e.metric4, e.metric5, e.metric6],
       alert: e.alert || 'Alert',
       signals: incidentsByEmp.get(e.id) || [],
       weeks: weeksByEmp.get(e.id) || [],
       feedback: feedbackByEmp.get(e.id) || [],
       hrNote: e.hr_note,
       trendNote: e.trend_note,
+      active: !!e.active,
+      negAudits: e.neg_audits,
+      auditRemarks: e.audit_remarks ? JSON.parse(e.audit_remarks) : [],
+      scRaised: e.sc_raised,
+      scDetails: e.sc_details ? JSON.parse(e.sc_details) : [],
+      examPass: e.exam_pass,
+      examFail: e.exam_fail,
+      examTotal: e.exam_total,
+      examNotUpdated: e.exam_not_updated,
+      negFeedback: e.neg_feedback,
+      negFeedbackDetails: e.neg_feedback_details ? JSON.parse(e.neg_feedback_details) : [],
     };
   });
 }

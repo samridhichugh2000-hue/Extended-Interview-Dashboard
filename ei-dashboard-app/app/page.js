@@ -25,9 +25,10 @@ export default async function Page() {
     }),
   ]);
 
-  // "Blue Collared" is excluded from every section, so drop it before it
-  // reaches the UI at all.
-  const newJoiners = rawNewJoiners.filter((nj) => nj.section !== null);
+  // "Blue Collared" is excluded from every section, and anyone Koenig reports
+  // as exited (DOR/LWD set) shouldn't count as an NJ under watch anywhere —
+  // drop both before this reaches the UI at all.
+  const newJoiners = rawNewJoiners.filter((nj) => nj.section !== null && nj.active !== false);
   const deptCounts = { Sales: 0, Trainer: 0, 'PT Team': 0 };
   for (const nj of newJoiners) deptCounts[nj.section]++;
 

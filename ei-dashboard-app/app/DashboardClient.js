@@ -88,14 +88,15 @@ function Topbar({ screen, dept }) {
 /* ---------- screens ---------- */
 
 function Overview({ employees, newJoiners, deptCounts, go, setModal }) {
+  const activeEmployees = employees.filter((e) => e.active !== false);
   const counts = deptCounts;
   const chips = [
     { label: 'Sales', count: counts.Sales, bg: 'rgba(99,102,241,0.14)', border: 'rgba(99,102,241,0.35)', color: '#A5A7FA', dept: 'Sales' },
     { label: 'Trainer', count: counts.Trainer, bg: 'rgba(168,85,247,0.14)', border: 'rgba(168,85,247,0.35)', color: '#D8B4FE', dept: 'Trainer' },
     { label: 'PT', count: counts['PT Team'], bg: 'rgba(20,184,166,0.14)', border: 'rgba(20,184,166,0.35)', color: '#5EEAD4', dept: 'PT Team' },
   ];
-  const reviewQueue = employees.slice(0, 5).map(decorate);
-  const paPipList = employees.filter((e) => e.status !== 'In Progress').map((e) => ({ name: e.name, due: e.due, type: e.status === 'PIP Issued' ? 'PIP' : 'PA', ...STATUS[e.status] }));
+  const reviewQueue = activeEmployees.slice(0, 5).map(decorate);
+  const paPipList = activeEmployees.filter((e) => e.status !== 'In Progress').map((e) => ({ name: e.name, due: e.due, type: e.status === 'PIP Issued' ? 'PIP' : 'PA', active: e.active, ...STATUS[e.status] }));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
@@ -139,11 +140,11 @@ function Overview({ employees, newJoiners, deptCounts, go, setModal }) {
             <span>Employee</span><span>Team</span><span>Manager</span><span>Status</span><span style={{ textAlign: 'right' }}>Score</span>
           </div>
           {reviewQueue.map((e) => (
-            <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: '1.6fr .8fr 1.1fr .9fr .7fr', padding: '13px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13 }}>
+            <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: '1.6fr .8fr 1.1fr .9fr .7fr', padding: '13px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontWeight: 600 }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id} · day {e.tenure}</span></div>
               <span style={{ color: '#A8AEC4', fontSize: 12.5 }}>{e.team}</span>
               <span style={{ color: '#A8AEC4', fontSize: 12.5 }}>{e.manager}</span>
-              <span style={{ justifySelf: 'start', fontSize: 11, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` }}>{e.status}</span>
+              <span style={{ justifySelf: 'start', fontSize: 11, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` }}>{e.inactive ? 'Inactive' : e.status}</span>
               <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontWeight: 600, color: e.bandColor }}>{e.scoreStr}</span>
             </div>
           ))}
@@ -153,9 +154,9 @@ function Overview({ employees, newJoiners, deptCounts, go, setModal }) {
           <div style={{ padding: '16px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}><div className="disp" style={{ fontSize: 15, fontWeight: 600 }}>Employee Status</div><div style={{ fontSize: 11.5, color: '#6E7488', marginTop: 2 }}>PA / PIP cases · 6 open</div></div>
           <div style={{ maxHeight: 296, overflow: 'auto' }}>
             {paPipList.map((p) => (
-              <div key={p.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 18px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+              <div key={p.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 18px', borderBottom: '1px solid rgba(255,255,255,0.05)', opacity: p.active === false ? 0.45 : 1, filter: p.active === false ? 'grayscale(0.6)' : undefined }}>
                 <div><div style={{ fontSize: 13, fontWeight: 600 }}>{p.name}</div><div style={{ fontSize: 11, color: '#6E7488', marginTop: 2 }}>due {p.due}</div></div>
-                <span style={{ fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: p.bg, color: p.color, border: `1px solid ${p.border}` }}>{p.type}</span>
+                <span style={{ fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: p.bg, color: p.color, border: `1px solid ${p.border}` }}>{p.active === false ? 'Inactive' : p.type}</span>
               </div>
             ))}
           </div>
@@ -166,6 +167,10 @@ function Overview({ employees, newJoiners, deptCounts, go, setModal }) {
 }
 
 function Dept({ employees, dept, filter, setFilter, setModal }) {
+  const [auditModal, setAuditModal] = useState(null);
+  const [scModal, setScModal] = useState(null);
+  const [examModal, setExamModal] = useState(null);
+  const [negFbModal, setNegFbModal] = useState(null);
   const deptEmp = employees.filter((e) => e.team === dept);
   const pool = deptEmp.length ? deptEmp : employees;
   const filtered = filter ? pool.filter((e) => e.status === filter) : pool;
@@ -174,11 +179,45 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
     active: filter && STATUS_MAP[label] === filter,
     filterVal: STATUS_MAP[label] || null,
   }));
-  const mh = METRIC_HEADS[dept] || METRIC_HEADS.Sales;
+  const baseHeads = METRIC_HEADS[dept] || METRIC_HEADS.Sales;
+  const mh = dept === 'Sales' ? [...baseHeads, 'Neg. Audits', 'SCs Raised']
+    : dept === 'Trainer' ? [...baseHeads, 'Exams', 'Neg. Feedback']
+    : baseHeads;
   const rows = filtered.map((e) => {
     const d = decorate(e);
-    return { ...d, v1: e.v[0], v2: e.v[1], v3: e.v[2], c3: e.score < 0 ? '#F87171' : '#5EEAD4' };
+    const cells = baseHeads.map((_, i) => ({
+      value: e.v[i],
+      color: i === baseHeads.length - 1 ? (e.score < 0 ? '#F87171' : '#5EEAD4') : '#C7CBDA',
+      onClick: null,
+    }));
+    if (dept === 'Sales') {
+      cells.push({
+        value: e.negAudits ?? '—',
+        color: e.negAudits > 0 ? '#F87171' : e.negAudits === 0 ? '#5EEAD4' : '#6E7488',
+        onClick: e.negAudits > 0 ? () => setAuditModal(e) : null,
+      });
+      cells.push({
+        value: e.scRaised ?? '—',
+        color: e.scRaised > 0 ? '#5EEAD4' : '#6E7488',
+        onClick: e.scRaised > 0 ? () => setScModal(e) : null,
+      });
+    }
+    if (dept === 'Trainer') {
+      const hasExamData = e.examPass !== null && e.examPass !== undefined;
+      cells.push({
+        value: hasExamData ? e.examPass : '—',
+        color: hasExamData ? (e.examFail > 0 ? '#F87171' : '#5EEAD4') : '#6E7488',
+        onClick: hasExamData ? () => setExamModal(e) : null,
+      });
+      cells.push({
+        value: e.negFeedback ?? '—',
+        color: e.negFeedback > 0 ? '#F87171' : e.negFeedback === 0 ? '#5EEAD4' : '#6E7488',
+        onClick: e.negFeedback > 0 ? () => setNegFbModal(e) : null,
+      });
+    }
+    return { ...d, cells };
   });
+  const gridCols = `1.5fr .75fr 1fr .55fr repeat(${mh.length},.7fr) .9fr 1fr`;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -201,25 +240,149 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
       </div>
 
       <div style={{ ...card, overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr .75fr 1fr .55fr repeat(3,.6fr) .8fr .9fr', padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <span>Employee</span><span>DOJ</span><span>Manager</span><span>Day</span><span style={{ textAlign: 'right' }}>{mh[0]}</span><span style={{ textAlign: 'right' }}>{mh[1]}</span><span style={{ textAlign: 'right' }}>{mh[2]}</span><span>Status</span><span style={{ textAlign: 'right' }}>Actions</span>
+        <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <span>Employee</span><span>DOJ</span><span>Manager</span><span>Day</span>
+          {mh.map((h) => <span key={h} style={{ textAlign: 'right' }}>{h}</span>)}
+          <span>Status</span><span style={{ textAlign: 'right' }}>Actions</span>
         </div>
         {rows.map((e) => (
-          <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: '1.5fr .75fr 1fr .55fr repeat(3,.6fr) .8fr .9fr', padding: '13px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13 }}>
+          <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '13px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontWeight: 600 }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id}</span></div>
             <span style={{ color: '#A8AEC4', fontSize: 12 }}>{e.doj}</span>
             <span style={{ color: '#A8AEC4', fontSize: 12 }}>{e.manager}</span>
             <span className="mono" style={{ fontSize: 11, color: '#8A90A8' }}>{e.tenure}</span>
-            <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: '#C7CBDA' }}>{e.v1}</span>
-            <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: '#C7CBDA' }}>{e.v2}</span>
-            <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: e.c3 }}>{e.v3}</span>
-            <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` }}>{e.status}</span>
+            {e.cells.map((c, i) => (
+              <span
+                key={i}
+                onClick={c.onClick ? (ev) => { ev.stopPropagation(); c.onClick(); } : undefined}
+                style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: c.color, cursor: c.onClick ? 'pointer' : undefined, textDecoration: c.onClick ? 'underline' : undefined, textUnderlineOffset: 3 }}
+              >{c.value}</span>
+            ))}
+            <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` }}>{e.inactive ? 'Inactive' : e.status}</span>
             <div style={{ justifySelf: 'end', display: 'flex', gap: 6, alignItems: 'center' }} onClick={(ev) => ev.stopPropagation()}>
               <span style={{ fontSize: 10.5, color: '#F59E0B', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 7, padding: '4px 8px' }}>{e.alert}</span>
               <span style={{ fontSize: 10.5, color: '#8A90A8', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 7, padding: '4px 8px' }}>Close</span>
             </div>
           </div>
         ))}
+      </div>
+      {auditModal && <AuditRemarksModal emp={auditModal} onClose={() => setAuditModal(null)} />}
+      {scModal && <ScListModal emp={scModal} onClose={() => setScModal(null)} />}
+      {examModal && <ExamSummaryModal emp={examModal} onClose={() => setExamModal(null)} />}
+      {negFbModal && <NegFeedbackModal emp={negFbModal} onClose={() => setNegFbModal(null)} />}
+    </div>
+  );
+}
+
+function AuditRemarksModal({ emp, onClose }) {
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 560, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — negative audits</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>{emp.negAudits} below-satisfactory enquiry {emp.negAudits === 1 ? 'audit' : 'audits'}</div>
+          </div>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+        </div>
+        <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {emp.auditRemarks.map((a, i) => (
+            <div key={i} style={{ border: '1px solid rgba(244,63,94,0.25)', background: 'rgba(244,63,94,0.05)', borderRadius: 12, padding: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+                <span className="mono" style={{ fontSize: 11, color: '#F87171' }}>{a.createdOn}{a.enquiryId ? ` · Enquiry #${a.enquiryId}` : ''}</span>
+                {a.clientEmail && <span className="mono" style={{ fontSize: 11, color: '#6E7488' }}>{a.clientEmail}</span>}
+              </div>
+              <div style={{ fontSize: 13, color: '#C7CBDA', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{a.remark}</div>
+            </div>
+          ))}
+          {!emp.auditRemarks.length && <div style={{ fontSize: 12.5, color: '#6E7488' }}>No remark text on file for these audits.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ScListModal({ emp, onClose }) {
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 560, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — SCs raised</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>{emp.scRaised} service {emp.scRaised === 1 ? 'contract' : 'contracts'} raised</div>
+          </div>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+        </div>
+        <div style={{ padding: '8px 24px 24px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr .9fr .9fr', padding: '10px 0', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+            <span>SC ID</span><span>Created</span><span>Status</span><span>Quotation</span>
+          </div>
+          {emp.scDetails.map((s) => (
+            <div key={s.scId} style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr .9fr .9fr', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
+              <span className="mono" style={{ color: '#C7CBDA' }}>{s.scId}</span>
+              <span style={{ color: '#A8AEC4' }}>{s.createdOn ? s.createdOn.slice(0, 10) : '—'}</span>
+              <span style={{ color: '#A8AEC4' }}>{s.status || '—'}</span>
+              <span style={{ color: /cancel/i.test(s.quotationStatus || '') ? '#F87171' : '#5EEAD4' }}>{s.quotationStatus || '—'}</span>
+            </div>
+          ))}
+          {!emp.scDetails.length && <div style={{ fontSize: 12.5, color: '#6E7488', paddingTop: 12 }}>No SC records on file.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ExamSummaryModal({ emp, onClose }) {
+  const stats = [
+    { label: 'Total Exams', value: emp.examTotal ?? emp.examPass + emp.examFail, color: '#A5A7FA' },
+    { label: 'Passed', value: emp.examPass, color: '#5EEAD4' },
+    { label: 'Failed', value: emp.examFail, color: '#F87171' },
+    { label: 'Not Updated', value: emp.examNotUpdated ?? 0, color: '#F59E0B' },
+  ];
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 440, border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — exam summary</div>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+        </div>
+        <div style={{ padding: 24, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          {stats.map((s) => (
+            <div key={s.label} style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 12, padding: '14px 16px' }}>
+              <div className="disp" style={{ fontSize: 26, fontWeight: 600, color: s.color, letterSpacing: '-0.02em' }}>{s.value}</div>
+              <div style={{ fontSize: 11.5, color: '#A8AEC4', marginTop: 4 }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NegFeedbackModal({ emp, onClose }) {
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 600, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — negative feedback</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>{emp.negFeedback} negative {emp.negFeedback === 1 ? 'report' : 'reports'}</div>
+          </div>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+        </div>
+        <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {emp.negFeedbackDetails.map((f, i) => (
+            <div key={i} style={{ border: '1px solid rgba(244,63,94,0.25)', background: 'rgba(244,63,94,0.05)', borderRadius: 12, padding: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+                <span className="mono" style={{ fontSize: 11, color: '#F87171' }}>Assignment #{f.assignmentId} · {f.feedbackDate}</span>
+                {f.clientName && <span className="mono" style={{ fontSize: 11, color: '#6E7488' }}>{f.clientName}</span>}
+              </div>
+              {f.question && <div style={{ fontSize: 11, color: '#8A90A8', marginBottom: 4 }}>{f.question}</div>}
+              <div style={{ fontSize: 13, color: '#C7CBDA', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{f.answer}</div>
+            </div>
+          ))}
+          {!emp.negFeedbackDetails.length && <div style={{ fontSize: 12.5, color: '#6E7488' }}>No detail on file for these reports.</div>}
+        </div>
       </div>
     </div>
   );
@@ -250,9 +413,9 @@ function PaPip({ employees, filter, setFilter, setModal }) {
           <span>Employee</span><span>Type</span><span>Issued</span><span>Review by</span><span>Worry parameters breached</span><span style={{ textAlign: 'right' }}>Score</span>
         </div>
         {rows.map((e) => (
-          <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: '1.4fr .7fr .8fr .8fr 1.9fr .7fr', padding: '14px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13 }}>
+          <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: '1.4fr .7fr .8fr .8fr 1.9fr .7fr', padding: '14px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontWeight: 600 }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id} · {e.team}</span></div>
-            <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` }}>{e.short}</span>
+            <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` }}>{e.inactive ? 'Inactive' : e.short}</span>
             <span style={{ fontSize: 12, color: '#A8AEC4' }}>{e.issued}</span>
             <span style={{ fontSize: 12, color: '#A8AEC4' }}>{e.due}</span>
             <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
@@ -297,7 +460,7 @@ function WorryIndex({ employees, setModal }) {
           <span>Employee</span><span>Team</span><span style={{ textAlign: 'right' }}>Score</span><span>Band</span><span>Trend</span>
         </div>
         {ranked.map((e) => (
-          <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: '1.5fr .9fr .7fr .8fr 2fr', padding: '13px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13 }}>
+          <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: '1.5fr .9fr .7fr .8fr 2fr', padding: '13px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontWeight: 600 }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id}</span></div>
             <span style={{ color: '#A8AEC4', fontSize: 12.5 }}>{e.team}</span>
             <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontWeight: 600, color: e.bandColor }}>{e.scoreStr}</span>

@@ -5,7 +5,17 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "db:init": "node scripts/init-db.mjs",
+    "sync:koenig": "node scripts/sync-koenig.mjs",
+    "sync:pip": "node scripts/sync-pip.mjs",
+    "sync:pms": "node scripts/sync-pms.mjs",
+    "sync:audit": "node scripts/sync-audit.mjs",
+    "sync:sc": "node scripts/sync-sc.mjs",
+    "sync:util": "node scripts/sync-util.mjs",
+    "sync:exam": "node scripts/sync-exam.mjs",
+    "backfill:email": "node scripts/backfill-email.mjs",
+    "sync:negfeedback": "node scripts/sync-negfeedback.mjs"
   },
   "dependencies": {
     "@libsql/client": "^0.14.0",
