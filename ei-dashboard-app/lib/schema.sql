@@ -29,7 +29,11 @@ CREATE TABLE IF NOT EXISTS employees (
   exam_total INTEGER,           -- total exams taken (Trainer only)
   exam_not_updated INTEGER,     -- exams with result not yet updated (Trainer only)
   neg_feedback INTEGER,         -- count of negative feedback reports (Trainer only)
-  neg_feedback_details TEXT     -- JSON array of {assignmentId, feedbackDate, clientName, question, answer, deliveryMode}
+  neg_feedback_details TEXT,    -- JSON array of {assignmentId, feedbackDate, clientName, question, answer, deliveryMode}
+  assignments_count INTEGER,    -- count of training assignments delivered (Trainer only)
+  assignments_details TEXT,     -- JSON array of {assignmentId, courseName, startDate, endDate, totalPax, deliveryMode, batchType}
+  skills_count INTEGER,         -- count of skills/courses marked (Trainer only)
+  skills_details TEXT           -- JSON array of {courseId, courseName, isDuplicate, isDiscontinued}
 );
 
 CREATE TABLE IF NOT EXISTS pip_status (
