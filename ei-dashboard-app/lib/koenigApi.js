@@ -52,11 +52,22 @@ export async function getNewJoiners(from, to) {
   return rows.map((r) => ({
     empId: r.EmpID,
     name: r['Employee Name'],
+    email: r.Email,
     joiningDate: r['Joining Date'],
     managerName: r['Manager Name'],
     department: r['Department'],
     section: classifySection(r['Department']),
+    active: isActive(r.DOR, r.LWD),
   }));
+}
+
+// Koenig has no explicit status field. An EmpID that hasn't exited comes back
+// with the sentinel date 1900-01-01 for both DOR (date of resignation) and
+// LWD (last working day); any real date in either means they've left.
+const SENTINEL_DATE = '1900-01-01';
+function isActive(dor, lwd) {
+  const exited = (v) => v && !String(v).startsWith(SENTINEL_DATE);
+  return !exited(dor) && !exited(lwd);
 }
 
 // Bifurcates the raw Koenig "Department" value into the dashboard's three

@@ -17,12 +17,18 @@ export function band(s) {
 export function decorate(e) {
   const st = STATUS[e.status];
   const b = band(e.score);
+  const inactive = e.active === false;
   return {
     ...e,
-    statusBg: st.bg, statusColor: st.color, statusBorder: st.border,
-    bandColor: b.color, bandLabel: b.label,
+    statusBg: inactive ? 'rgba(255,255,255,0.06)' : st.bg,
+    statusColor: inactive ? '#6E7488' : st.color,
+    statusBorder: inactive ? 'rgba(255,255,255,0.12)' : st.border,
+    bandColor: inactive ? '#6E7488' : b.color,
+    bandLabel: inactive ? 'Inactive' : b.label,
     scoreStr: (e.score > 0 ? '+' : '') + e.score.toFixed(1),
     short: e.status === 'PIP Issued' ? 'PIP' : e.status === 'PA Issued' ? 'PA' : '—',
+    inactive,
+    rowStyle: inactive ? { opacity: 0.45, filter: 'grayscale(0.6)' } : undefined,
   };
 }
 
@@ -81,7 +87,7 @@ export const CARD_DEFS = {
   'PT Team': [['Total', 9, C.purple], ['Not to be Monitored', 3, C.teal], ['Under Watch', 4, C.indigo], ['PA Issued', 1, C.amber], ['PIP Issued', 0, C.rose], ['Feedback Pending', 2, '#FB923C'], ['Below Satisfactory', 2, '#F472B6']],
 };
 export const STATUS_MAP = { 'PA Issued': 'PA Issued', 'PIP Issued': 'PIP Issued' };
-export const METRIC_HEADS = { Sales: ['M1 NR', 'M2 NR', 'M3 NR'], Trainer: ['M1 Util', 'M2 Util', 'M3 Util'], 'PT Team': ['Tasks', 'Improve', 'Shoddy'] };
+export const METRIC_HEADS = { Sales: ['M1 NR', 'M2 NR', 'M3 NR', 'M4 NR', 'M5 NR', 'M6 NR'], Trainer: ['M1 Util', 'M2 Util', 'M3 Util', 'M4 Util', 'M5 Util', 'M6 Util'], 'PT Team': ['Tasks', 'Improve', 'Shoddy'] };
 
 export const WORRY_BANDS = [
   { label: 'Critical', color: C.rose, range: 'score ≤ −4', count: 7, desc: 'PIP review triggered, HR intervenes this week.' },
