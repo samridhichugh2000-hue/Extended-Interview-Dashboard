@@ -1,0 +1,97 @@
+name: Sync all Koenig feeds
+
+on:
+  schedule:
+    # 10:00 IST daily (04:30 UTC) — every day, including weekends
+    - cron: '30 4 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ei-dashboard-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      - run: npm run sync:all
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+
+          KOENIG_API_BASE_URL: ${{ secrets.KOENIG_API_BASE_URL }}
+          KOENIG_API_USERNAME: ${{ secrets.KOENIG_API_USERNAME }}
+          KOENIG_API_PASSWORD: ${{ secrets.KOENIG_API_PASSWORD }}
+          KOENIG_API_ROLE: ${{ secrets.KOENIG_API_ROLE }}
+          KOENIG_API_KEY: ${{ secrets.KOENIG_API_KEY }}
+
+          KOENIG_PIP_API_USERNAME: ${{ secrets.KOENIG_PIP_API_USERNAME }}
+          KOENIG_PIP_API_PASSWORD: ${{ secrets.KOENIG_PIP_API_PASSWORD }}
+          KOENIG_PIP_API_ROLE: ${{ secrets.KOENIG_PIP_API_ROLE }}
+          KOENIG_PIP_API_KEY: ${{ secrets.KOENIG_PIP_API_KEY }}
+
+          KOENIG_PMS_API_USERNAME: ${{ secrets.KOENIG_PMS_API_USERNAME }}
+          KOENIG_PMS_API_PASSWORD: ${{ secrets.KOENIG_PMS_API_PASSWORD }}
+          KOENIG_PMS_API_ROLE: ${{ secrets.KOENIG_PMS_API_ROLE }}
+
+          KOENIG_AUDIT_API_USERNAME: ${{ secrets.KOENIG_AUDIT_API_USERNAME }}
+          KOENIG_AUDIT_API_PASSWORD: ${{ secrets.KOENIG_AUDIT_API_PASSWORD }}
+          KOENIG_AUDIT_API_ROLE: ${{ secrets.KOENIG_AUDIT_API_ROLE }}
+          KOENIG_AUDIT_API_KEY: ${{ secrets.KOENIG_AUDIT_API_KEY }}
+
+          KOENIG_SC_API_USERNAME: ${{ secrets.KOENIG_SC_API_USERNAME }}
+          KOENIG_SC_API_PASSWORD: ${{ secrets.KOENIG_SC_API_PASSWORD }}
+          KOENIG_SC_API_ROLE: ${{ secrets.KOENIG_SC_API_ROLE }}
+          KOENIG_SC_API_KEY: ${{ secrets.KOENIG_SC_API_KEY }}
+
+          KOENIG_UTIL_API_USERNAME: ${{ secrets.KOENIG_UTIL_API_USERNAME }}
+          KOENIG_UTIL_API_PASSWORD: ${{ secrets.KOENIG_UTIL_API_PASSWORD }}
+          KOENIG_UTIL_API_ROLE: ${{ secrets.KOENIG_UTIL_API_ROLE }}
+          KOENIG_UTIL_API_KEY: ${{ secrets.KOENIG_UTIL_API_KEY }}
+
+          KOENIG_EXAM_API_USERNAME: ${{ secrets.KOENIG_EXAM_API_USERNAME }}
+          KOENIG_EXAM_API_PASSWORD: ${{ secrets.KOENIG_EXAM_API_PASSWORD }}
+          KOENIG_EXAM_API_ROLE: ${{ secrets.KOENIG_EXAM_API_ROLE }}
+          KOENIG_EXAM_API_KEY: ${{ secrets.KOENIG_EXAM_API_KEY }}
+
+          KOENIG_NEGFB_API_USERNAME: ${{ secrets.KOENIG_NEGFB_API_USERNAME }}
+          KOENIG_NEGFB_API_PASSWORD: ${{ secrets.KOENIG_NEGFB_API_PASSWORD }}
+          KOENIG_NEGFB_API_ROLE: ${{ secrets.KOENIG_NEGFB_API_ROLE }}
+          KOENIG_NEGFB_API_KEY: ${{ secrets.KOENIG_NEGFB_API_KEY }}
+
+          KOENIG_ASSIGNMENT_API_USERNAME: ${{ secrets.KOENIG_ASSIGNMENT_API_USERNAME }}
+          KOENIG_ASSIGNMENT_API_PASSWORD: ${{ secrets.KOENIG_ASSIGNMENT_API_PASSWORD }}
+          KOENIG_ASSIGNMENT_API_ROLE: ${{ secrets.KOENIG_ASSIGNMENT_API_ROLE }}
+          KOENIG_ASSIGNMENT_API_KEY: ${{ secrets.KOENIG_ASSIGNMENT_API_KEY }}
+
+          KOENIG_SKILLS_API_USERNAME: ${{ secrets.KOENIG_SKILLS_API_USERNAME }}
+          KOENIG_SKILLS_API_PASSWORD: ${{ secrets.KOENIG_SKILLS_API_PASSWORD }}
+          KOENIG_SKILLS_API_ROLE: ${{ secrets.KOENIG_SKILLS_API_ROLE }}
+          KOENIG_SKILLS_API_KEY: ${{ secrets.KOENIG_SKILLS_API_KEY }}
+
+          KOENIG_TECHCALL_API_USERNAME: ${{ secrets.KOENIG_TECHCALL_API_USERNAME }}
+          KOENIG_TECHCALL_API_PASSWORD: ${{ secrets.KOENIG_TECHCALL_API_PASSWORD }}
+          KOENIG_TECHCALL_API_ROLE: ${{ secrets.KOENIG_TECHCALL_API_ROLE }}
+          KOENIG_TECHCALL_API_KEY: ${{ secrets.KOENIG_TECHCALL_API_KEY }}
+
+          KOENIG_TECHCALLCONV_API_USERNAME: ${{ secrets.KOENIG_TECHCALLCONV_API_USERNAME }}
+          KOENIG_TECHCALLCONV_API_PASSWORD: ${{ secrets.KOENIG_TECHCALLCONV_API_PASSWORD }}
+          KOENIG_TECHCALLCONV_API_ROLE: ${{ secrets.KOENIG_TECHCALLCONV_API_ROLE }}
+          KOENIG_TECHCALLCONV_API_KEY: ${{ secrets.KOENIG_TECHCALLCONV_API_KEY }}
+
+          KOENIG_TBT_API_USERNAME: ${{ secrets.KOENIG_TBT_API_USERNAME }}
+          KOENIG_TBT_API_PASSWORD: ${{ secrets.KOENIG_TBT_API_PASSWORD }}
+          KOENIG_TBT_API_ROLE: ${{ secrets.KOENIG_TBT_API_ROLE }}
+          KOENIG_TBT_API_KEY: ${{ secrets.KOENIG_TBT_API_KEY }}
+
+          KOENIG_SHODDY_API_USERNAME: ${{ secrets.KOENIG_SHODDY_API_USERNAME }}
+          KOENIG_SHODDY_API_PASSWORD: ${{ secrets.KOENIG_SHODDY_API_PASSWORD }}
+          KOENIG_SHODDY_API_ROLE: ${{ secrets.KOENIG_SHODDY_API_ROLE }}
+          KOENIG_SHODDY_API_KEY: ${{ secrets.KOENIG_SHODDY_API_KEY }}

@@ -38,7 +38,11 @@ CREATE TABLE IF NOT EXISTS employees (
   tech_calls_details TEXT,      -- JSON array of raw call records (field names unconfirmed — no live sample data)
   tech_calls_converted INTEGER, -- count of tech calls converted (Trainer only)
   tbt_count INTEGER,            -- count of TBTs requested (Trainer only)
-  tbt_details TEXT              -- JSON array of {topic, requestedOn, tbtDate}
+  tbt_details TEXT,             -- JSON array of {topic, requestedOn, tbtDate}
+  shoddy_neg_count INTEGER,      -- count of negative shoddy incidents (Sales/Trainer/PT)
+  shoddy_neg_details TEXT,        -- JSON array of {name, reportedDate, repMngr, reason, errorId, incidentType, incidentNature}
+  shoddy_pos_count INTEGER,      -- count of positive incidents (Sales/Trainer/PT)
+  shoddy_pos_details TEXT         -- JSON array of {name, reportedDate, repMngr, reason, errorId, incidentType, incidentNature}
 );
 
 CREATE TABLE IF NOT EXISTS pip_status (
