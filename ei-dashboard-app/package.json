@@ -19,7 +19,8 @@
     "sync:assignments": "node scripts/sync-assignments.mjs",
     "sync:skills": "node scripts/sync-skills.mjs",
     "sync:techcalls": "node scripts/sync-techcalls.mjs",
-    "sync:techcalls-trainer": "node scripts/sync-techcalls-trainer.mjs"
+    "sync:techcalls-trainer": "node scripts/sync-techcalls-trainer.mjs",
+    "sync:tbt": "node scripts/sync-tbt.mjs"
   },
   "dependencies": {
     "@libsql/client": "^0.14.0",

@@ -81,6 +81,8 @@ export async function getEmployees() {
       techCallsCount: e.tech_calls_count,
       techCallsDetails: e.tech_calls_details ? JSON.parse(e.tech_calls_details) : [],
       techCallsConverted: e.tech_calls_converted,
+      tbtCount: e.tbt_count,
+      tbtDetails: e.tbt_details ? JSON.parse(e.tbt_details) : [],
     };
   });
 }

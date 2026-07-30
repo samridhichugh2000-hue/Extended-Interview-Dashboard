@@ -36,7 +36,9 @@ CREATE TABLE IF NOT EXISTS employees (
   skills_details TEXT,          -- JSON array of {courseId, courseName, isDuplicate, isDiscontinued}
   tech_calls_count INTEGER,     -- count of tech calls attended (Sales only)
   tech_calls_details TEXT,      -- JSON array of raw call records (field names unconfirmed — no live sample data)
-  tech_calls_converted INTEGER  -- count of tech calls converted (Trainer only)
+  tech_calls_converted INTEGER, -- count of tech calls converted (Trainer only)
+  tbt_count INTEGER,            -- count of TBTs requested (Trainer only)
+  tbt_details TEXT              -- JSON array of {topic, requestedOn, tbtDate}
 );
 
 CREATE TABLE IF NOT EXISTS pip_status (
