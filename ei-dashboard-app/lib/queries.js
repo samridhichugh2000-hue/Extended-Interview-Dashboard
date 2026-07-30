@@ -83,6 +83,10 @@ export async function getEmployees() {
       techCallsConverted: e.tech_calls_converted,
       tbtCount: e.tbt_count,
       tbtDetails: e.tbt_details ? JSON.parse(e.tbt_details) : [],
+      shoddyNegCount: e.shoddy_neg_count,
+      shoddyNegDetails: e.shoddy_neg_details ? JSON.parse(e.shoddy_neg_details) : [],
+      shoddyPosCount: e.shoddy_pos_count,
+      shoddyPosDetails: e.shoddy_pos_details ? JSON.parse(e.shoddy_pos_details) : [],
     };
   });
 }

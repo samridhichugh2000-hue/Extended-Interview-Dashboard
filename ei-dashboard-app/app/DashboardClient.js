@@ -176,6 +176,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
   const [techCallsModal, setTechCallsModal] = useState(null);
   const [techCallsConvModal, setTechCallsConvModal] = useState(null);
   const [tbtModal, setTbtModal] = useState(null);
+  const [shoddyModal, setShoddyModal] = useState(null);
   const deptEmp = employees.filter((e) => e.team === dept);
   const pool = deptEmp.length ? deptEmp : employees;
   const filtered = filter ? pool.filter((e) => e.status === filter) : pool;
@@ -185,9 +186,9 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
     filterVal: STATUS_MAP[label] || null,
   }));
   const baseHeads = METRIC_HEADS[dept] || METRIC_HEADS.Sales;
-  const mh = dept === 'Sales' ? [...baseHeads, 'Neg. Audits', 'SCs Raised', 'Tech Calls']
-    : dept === 'Trainer' ? [...baseHeads, 'Exams', 'Neg. Feedback', 'Assignments', 'Skills', 'Tech Calls', 'TBTs']
-    : baseHeads;
+  const mh = dept === 'Sales' ? [...baseHeads, 'Neg. Audits', 'SCs Raised', 'Tech Calls', 'Shoddy Log']
+    : dept === 'Trainer' ? [...baseHeads, 'Exams', 'Neg. Feedback', 'Assignments', 'Skills', 'Tech Calls', 'TBTs', 'Shoddy Log']
+    : [...baseHeads, 'Shoddy Log'];
   const rows = filtered.map((e) => {
     const d = decorate(e);
     const cells = baseHeads.map((_, i) => ({
@@ -210,6 +211,11 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
         value: e.techCallsCount ?? '—',
         color: e.techCallsCount > 0 ? '#5EEAD4' : '#6E7488',
         onClick: e.techCallsCount > 0 ? () => setTechCallsModal(e) : null,
+      });
+      cells.push({
+        value: (e.shoddyNegCount ?? 0) + (e.shoddyPosCount ?? 0) || '—',
+        color: e.shoddyNegCount > 0 ? '#F87171' : e.shoddyPosCount > 0 ? '#5EEAD4' : '#6E7488',
+        onClick: (e.shoddyNegCount > 0 || e.shoddyPosCount > 0) ? () => setShoddyModal(e) : null,
       });
     }
     if (dept === 'Trainer') {
@@ -243,6 +249,18 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
         value: e.tbtCount ?? '—',
         color: e.tbtCount > 0 ? '#5EEAD4' : '#6E7488',
         onClick: e.tbtCount > 0 ? () => setTbtModal(e) : null,
+      });
+      cells.push({
+        value: (e.shoddyNegCount ?? 0) + (e.shoddyPosCount ?? 0) || '—',
+        color: e.shoddyNegCount > 0 ? '#F87171' : e.shoddyPosCount > 0 ? '#5EEAD4' : '#6E7488',
+        onClick: (e.shoddyNegCount > 0 || e.shoddyPosCount > 0) ? () => setShoddyModal(e) : null,
+      });
+    }
+    if (dept === 'PT Team') {
+      cells.push({
+        value: (e.shoddyNegCount ?? 0) + (e.shoddyPosCount ?? 0) || '—',
+        color: e.shoddyNegCount > 0 ? '#F87171' : e.shoddyPosCount > 0 ? '#5EEAD4' : '#6E7488',
+        onClick: (e.shoddyNegCount > 0 || e.shoddyPosCount > 0) ? () => setShoddyModal(e) : null,
       });
     }
     return { ...d, cells };
@@ -301,6 +319,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
       {techCallsModal && <TechCallsModal emp={techCallsModal} onClose={() => setTechCallsModal(null)} />}
       {techCallsConvModal && <TechCallsConvertedModal emp={techCallsConvModal} onClose={() => setTechCallsConvModal(null)} />}
       {tbtModal && <TbtModal emp={tbtModal} onClose={() => setTbtModal(null)} />}
+      {shoddyModal && <ShoddyModal emp={shoddyModal} onClose={() => setShoddyModal(null)} />}
       {examModal && <ExamSummaryModal emp={examModal} onClose={() => setExamModal(null)} />}
       {negFbModal && <NegFeedbackModal emp={negFbModal} onClose={() => setNegFbModal(null)} />}
       {assignmentsModal && <AssignmentsModal emp={assignmentsModal} onClose={() => setAssignmentsModal(null)} />}
@@ -447,6 +466,56 @@ function TbtModal({ emp, onClose }) {
             </div>
           ))}
           {!emp.tbtDetails.length && <div style={{ fontSize: 12.5, color: '#6E7488', paddingTop: 12 }}>No TBT records on file.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ShoddyModal({ emp, onClose }) {
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 640, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — Shoddy Log</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>{emp.shoddyNegCount ?? 0} negative · {emp.shoddyPosCount ?? 0} positive</div>
+          </div>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+        </div>
+        <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <div>
+            <div className="mono" style={{ fontSize: 10.5, letterSpacing: '.09em', color: '#F87171', textTransform: 'uppercase', marginBottom: 10 }}>Negative Shoddies</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {(emp.shoddyNegDetails || []).map((s, i) => (
+                <div key={i} style={{ border: '1px solid rgba(244,63,94,0.25)', background: 'rgba(244,63,94,0.05)', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, fontSize: 11 }}>
+                    <span className="mono" style={{ color: '#F87171' }}>{s.reportedDate || '—'}</span>
+                    {s.incidentType && <span className="mono" style={{ color: '#F87171', background: 'rgba(244,63,94,0.12)', borderRadius: 6, padding: '2px 8px' }}>{s.incidentType}</span>}
+                  </div>
+                  <div style={{ fontSize: 13, color: '#C7CBDA', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{s.reason || '—'}</div>
+                  <div style={{ fontSize: 11.5, color: '#8A90A8' }}>Manager: {s.repMngr || '—'}</div>
+                </div>
+              ))}
+              {!(emp.shoddyNegDetails || []).length && <div style={{ fontSize: 12.5, color: '#6E7488' }}>No negative shoddy records on file.</div>}
+            </div>
+          </div>
+          <div>
+            <div className="mono" style={{ fontSize: 10.5, letterSpacing: '.09em', color: '#5EEAD4', textTransform: 'uppercase', marginBottom: 10 }}>Positive Incidents</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {(emp.shoddyPosDetails || []).map((s, i) => (
+                <div key={i} style={{ border: '1px solid rgba(94,234,212,0.25)', background: 'rgba(94,234,212,0.05)', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, fontSize: 11 }}>
+                    <span className="mono" style={{ color: '#5EEAD4' }}>{s.reportedDate || '—'}</span>
+                    {s.incidentType && <span className="mono" style={{ color: '#5EEAD4', background: 'rgba(94,234,212,0.12)', borderRadius: 6, padding: '2px 8px' }}>{s.incidentType}</span>}
+                  </div>
+                  <div style={{ fontSize: 13, color: '#C7CBDA', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{s.reason || '—'}</div>
+                  <div style={{ fontSize: 11.5, color: '#8A90A8' }}>Manager: {s.repMngr || '—'}</div>
+                </div>
+              ))}
+              {!(emp.shoddyPosDetails || []).length && <div style={{ fontSize: 12.5, color: '#6E7488' }}>No positive incidents on file.</div>}
+            </div>
+          </div>
         </div>
       </div>
     </div>
