@@ -175,6 +175,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
   const [skillsModal, setSkillsModal] = useState(null);
   const [techCallsModal, setTechCallsModal] = useState(null);
   const [techCallsConvModal, setTechCallsConvModal] = useState(null);
+  const [tbtModal, setTbtModal] = useState(null);
   const deptEmp = employees.filter((e) => e.team === dept);
   const pool = deptEmp.length ? deptEmp : employees;
   const filtered = filter ? pool.filter((e) => e.status === filter) : pool;
@@ -185,7 +186,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
   }));
   const baseHeads = METRIC_HEADS[dept] || METRIC_HEADS.Sales;
   const mh = dept === 'Sales' ? [...baseHeads, 'Neg. Audits', 'SCs Raised', 'Tech Calls']
-    : dept === 'Trainer' ? [...baseHeads, 'Exams', 'Neg. Feedback', 'Assignments', 'Skills', 'Tech Calls']
+    : dept === 'Trainer' ? [...baseHeads, 'Exams', 'Neg. Feedback', 'Assignments', 'Skills', 'Tech Calls', 'TBTs']
     : baseHeads;
   const rows = filtered.map((e) => {
     const d = decorate(e);
@@ -237,6 +238,11 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
         value: e.techCallsConverted ?? '—',
         color: e.techCallsConverted > 0 ? '#5EEAD4' : '#6E7488',
         onClick: e.techCallsConverted !== null && e.techCallsConverted !== undefined ? () => setTechCallsConvModal(e) : null,
+      });
+      cells.push({
+        value: e.tbtCount ?? '—',
+        color: e.tbtCount > 0 ? '#5EEAD4' : '#6E7488',
+        onClick: e.tbtCount > 0 ? () => setTbtModal(e) : null,
       });
     }
     return { ...d, cells };
@@ -294,6 +300,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
       {scModal && <ScListModal emp={scModal} onClose={() => setScModal(null)} />}
       {techCallsModal && <TechCallsModal emp={techCallsModal} onClose={() => setTechCallsModal(null)} />}
       {techCallsConvModal && <TechCallsConvertedModal emp={techCallsConvModal} onClose={() => setTechCallsConvModal(null)} />}
+      {tbtModal && <TbtModal emp={tbtModal} onClose={() => setTbtModal(null)} />}
       {examModal && <ExamSummaryModal emp={examModal} onClose={() => setExamModal(null)} />}
       {negFbModal && <NegFeedbackModal emp={negFbModal} onClose={() => setNegFbModal(null)} />}
       {assignmentsModal && <AssignmentsModal emp={assignmentsModal} onClose={() => setAssignmentsModal(null)} />}
@@ -411,6 +418,35 @@ function TechCallsConvertedModal({ emp, onClose }) {
           <div style={{ fontSize: 12, color: '#6E7488', lineHeight: 1.5 }}>
             The source API only reports a total converted count for this feed — no per-call date or detail is available to show.
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TbtModal({ emp, onClose }) {
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 560, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — TBTs</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>{emp.tbtCount} {emp.tbtCount === 1 ? 'TBT' : 'TBTs'} requested</div>
+          </div>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+        </div>
+        <div style={{ padding: '8px 24px 24px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 1fr', padding: '10px 0', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+            <span>Topic</span><span>Requested</span><span>TBT Date</span>
+          </div>
+          {emp.tbtDetails.map((t, i) => (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 1fr', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
+              <span style={{ color: '#C7CBDA' }}>{t.topic || '—'}</span>
+              <span style={{ color: '#A8AEC4' }}>{t.requestedOn || '—'}</span>
+              <span style={{ color: '#5EEAD4' }}>{t.tbtDate || '—'}</span>
+            </div>
+          ))}
+          {!emp.tbtDetails.length && <div style={{ fontSize: 12.5, color: '#6E7488', paddingTop: 12 }}>No TBT records on file.</div>}
         </div>
       </div>
     </div>
