@@ -39,6 +39,7 @@ function joinDate(tenureDays) {
   return d;
 }
 
+const statements = [];
 let updated = 0;
 let unmatched = 0;
 let excludedPreJoin = 0;
@@ -60,12 +61,15 @@ for (const emp of trainerEmployees.rows) {
     deliveryMode: a.deliveryMode,
     batchType: a.batchType,
   }));
-  await db.execute({
+  statements.push({
     sql: 'UPDATE employees SET assignments_count = ?, assignments_details = ? WHERE id = ?',
     args: [assignments.length, JSON.stringify(details), emp.id],
   });
   if (assignments.length) updated++; else unmatched++;
 }
+
+// Batch all employee updates into one round trip instead of one per row.
+if (statements.length) await db.batch(statements, 'write');
 
 console.log(`Synced assignment data for Trainer roster — ${updated} employees have at least one assignment (${unmatched} have none; ${excludedPreJoin} pre-join rows excluded as recycled-emp-code noise).`);
 const check = await db.execute("SELECT id, name, assignments_count FROM employees WHERE team = 'Trainer' AND assignments_count > 0 ORDER BY assignments_count DESC");

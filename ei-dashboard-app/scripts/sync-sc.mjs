@@ -40,6 +40,7 @@ function joinDate(tenureDays) {
   return d;
 }
 
+const statements = [];
 let updated = 0;
 let unmatched = 0;
 let excludedPreJoin = 0;
@@ -49,16 +50,21 @@ for (const emp of salesEmployees.rows) {
   const all = byEmpCode.get(empCode) || [];
   const scs = all.filter((s) => new Date(s.createdOn) >= since).sort((a, b) => new Date(b.createdOn) - new Date(a.createdOn));
   excludedPreJoin += all.length - scs.length;
-  if (!scs.length) { unmatched++; continue; }
+  if (!scs.length) unmatched++;
 
+  // Empcode match is exact, so zero SC rows since join is a confirmed 0, not
+  // an unknown — write it rather than leaving sc_raised null forever.
   const details = scs.map((s) => ({ scId: s.scId, createdOn: s.createdOn, status: s.status, quotationStatus: s.quotationStatus }));
-  await db.execute({
+  statements.push({
     sql: 'UPDATE employees SET sc_raised = ?, sc_details = ? WHERE id = ?',
     args: [scs.length, JSON.stringify(details), emp.id],
   });
   updated++;
 }
 
-console.log(`Synced SC data for ${updated} Sales employees (${unmatched} had no matching SC rows; ${excludedPreJoin} pre-join SC rows excluded as recycled-emp-code noise).`);
+// Batch all employee updates into one round trip instead of one per row.
+if (statements.length) await db.batch(statements, 'write');
+
+console.log(`Synced SC data for ${updated} Sales employees (${unmatched} confirmed at 0 — no SC rows since join; ${excludedPreJoin} pre-join SC rows excluded as recycled-emp-code noise).`);
 const check = await db.execute("SELECT id, name, sc_raised FROM employees WHERE team = 'Sales' ORDER BY sc_raised DESC");
 for (const r of check.rows) console.log(' ', r.id, r.name, r.sc_raised);
