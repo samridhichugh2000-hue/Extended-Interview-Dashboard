@@ -234,6 +234,7 @@ export async function syncSc() {
 
   const salesEmployees = await db.execute("SELECT id, tenure_days FROM employees WHERE team = 'Sales'");
 
+  const statements = [];
   let updated = 0;
   let unmatched = 0;
   for (const emp of salesEmployees.rows) {
@@ -244,12 +245,18 @@ export async function syncSc() {
     if (!scs.length) { unmatched++; continue; }
 
     const details = scs.map((s) => ({ scId: s.scId, createdOn: s.createdOn, status: s.status, quotationStatus: s.quotationStatus }));
-    await db.execute({
+    statements.push({
       sql: 'UPDATE employees SET sc_raised = ?, sc_details = ? WHERE id = ?',
       args: [scs.length, JSON.stringify(details), emp.id],
     });
     updated++;
   }
+
+  // Batch every employee's UPDATE into one round trip instead of one await
+  // per row — the per-row DB latency, not the upstream fetch, was what pushed
+  // this feed over Vercel Hobby's 60s limit (narrowing the query window
+  // didn't help because the fetch was never the bottleneck).
+  if (statements.length) await db.batch(statements, 'write');
 
   return { message: `Synced SC data for ${updated} Sales employees (${unmatched} unmatched).` };
 }
@@ -358,6 +365,7 @@ export async function syncAssignments() {
 
   const trainerEmployees = await db.execute("SELECT id, tenure_days FROM employees WHERE team = 'Trainer'");
 
+  const statements = [];
   let updated = 0;
   let unmatched = 0;
   for (const emp of trainerEmployees.rows) {
@@ -377,12 +385,16 @@ export async function syncAssignments() {
       deliveryMode: a.deliveryMode,
       batchType: a.batchType,
     }));
-    await db.execute({
+    statements.push({
       sql: 'UPDATE employees SET assignments_count = ?, assignments_details = ? WHERE id = ?',
       args: [assignments.length, JSON.stringify(details), emp.id],
     });
     if (assignments.length) updated++; else unmatched++;
   }
+
+  // Same batching fix as syncSc — one round trip for all employee updates
+  // instead of one per employee, to stay under Vercel Hobby's 60s limit.
+  if (statements.length) await db.batch(statements, 'write');
 
   return { message: `Synced assignments — ${updated} Trainer employees have at least one (${unmatched} have none).` };
 }
