@@ -1,4 +1,5 @@
 import { getDb } from './db';
+import { computeSignalReport, computeWorryScore, trendNoteFor } from './data';
 
 // Rebuilds each employee into the exact shape the UI components expect
 // (same fields as the old lib/data.js mock EMP array) so screens/decorate()
@@ -6,25 +7,14 @@ import { getDb } from './db';
 export async function getEmployees() {
   const db = getDb();
 
-  const [empRes, pipRes, incidentRes, feedbackRes] = await Promise.all([
+  const [empRes, pipRes, feedbackRes] = await Promise.all([
     db.execute('SELECT * FROM employees'),
     db.execute('SELECT * FROM pip_status'),
-    db.execute('SELECT * FROM hr_incidents'),
     db.execute('SELECT * FROM manager_feedback'),
   ]);
 
   const pipByEmp = new Map();
   for (const row of pipRes.rows) pipByEmp.set(row.employee_id, row);
-
-  const incidentsByEmp = new Map();
-  for (const row of incidentRes.rows) {
-    if (!incidentsByEmp.has(row.employee_id)) incidentsByEmp.set(row.employee_id, []);
-    incidentsByEmp.get(row.employee_id).push({
-      label: row.label,
-      weight: row.weight,
-      pts: (row.points > 0 ? '+' : row.points < 0 ? '−' : '') + Math.abs(row.points).toFixed(1),
-    });
-  }
 
   const feedbackByEmp = new Map();
   for (const row of feedbackRes.rows) {
@@ -43,7 +33,7 @@ export async function getEmployees() {
 
   return empRes.rows.map((e) => {
     const pip = pipByEmp.get(e.id);
-    return {
+    const base = {
       id: e.id,
       name: e.name,
       email: e.email,
@@ -52,17 +42,14 @@ export async function getEmployees() {
       doj: e.doj,
       tenure: e.tenure_days,
       status: e.status,
-      score: e.score,
       issued: pip?.issued_on || '—',
       due: pip?.review_by || '—',
       breaches: pip?.breaches ? JSON.parse(pip.breaches) : [],
       v: [e.metric1, e.metric2, e.metric3, e.metric4, e.metric5, e.metric6],
       alert: e.alert || 'Alert',
-      signals: incidentsByEmp.get(e.id) || [],
       weeks: weeksByEmp.get(e.id) || [],
       feedback: feedbackByEmp.get(e.id) || [],
       hrNote: e.hr_note,
-      trendNote: e.trend_note,
       active: !!e.active,
       negAudits: e.neg_audits,
       auditRemarks: e.audit_remarks ? JSON.parse(e.audit_remarks) : [],
@@ -87,6 +74,21 @@ export async function getEmployees() {
       shoddyNegDetails: e.shoddy_neg_details ? JSON.parse(e.shoddy_neg_details) : [],
       shoddyPosCount: e.shoddy_pos_count,
       shoddyPosDetails: e.shoddy_pos_details ? JSON.parse(e.shoddy_pos_details) : [],
+    };
+    // Worry Index score/signals/trend are derived live from the real synced
+    // fields above rather than read off employees.score, which is only ever
+    // written once (as 0) at insert time and never recalculated. signalReport
+    // covers every parameter that applies to this team (fired, clear, no-data
+    // or not-tracked) — see computeSignalReport in lib/data.js; only the
+    // 'fired' ones count toward the score.
+    const signalReport = computeSignalReport(base);
+    const signals = signalReport.filter((s) => s.status === 'fired');
+    return {
+      ...base,
+      signals,
+      signalReport,
+      score: computeWorryScore(signals),
+      trendNote: trendNoteFor(signals),
     };
   });
 }

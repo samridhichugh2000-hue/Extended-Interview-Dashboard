@@ -87,40 +87,118 @@ export const CARD_DEFS = {
   'PT Team': [['Total', 9, C.purple], ['Not to be Monitored', 3, C.teal], ['Under Watch', 4, C.indigo], ['PA Issued', 1, C.amber], ['PIP Issued', 0, C.rose], ['Feedback Pending', 2, '#FB923C'], ['Below Satisfactory', 2, '#F472B6']],
 };
 export const STATUS_MAP = { 'PA Issued': 'PA Issued', 'PIP Issued': 'PIP Issued' };
-export const METRIC_HEADS = { Sales: ['M1 NR', 'M2 NR', 'M3 NR', 'M4 NR', 'M5 NR', 'M6 NR'], Trainer: ['M1 Util', 'M2 Util', 'M3 Util', 'M4 Util', 'M5 Util', 'M6 Util'], 'PT Team': ['Tasks', 'Improve', 'Shoddy'] };
+export const METRIC_HEADS = { Sales: ['M1 NR', 'M2 NR', 'M3 NR', 'M4 NR', 'M5 NR', 'M6 NR'], Trainer: ['M1 Util', 'M2 Util', 'M3 Util', 'M4 Util', 'M5 Util', 'M6 Util'], 'PT Team': ['Tasks', 'Improve'] };
 
 export const WORRY_BANDS = [
-  { label: 'Critical', color: C.rose, range: 'score ≤ −4', count: 7, desc: 'PIP review triggered, HR intervenes this week.' },
-  { label: 'Low', color: C.amber, range: '−3.5 to 0', count: 11, desc: 'PA candidate. Manager feedback requested early.' },
-  { label: 'Medium', color: C.indigo, range: '+0.5 to +5', count: 13, desc: 'Under watch, no action needed yet.' },
-  { label: 'Good', color: C.teal, range: '> +5', count: 11, desc: 'On track for confirmation. Not to be monitored.' },
+  { label: 'Critical', color: C.rose, range: 'score ≤ −4', desc: 'PIP review triggered, HR intervenes this week.' },
+  { label: 'Low', color: C.amber, range: '−3.5 to 0', desc: 'PA candidate. Manager feedback requested early.' },
+  { label: 'Medium', color: C.indigo, range: '+0.5 to +5', desc: 'Under watch, no action needed yet.' },
+  { label: 'Good', color: C.teal, range: '> +5', desc: 'On track for confirmation. Not to be monitored.' },
 ];
 
-export const POS_SIGNALS = [
-  { label: 'HR incidents (positive)', teams: 'All', w: '+0.5' },
-  { label: 'Polls participated', teams: 'All', w: '+0.5' },
-  { label: 'Marking course inhouse', teams: 'Trainer', w: '+0.5' },
-  { label: 'Tech calls attended', teams: 'Sales · Trainer', w: '+1' },
-  { label: 'SCs raised', teams: 'Sales', w: '+1' },
-  { label: 'TBTs requested', teams: 'Trainer', w: '+1' },
-  { label: 'Ideas for improvement', teams: 'All', w: '+1' },
-  { label: 'Shoddy marked by NJ on others', teams: 'All', w: '+1' },
-  { label: 'Skills count ≥ weeks since joining', teams: 'Trainer', w: '+1' },
-  { label: 'Applied for KGT', teams: 'All', w: '+1' },
+// Single source of truth for the Worry Index scoring model. `live: true` means
+// a real synced field backs the signal, so it's actually counted in the score;
+// `live: false` signals have no data source yet (no weekly-email, HR-incident,
+// manager-feedback or polls/KGT tracking built) and are excluded from scoring
+// until that plumbing exists — shown in the reference table as "not tracked".
+// `hasData` tells apart a genuine, confirmed reading (e.g. 0 tech calls, the
+// API really returned none) from a field that was never synced for this NJ
+// (null/undefined) — the two look identical as "didn't fire" otherwise, and
+// the whole point of tracking this is telling HR which is which.
+export const SIGNAL_DEFS = [
+  // positive, live
+  { label: 'Tech calls attended', teams: 'Sales · Trainer', pts: 1, live: true,
+    hasData: (e) => (e.team === 'Sales' ? e.techCallsCount : e.techCallsConverted) != null,
+    fires: (e) => (e.team === 'Sales' ? e.techCallsCount : e.techCallsConverted) > 0 },
+  { label: 'SCs raised', teams: 'Sales', pts: 1, live: true,
+    hasData: (e) => e.scRaised != null,
+    fires: (e) => e.scRaised > 0 },
+  { label: 'TBTs requested', teams: 'Trainer', pts: 1, live: true,
+    hasData: (e) => e.tbtCount != null,
+    fires: (e) => e.tbtCount > 0 },
+  { label: 'Shoddy marked by NJ on others', teams: 'All', pts: 1, live: true,
+    hasData: (e) => e.shoddyPosCount != null,
+    fires: (e) => e.shoddyPosCount > 0 },
+  { label: 'Skills count ≥ weeks since joining', teams: 'Trainer', pts: 1, live: true,
+    hasData: (e) => e.skillsCount != null,
+    fires: (e) => { const wks = Math.floor((e.tenure ?? 0) / 7); return wks > 0 && (e.skillsCount ?? 0) >= wks; } },
+  // positive, not yet tracked — no data source exists for these at all
+  { label: 'HR incidents (positive)', teams: 'All', pts: 0.5, live: false, hasData: () => false, fires: () => false },
+  { label: 'Polls participated', teams: 'All', pts: 0.5, live: false, hasData: () => false, fires: () => false },
+  { label: 'Marking course inhouse', teams: 'Trainer', pts: 0.5, live: false, hasData: () => false, fires: () => false },
+  { label: 'Ideas for improvement', teams: 'All', pts: 1, live: false, hasData: () => false, fires: () => false },
+  { label: 'Applied for KGT', teams: 'All', pts: 1, live: false, hasData: () => false, fires: () => false },
+  // negative, live
+  { label: 'Shoddy marked against NJ', teams: 'All', pts: -1, live: true,
+    hasData: (e) => e.shoddyNegCount != null,
+    fires: (e) => e.shoddyNegCount > 0 },
+  { label: 'Zero assignments 2 weeks ahead', teams: 'Trainer', pts: -1, live: true,
+    hasData: (e) => e.assignmentsCount != null,
+    fires: (e) => (e.tenure ?? 0) >= 14 && !e.assignmentsCount },
+  { label: 'Failure in exam', teams: 'Trainer', pts: -2, live: true,
+    hasData: (e) => e.examFail != null,
+    fires: (e) => e.examFail > 0 },
+  { label: 'Negative feedback on delivery', teams: 'Trainer', pts: -2, live: true,
+    hasData: (e) => e.negFeedback != null,
+    fires: (e) => e.negFeedback > 0 },
+  { label: 'Negative enquiry audit', teams: 'Sales', pts: -2, live: true,
+    hasData: (e) => e.negAudits != null,
+    fires: (e) => e.negAudits > 0 },
+  // negative, not yet tracked
+  { label: 'Weekly progress email not received', teams: 'All', pts: -1, live: false, hasData: () => false, fires: () => false },
+  { label: 'Manager feedback below satisfactory', teams: 'All', pts: -1, live: false, hasData: () => false, fires: () => false },
+  { label: 'Not replying to HR emails', teams: 'All', pts: -1, live: false, hasData: () => false, fires: () => false },
+  { label: 'Audio / video not OK in meetings', teams: 'All', pts: -1, live: false, hasData: () => false, fires: () => false },
+  { label: 'Weekly email shows less progress', teams: 'All', pts: -2, live: false, hasData: () => false, fires: () => false },
+  { label: 'Not on time for meetings', teams: 'All', pts: -2, live: false, hasData: () => false, fires: () => false },
 ];
-export const NEG_SIGNALS = [
-  { label: 'Shoddy marked against NJ', teams: 'All', w: '−1' },
-  { label: 'Weekly progress email not received', teams: 'All', w: '−1' },
-  { label: 'Manager feedback below satisfactory', teams: 'All', w: '−1' },
-  { label: 'Not replying to HR emails', teams: 'All', w: '−1' },
-  { label: 'Audio / video not OK in meetings', teams: 'All', w: '−1' },
-  { label: 'Zero assignments 2 weeks ahead', teams: 'Trainer', w: '−1' },
-  { label: 'Weekly email shows less progress', teams: 'All', w: '−2' },
-  { label: 'Not on time for meetings', teams: 'All', w: '−2' },
-  { label: 'Failure in exam', teams: 'Trainer', w: '−2' },
-  { label: 'Negative feedback on delivery', teams: 'Trainer', w: '−2' },
-  { label: 'Negative enquiry audit', teams: 'Sales', w: '−2' },
-];
+
+function fmtPts(n) {
+  const sign = n > 0 ? '+' : n < 0 ? '−' : '';
+  return sign + (Math.abs(n) % 1 === 0 ? Math.abs(n).toFixed(0) : Math.abs(n).toFixed(1));
+}
+function weightClass(n) {
+  const a = Math.abs(n);
+  return a <= 0.5 ? 'minor' : a === 1 ? 'average' : 'major';
+}
+export function appliesToTeam(teams, team) {
+  return teams === 'All' || teams.split(' · ').includes(team);
+}
+
+export const POS_SIGNALS = SIGNAL_DEFS.filter((d) => d.pts > 0).map((d) => ({ label: d.label, teams: d.teams, w: fmtPts(d.pts), live: d.live }));
+export const NEG_SIGNALS = SIGNAL_DEFS.filter((d) => d.pts < 0).map((d) => ({ label: d.label, teams: d.teams, w: fmtPts(d.pts), live: d.live }));
+
+// Every parameter that applies to this employee's team, whichever way it
+// landed — this is the "each and every parameter" view, not just the ones
+// that fired. status is one of:
+//   'fired'       — live, has data, condition true — counts toward the score
+//   'clear'       — live, has data, condition false — a confirmed non-event
+//   'no-data'     — live signal, but this NJ has no synced value for it yet
+//   'not-tracked' — no data source exists for this signal at all
+export function computeSignalReport(e) {
+  return SIGNAL_DEFS
+    .filter((d) => appliesToTeam(d.teams, e.team))
+    .map((d) => {
+      const status = !d.live ? 'not-tracked' : !d.hasData(e) ? 'no-data' : d.fires(e) ? 'fired' : 'clear';
+      return { label: d.label, pts: d.pts, ptsStr: fmtPts(d.pts), weight: weightClass(d.pts), status };
+    });
+}
+// Only fired signals feed the actual score.
+export function computeWorrySignals(e) {
+  return computeSignalReport(e).filter((s) => s.status === 'fired');
+}
+export function computeWorryScore(signals) {
+  return Math.round(signals.reduce((sum, s) => sum + s.pts, 0) * 10) / 10;
+}
+export function trendNoteFor(signals) {
+  if (!signals.length) return 'No live signals recorded yet — score reflects only tracked data sources.';
+  const pos = signals.filter((s) => s.pts > 0).length;
+  const neg = signals.filter((s) => s.pts < 0).length;
+  const parts = [];
+  if (pos) parts.push(`${pos} positive`);
+  if (neg) parts.push(`${neg} negative`);
+  return `${parts.join(', ')} signal${signals.length > 1 ? 's' : ''} this week.`;
+}
 export const LOOP = [
   { when: 'MON 09:00', title: 'Progress email goes out', text: 'Every active NJ gets two role-specific questions. Cron-fired, no HR action.' },
   { when: 'MON–EOD', title: 'NJ responds', text: 'Response saved to the DB and forwarded to the HR inbox. No response by EOD applies an auto shoddy.' },

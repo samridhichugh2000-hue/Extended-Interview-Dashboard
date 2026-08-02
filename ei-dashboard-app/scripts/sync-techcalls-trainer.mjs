@@ -25,12 +25,16 @@ let unmatched = 0;
 for (const emp of trainerEmployees.rows) {
   if (!emp.email) { noEmail++; continue; }
   const result = await getConvertedTechCalls(emp.email);
-  if (!result) { unmatched++; continue; }
+  // Same treatment as the Sales tech-calls feed: "no matching record" from
+  // Koenig is a confirmed 0, not a reason to leave the field null forever.
+  // Only a missing email (can't even query) stays null/no-data.
+  const converted = result ? result.converted : 0;
+  if (!result) unmatched++;
 
-  await db.execute({ sql: 'UPDATE employees SET tech_calls_converted = ? WHERE id = ?', args: [result.converted, emp.id] });
+  await db.execute({ sql: 'UPDATE employees SET tech_calls_converted = ? WHERE id = ?', args: [converted, emp.id] });
   updated++;
 }
 
-console.log(`Synced converted tech calls for ${updated} Trainer employees (${unmatched} had no record, ${noEmail} had no email on file).`);
+console.log(`Synced converted tech calls for ${updated} Trainer employees (${unmatched} of those had no matching record and were set to 0, ${noEmail} had no email on file and were left untouched).`);
 const check = await db.execute("SELECT id, name, tech_calls_converted FROM employees WHERE team = 'Trainer' AND tech_calls_converted > 0 ORDER BY tech_calls_converted DESC");
 for (const r of check.rows) console.log(' ', r.id, r.name, r.tech_calls_converted);
