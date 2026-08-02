@@ -42,7 +42,8 @@ CREATE TABLE IF NOT EXISTS employees (
   shoddy_neg_count INTEGER,      -- count of negative shoddy incidents (Sales/Trainer/PT)
   shoddy_neg_details TEXT,        -- JSON array of {name, reportedDate, repMngr, reason, errorId, incidentType, incidentNature}
   shoddy_pos_count INTEGER,      -- count of positive incidents (Sales/Trainer/PT)
-  shoddy_pos_details TEXT         -- JSON array of {name, reportedDate, repMngr, reason, errorId, incidentType, incidentNature}
+  shoddy_pos_details TEXT,        -- JSON array of {name, reportedDate, repMngr, reason, errorId, incidentType, incidentNature}
+  polls_participated INTEGER     -- count of polls participated in (All teams). NULL means the polls dashboard has no record for this email, not a confirmed 0.
 );
 
 CREATE TABLE IF NOT EXISTS pip_status (

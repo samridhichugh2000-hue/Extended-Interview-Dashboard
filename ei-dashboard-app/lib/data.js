@@ -107,9 +107,12 @@ export const WORRY_BANDS = [
 // the whole point of tracking this is telling HR which is which.
 export const SIGNAL_DEFS = [
   // positive, live
-  { label: 'Tech calls attended', teams: 'Sales · Trainer', pts: 1, live: true,
-    hasData: (e) => (e.team === 'Sales' ? e.techCallsCount : e.techCallsConverted) != null,
-    fires: (e) => (e.team === 'Sales' ? e.techCallsCount : e.techCallsConverted) > 0 },
+  { label: 'Tech calls attended', teams: 'Sales', pts: 1, live: true,
+    hasData: (e) => e.techCallsCount != null,
+    fires: (e) => e.techCallsCount > 0 },
+  { label: 'Tech calls converted', teams: 'Trainer', pts: 1, live: true,
+    hasData: (e) => e.techCallsConverted != null,
+    fires: (e) => e.techCallsConverted > 0 },
   { label: 'SCs raised', teams: 'Sales', pts: 1, live: true,
     hasData: (e) => e.scRaised != null,
     fires: (e) => e.scRaised > 0 },
@@ -128,8 +131,13 @@ export const SIGNAL_DEFS = [
   { label: 'Skills count ≥ weeks since joining', teams: 'Trainer', pts: 1, live: true,
     hasData: (e) => e.skillsCount != null,
     fires: (e) => { const wks = Math.floor((e.tenure ?? 0) / 7); return wks > 0 && (e.skillsCount ?? 0) >= wks; } },
+  // Sourced from the standalone Polls Dashboard API (lib/pollsApi.js), matched
+  // by email. Null means that email has no record on the polls dashboard at
+  // all — distinct from a confirmed 0 participation count.
+  { label: 'Polls participated', teams: 'All', pts: 0.5, live: true,
+    hasData: (e) => e.pollsParticipated != null,
+    fires: (e) => e.pollsParticipated > 0 },
   // positive, not yet tracked — no data source exists for these at all
-  { label: 'Polls participated', teams: 'All', pts: 0.5, live: false, hasData: () => false, fires: () => false },
   { label: 'Marking course inhouse', teams: 'Trainer', pts: 0.5, live: false, hasData: () => false, fires: () => false },
   { label: 'Ideas for improvement', teams: 'All', pts: 1, live: false, hasData: () => false, fires: () => false },
   { label: 'Applied for KGT', teams: 'All', pts: 1, live: false, hasData: () => false, fires: () => false },

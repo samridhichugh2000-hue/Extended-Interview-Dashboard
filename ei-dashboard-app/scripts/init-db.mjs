@@ -66,6 +66,7 @@ for (const stmt of [
   'ALTER TABLE employees ADD COLUMN shoddy_neg_details TEXT',
   'ALTER TABLE employees ADD COLUMN shoddy_pos_count INTEGER',
   'ALTER TABLE employees ADD COLUMN shoddy_pos_details TEXT',
+  'ALTER TABLE employees ADD COLUMN polls_participated INTEGER',
 ]) {
   try {
     await db.execute(stmt);

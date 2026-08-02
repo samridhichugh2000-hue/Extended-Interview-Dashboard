@@ -177,6 +177,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
   const [techCallsConvModal, setTechCallsConvModal] = useState(null);
   const [tbtModal, setTbtModal] = useState(null);
   const [shoddyModal, setShoddyModal] = useState(null);
+  const [pollsModal, setPollsModal] = useState(null);
   const deptEmp = employees.filter((e) => e.team === dept);
   const pool = deptEmp.length ? deptEmp : employees;
   const filtered = filter ? pool.filter((e) => e.status === filter) : pool;
@@ -186,9 +187,9 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
     filterVal: STATUS_MAP[label] || null,
   }));
   const baseHeads = METRIC_HEADS[dept] || METRIC_HEADS.Sales;
-  const mh = dept === 'Sales' ? [...baseHeads, 'Neg. Audits', 'SCs Raised', 'Tech Calls', 'Shoddy Log']
-    : dept === 'Trainer' ? [...baseHeads, 'Exams', 'Neg. Feedback', 'Assignments', 'Skills', 'Tech Calls', 'TBTs', 'Shoddy Log']
-    : [...baseHeads, 'Shoddy Log'];
+  const mh = dept === 'Sales' ? [...baseHeads, 'Neg. Audits', 'SCs Raised', 'Tech Calls', 'Shoddy Log', 'Polls']
+    : dept === 'Trainer' ? [...baseHeads, 'Exams', 'Neg. Feedback', 'Assignments', 'Skills', 'Tech Calls', 'TBTs', 'Shoddy Log', 'Polls']
+    : [...baseHeads, 'Shoddy Log', 'Polls'];
   const rows = filtered.map((e) => {
     const d = decorate(e);
     const cells = baseHeads.map((_, i) => ({
@@ -263,6 +264,11 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
         onClick: e.active === false ? null : ((e.shoddyNegCount > 0 || e.shoddyPosCount > 0) ? () => setShoddyModal(e) : null),
       });
     }
+    cells.push({
+      value: e.active === false ? '—' : (e.pollsParticipated ?? '—'),
+      color: e.active === false ? '#6E7488' : (e.pollsParticipated > 0 ? '#5EEAD4' : '#6E7488'),
+      onClick: e.active !== false && e.pollsParticipated != null ? () => setPollsModal(e) : null,
+    });
     return { ...d, cells };
   });
   const gridCols = `1.5fr .75fr 1fr .55fr repeat(${mh.length},.7fr) .9fr 1fr`;
@@ -320,6 +326,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
       {techCallsConvModal && <TechCallsConvertedModal emp={techCallsConvModal} onClose={() => setTechCallsConvModal(null)} />}
       {tbtModal && <TbtModal emp={tbtModal} onClose={() => setTbtModal(null)} />}
       {shoddyModal && <ShoddyModal emp={shoddyModal} onClose={() => setShoddyModal(null)} />}
+      {pollsModal && <PollsModal emp={pollsModal} onClose={() => setPollsModal(null)} />}
       {examModal && <ExamSummaryModal emp={examModal} onClose={() => setExamModal(null)} />}
       {negFbModal && <NegFeedbackModal emp={negFbModal} onClose={() => setNegFbModal(null)} />}
       {assignmentsModal && <AssignmentsModal emp={assignmentsModal} onClose={() => setAssignmentsModal(null)} />}
@@ -436,6 +443,31 @@ function TechCallsConvertedModal({ emp, onClose }) {
           </div>
           <div style={{ fontSize: 12, color: '#6E7488', lineHeight: 1.5 }}>
             The source API only reports a total converted count for this feed — no per-call date or detail is available to show.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// The polls dashboard only reports a total participation count — no
+// per-poll date or topic list is available to show, same as converted tech
+// calls.
+function PollsModal({ emp, onClose }) {
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 440, border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — polls</div>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+        </div>
+        <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 12, padding: '18px 20px', textAlign: 'center' }}>
+            <div className="disp" style={{ fontSize: 34, fontWeight: 600, color: '#5EEAD4' }}>{emp.pollsParticipated}</div>
+            <div style={{ fontSize: 11.5, color: '#A8AEC4', marginTop: 4 }}>Polls participated</div>
+          </div>
+          <div style={{ fontSize: 12, color: '#6E7488', lineHeight: 1.5 }}>
+            The polls dashboard only reports a total participation count for this feed — no per-poll date or topic is available to show.
           </div>
         </div>
       </div>

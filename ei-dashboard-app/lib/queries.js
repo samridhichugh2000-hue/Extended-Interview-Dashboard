@@ -74,6 +74,7 @@ export async function getEmployees() {
       shoddyNegDetails: e.shoddy_neg_details ? JSON.parse(e.shoddy_neg_details) : [],
       shoddyPosCount: e.shoddy_pos_count,
       shoddyPosDetails: e.shoddy_pos_details ? JSON.parse(e.shoddy_pos_details) : [],
+      pollsParticipated: e.polls_participated,
     };
     // Worry Index score/signals/trend are derived live from the real synced
     // fields above rather than read off employees.score, which is only ever
