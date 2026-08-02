@@ -176,7 +176,9 @@ export const SIGNAL_DEFS = [
     hasData: (e) => e.negAudits != null,
     fires: (e) => e.negAudits > 0 },
   // negative, not yet tracked
-  { label: 'Weekly progress email not received', teams: 'All', pts: -1, live: false, hasData: () => false, fires: () => false },
+  { label: 'Weekly progress email not received', teams: 'All', pts: -1, live: true,
+    hasData: (e) => e.weeklyReportState != null,
+    fires: (e) => e.weeklyReportState === 'Overdue' },
   { label: 'Manager feedback below satisfactory', teams: 'All', pts: -1, live: true,
     hasData: (e) => e.mgrFeedbackCount != null,
     fires: (e) => (e.mgrFeedbackDetails || []).some((f) => feedbackRating(f) === 'below') },
@@ -239,10 +241,19 @@ export const LOOP = [
   { when: 'WEEK END', title: "Manager rates the week", text: 'Feedback link asks for a rating plus any incomplete commitments.' },
   { when: 'CONTINUOUS', title: 'Worry Index recalculates', text: 'AI classifies response and feedback quality; credit points update the band and trend.' },
 ];
+// hint1/hint2 are placeholder text shown greyed-out inside the empty answer
+// box on the public response form — not real content, just a per-team nudge
+// on what a good answer looks like.
 export const NJ_QUESTIONS = [
-  { team: 'Sales', color: '#A5A7FA', q1: 'What were your achievements of last week?', q2: 'How do you plan to increase your pipeline this week?' },
-  { team: 'Trainer', color: '#D8B4FE', q1: 'What course did you upgrade to last week?', q2: 'Which course will you upgrade to this week?' },
-  { team: 'PT Team', color: '#5EEAD4', q1: 'What did you accomplish last week?', q2: 'Which work will you spend time on this week?' },
+  { team: 'Sales', color: '#A5A7FA',
+    q1: 'What were your achievements of last week?', hint1: 'Briefly share your key achievements, wins, or progress from last week.',
+    q2: 'How do you plan to increase your pipeline this week?', hint2: 'Share the key activities you will focus on to drive your pipeline and performance.' },
+  { team: 'Trainer', color: '#D8B4FE',
+    q1: 'What course did you upgrade to last week?', hint1: 'Briefly share the course or skill you upgraded to and how it went.',
+    q2: 'Which course will you upgrade to this week?', hint2: 'Share which course or skill you plan to upgrade to this week.' },
+  { team: 'PT Team', color: '#5EEAD4',
+    q1: 'What did you accomplish last week?', hint1: 'Briefly share your key accomplishments, wins, or progress.',
+    q2: 'Which work will you spend time on this week?', hint2: 'Share the key activities you will focus on this week.' },
 ];
 export const STACK = [
   { k: 'Framework', v: 'Next.js 16.2.2 · App Router' },

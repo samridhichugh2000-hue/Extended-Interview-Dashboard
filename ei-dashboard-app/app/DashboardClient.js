@@ -7,7 +7,7 @@ import {
 
 const card = { border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 16 };
 
-export default function DashboardClient({ employees, responses, newJoiners, deptCounts }) {
+export default function DashboardClient({ employees, responses, week, newJoiners, deptCounts }) {
   const [screen, setScreen] = useState('overview');
   const [dept, setDept] = useState('Sales');
   const [filter, setFilter] = useState(null);
@@ -25,7 +25,7 @@ export default function DashboardClient({ employees, responses, newJoiners, dept
           {screen === 'dept' && <Dept employees={employees} dept={dept} filter={filter} setFilter={setFilter} setModal={setModal} />}
           {screen === 'papip' && <PaPip employees={employees} filter={filter} setFilter={setFilter} setModal={setModal} />}
           {screen === 'worryindex' && <WorryIndex employees={employees} filter={filter} setFilter={setFilter} setModal={setModal} />}
-          {screen === 'reports' && <Reports employees={employees} responses={responses} />}
+          {screen === 'reports' && <Reports employees={employees} responses={responses} week={week} />}
         </div>
       </div>
       {modal && <EmployeeModal emp={modal} onClose={() => setModal(null)} />}
@@ -919,15 +919,31 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
   );
 }
 
-function Reports({ employees, responses }) {
+function Reports({ employees, responses, week }) {
   const [expanded, setExpanded] = useState(null);
   const [emailPreview, setEmailPreview] = useState(false);
   const [toast, setToast] = useState(null);
   const [report15, setReport15] = useState(null); // dept name or null
+  const [sending, setSending] = useState(false);
 
   const flashToast = (msg) => {
     setToast(msg);
-    setTimeout(() => setToast(null), 3000);
+    setTimeout(() => setToast(null), 5000);
+  };
+
+  const sendNow = async () => {
+    if (sending) return;
+    if (!window.confirm('Send this week\'s check-in email to every active NJ who hasn\'t received one yet? This sends real email.')) return;
+    setSending(true);
+    try {
+      const res = await fetch('/api/weekly-report/send', { method: 'POST' });
+      const json = await res.json();
+      flashToast(json.ok ? json.message : `Send failed: ${json.error}`);
+    } catch (err) {
+      flashToast(`Send failed: ${err.message}`);
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -940,10 +956,10 @@ function Reports({ employees, responses }) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <div style={{ border: '1px solid rgba(99,102,241,0.25)', background: 'linear-gradient(150deg,rgba(99,102,241,0.12),transparent)', borderRadius: 16, padding: 22 }}>
           <div className="disp" style={{ fontSize: 16, fontWeight: 600 }}>Weekly Report</div>
-          <div style={{ fontSize: 13, color: '#8A90A8', marginTop: 6, lineHeight: 1.5 }}>Auto-sent every Monday 09:00 IST via cron. Progress questions to every active NJ, feedback link to every manager.</div>
+          <div style={{ fontSize: 13, color: '#8A90A8', marginTop: 6, lineHeight: 1.5 }}>Sends 2 progress questions to every active NJ who hasn't received one yet this week ({week}), with a link to submit answers. No automatic schedule yet — trigger manually below.</div>
           <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
             <span onClick={() => setEmailPreview(true)} className="hoverbtn" style={{ border: '1px solid rgba(99,102,241,0.45)', color: '#A5A7FA', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, cursor: 'pointer' }}>Preview email</span>
-            <span onClick={() => flashToast('Weekly report sent to 42 new joiners and their managers.')} className="hoverbtn" style={{ border: '1px solid rgba(255,255,255,0.12)', color: '#C7CBDA', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, cursor: 'pointer' }}>Send now</span>
+            <span onClick={sendNow} className="hoverbtn" style={{ border: '1px solid rgba(255,255,255,0.12)', color: '#C7CBDA', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, cursor: sending ? 'default' : 'pointer', opacity: sending ? 0.6 : 1 }}>{sending ? 'Sending…' : 'Send now'}</span>
           </div>
         </div>
         <div style={{ border: '1px solid rgba(20,184,166,0.25)', background: 'linear-gradient(150deg,rgba(20,184,166,0.1),transparent)', borderRadius: 16, padding: 22 }}>
@@ -957,17 +973,18 @@ function Reports({ employees, responses }) {
         </div>
       </div>
 
-      {emailPreview && <EmailPreviewModal onClose={() => setEmailPreview(false)} />}
+      {emailPreview && <EmailPreviewModal onClose={() => setEmailPreview(false)} week={week} />}
       {report15 && <Report15Modal employees={employees} dept={report15} onClose={() => setReport15(null)} />}
       <div style={{ ...card, overflow: 'hidden' }}>
         <div style={{ padding: '15px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <span className="disp" style={{ fontSize: 15, fontWeight: 600 }}>Weekly response tracker · 2026-W30</span>
+          <span className="disp" style={{ fontSize: 15, fontWeight: 600 }}>Weekly response tracker · {week}</span>
           <span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>click a row to read the response →</span>
         </div>
+        {!responses.length && <div style={{ padding: '18px', fontSize: 12.5, color: '#6E7488' }}>No weekly report sent yet for {week}.</div>}
         {responses.map((r) => {
           const canExpand = r.state === 'Received';
           const open = expanded === r.name;
-          const st = r.state === 'Overdue' ? STATUS['PIP Issued'] : STATUS['Confirmed'];
+          const st = r.state === 'Overdue' ? STATUS['PIP Issued'] : r.state === 'Received' ? STATUS['Confirmed'] : STATUS['In Progress'];
           return (
             <div key={r.name} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
               <div className={canExpand ? 'hoverrow' : ''} onClick={() => canExpand && setExpanded(open ? null : r.name)} style={{ display: 'grid', gridTemplateColumns: '1.3fr .8fr .8fr 1fr 1fr', padding: '13px 18px', alignItems: 'center', fontSize: 13, cursor: canExpand ? 'pointer' : 'default' }}>
@@ -997,7 +1014,7 @@ function Reports({ employees, responses }) {
   );
 }
 
-function EmailPreviewModal({ onClose }) {
+function EmailPreviewModal({ onClose, week }) {
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 560, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
@@ -1007,12 +1024,13 @@ function EmailPreviewModal({ onClose }) {
         </div>
         <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ fontSize: 12, color: '#6E7488' }}>
-            <div><span className="mono">From:</span> ei-dashboard@koenig.internal</div>
-            <div><span className="mono">Subject:</span> Your week 30 check-in — 2 quick questions</div>
+            <div><span className="mono">From:</span> samridhi.chugh@koenig-solutions.com</div>
+            <div><span className="mono">Subject:</span> Weekly NJ Check-In - [Name]</div>
           </div>
           <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 12, padding: 18, background: 'rgba(255,255,255,0.02)', fontSize: 13.5, color: '#C7CBDA', lineHeight: 1.6 }}>
-            <p style={{ marginBottom: 12 }}>Hi there,</p>
-            <p style={{ marginBottom: 12 }}>Quick check-in for this week — two questions, takes under a minute:</p>
+            <p style={{ marginBottom: 12 }}>Hi [Name],</p>
+            <p style={{ marginBottom: 12 }}>As part of our regular Check-In, we would like to understand your progress and focus areas for the week.</p>
+            <p style={{ marginBottom: 12 }}>Please take a minute to respond to the following two questions. Please click the button below to submit your responses:</p>
             {NJ_QUESTIONS.map((q) => (
               <div key={q.team} style={{ marginBottom: 12 }}>
                 <div style={{ fontSize: 11, color: q.color, marginBottom: 3 }}>{q.team} track</div>
@@ -1020,9 +1038,11 @@ function EmailPreviewModal({ onClose }) {
                 <div>2. {q.q2}</div>
               </div>
             ))}
-            <p style={{ color: '#8A90A8', fontSize: 12.5 }}>Reply by Monday EOD — no response applies an automatic shoddy mark.</p>
+            <p style={{ marginBottom: 12 }}>Your responses will help HR track your progress, understand your current priorities, and identify any support required during your initial months with the organization.</p>
+            <p style={{ marginBottom: 12 }}>Thank you for your time and participation.</p>
+            <p>Best regards,<br />EI Dashboard</p>
           </div>
-          <div style={{ fontSize: 11.5, color: '#6E7488' }}>Manager is CC-ed on every send. This preview reflects what goes out Monday 09:00 IST.</div>
+          <div style={{ fontSize: 11.5, color: '#6E7488' }}>Sent per-employee with their own team's questions and a unique submission link. This is the {week} template — no automatic schedule yet, sent via "Send now" above.</div>
         </div>
       </div>
     </div>
@@ -1073,7 +1093,7 @@ function Report15Modal({ employees, dept, onClose }) {
 function EmployeeModal({ emp, onClose }) {
   const d = decorate(emp);
   const bandPct = Math.round(Math.max(0, Math.min(1, (emp.score + 12) / 24)) * 100) + '%';
-  const weeks = emp.weeks.map((w) => ({ ...w, color: w.state.indexOf('No') === 0 ? '#F87171' : w.state.indexOf('low') > -1 ? '#F59E0B' : '#5EEAD4' }));
+  const weeks = emp.weeks.map((w) => ({ ...w, color: w.state === 'Overdue' ? '#F87171' : w.state === 'Received' ? '#5EEAD4' : '#A5A7FA' }));
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 50 }}>

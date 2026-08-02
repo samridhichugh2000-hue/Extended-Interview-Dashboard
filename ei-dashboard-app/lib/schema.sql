@@ -85,8 +85,9 @@ CREATE TABLE IF NOT EXISTS weekly_responses (
   week TEXT NOT NULL,           -- e.g. 2026-W30
   sent_at TEXT,
   received_at TEXT,
-  state TEXT NOT NULL,          -- Received | Overdue
+  state TEXT NOT NULL,          -- Pending | Received (Overdue is derived live, not stored)
   q1 TEXT, a1 TEXT,
   q2 TEXT, a2 TEXT,
-  ai_rating TEXT
+  ai_rating TEXT,
+  token TEXT UNIQUE             -- public submission-link token
 );

@@ -629,4 +629,8 @@ export const SYNC_RUNNERS = {
   shoddy: syncShoddy,
   polls: syncPolls,
   mgrfeedback: syncMgrFeedback,
+  weeklyreport: async () => {
+    const { sendWeeklyReports } = await import('./weeklyReportRunner.js');
+    return sendWeeklyReports();
+  },
 };

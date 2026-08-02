@@ -80,6 +80,16 @@ for (const stmt of [
 }
 
 for (const stmt of [
+  'ALTER TABLE weekly_responses ADD COLUMN token TEXT',
+]) {
+  try {
+    await db.execute(stmt);
+  } catch (err) {
+    if (!String(err.message).includes('duplicate column')) throw err;
+  }
+}
+
+for (const stmt of [
   'ALTER TABLE pip_status ADD COLUMN comment TEXT',
   'ALTER TABLE pip_status ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1',
   'ALTER TABLE pip_status ADD COLUMN source_id INTEGER',
