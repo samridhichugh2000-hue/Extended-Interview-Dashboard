@@ -1,5 +1,13 @@
 import { getDb } from './db';
 import { computeSignalReport, computeWorryScore, trendNoteFor } from './data';
+import { getIsoWeek, isWeekOver } from './weekUtils';
+
+// A 'Pending' response for a week that has fully passed reads as 'Overdue' —
+// derived live at read time rather than stored, same "derive, don't
+// persist" approach already used for Worry Index scores.
+function effectiveState(week, rawState) {
+  return rawState === 'Pending' && isWeekOver(week) ? 'Overdue' : rawState;
+}
 
 // Rebuilds each employee into the exact shape the UI components expect
 // (same fields as the old lib/data.js mock EMP array) so screens/decorate()
@@ -24,11 +32,12 @@ export async function getEmployees() {
 
   // weekly_responses doubles as both the per-employee 4-week history (state only)
   // and, for the current week, the full response-tracker row used on Reports.
+  const currentWeek = getIsoWeek(new Date());
   const weeksRes = await db.execute('SELECT * FROM weekly_responses ORDER BY week ASC');
   const weeksByEmp = new Map();
   for (const row of weeksRes.rows) {
     if (!weeksByEmp.has(row.employee_id)) weeksByEmp.set(row.employee_id, []);
-    weeksByEmp.get(row.employee_id).push({ week: row.week, state: row.state });
+    weeksByEmp.get(row.employee_id).push({ week: row.week, state: effectiveState(row.week, row.state) });
   }
 
   return empRes.rows.map((e) => {
@@ -79,6 +88,9 @@ export async function getEmployees() {
       pollsParticipated: e.polls_participated,
       mgrFeedbackCount: e.mgr_feedback_count,
       mgrFeedbackDetails: e.mgr_feedback_details ? JSON.parse(e.mgr_feedback_details) : [],
+      // null = no weekly_responses row yet for this week (e.g. feature hasn't
+      // been run for them this week) — distinct from a confirmed Pending/Overdue.
+      weeklyReportState: (weeksByEmp.get(e.id) || []).find((w) => w.week === currentWeek)?.state ?? null,
     };
     // Worry Index score/signals/trend are derived live from the real synced
     // fields above rather than read off employees.score, which is only ever
@@ -112,8 +124,29 @@ export async function getWeeklyResponses(week) {
     team: r.team,
     sent: r.sent_at,
     received: r.received_at || '—',
-    state: r.state,
+    state: effectiveState(r.week, r.state),
     ai: r.ai_rating || '—',
     q1: r.q1, a1: r.a1, q2: r.q2, a2: r.a2,
   }));
+}
+
+// For the public /respond/[token] page — looked up directly by token, no
+// auth beyond knowing the (unguessable) token itself.
+export async function getResponseByToken(token) {
+  const db = getDb();
+  const res = await db.execute({
+    sql: `SELECT wr.*, e.name, e.team FROM weekly_responses wr
+          JOIN employees e ON e.id = wr.employee_id
+          WHERE wr.token = ?`,
+    args: [token],
+  });
+  const r = res.rows[0];
+  if (!r) return null;
+  return {
+    name: r.name,
+    team: r.team,
+    week: r.week,
+    state: r.state,
+    q1: r.q1, a1: r.a1, q2: r.q2, a2: r.a2,
+  };
 }

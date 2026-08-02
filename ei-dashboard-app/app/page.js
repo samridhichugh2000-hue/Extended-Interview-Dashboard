@@ -1,6 +1,7 @@
 import DashboardClient from './DashboardClient';
 import { getEmployees, getWeeklyResponses } from '../lib/queries';
 import { getNewJoiners } from '../lib/koenigApi';
+import { getIsoWeek } from '../lib/weekUtils';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,9 +15,10 @@ function sixMonthsAgo() {
 
 export default async function Page() {
   const { from, to } = sixMonthsAgo();
+  const week = getIsoWeek(new Date());
   const [employees, responses, rawNewJoiners] = await Promise.all([
     getEmployees(),
-    getWeeklyResponses('2026-W30'),
+    getWeeklyResponses(week),
     // External API — degrade to an empty list rather than take down the whole
     // dashboard if Koenig is unreachable or its env vars aren't configured.
     getNewJoiners(from, to).catch((err) => {
@@ -32,5 +34,5 @@ export default async function Page() {
   const deptCounts = { Sales: 0, Trainer: 0, 'PT Team': 0 };
   for (const nj of newJoiners) deptCounts[nj.section]++;
 
-  return <DashboardClient employees={employees} responses={responses} newJoiners={newJoiners} deptCounts={deptCounts} />;
+  return <DashboardClient employees={employees} responses={responses} week={week} newJoiners={newJoiners} deptCounts={deptCounts} />;
 }
