@@ -34,6 +34,8 @@ CREATE TABLE IF NOT EXISTS employees (
   assignments_details TEXT,     -- JSON array of {assignmentId, courseName, startDate, endDate, totalPax, deliveryMode, batchType}
   skills_count INTEGER,         -- count of skills/courses marked (Trainer only)
   skills_details TEXT,          -- JSON array of {courseId, courseName, isDuplicate, isDiscontinued}
+  in_house_skills_count INTEGER,  -- count of courses marked in-house (Trainer only)
+  in_house_skills_details TEXT,   -- JSON array of {courseId, courseName, markedBy, trainerName, trainerActive, markDate}
   tech_calls_count INTEGER,     -- count of tech calls attended (Sales only)
   tech_calls_details TEXT,      -- JSON array of raw call records (field names unconfirmed — no live sample data)
   tech_calls_converted INTEGER, -- count of tech calls converted (Trainer only)
@@ -43,7 +45,9 @@ CREATE TABLE IF NOT EXISTS employees (
   shoddy_neg_details TEXT,        -- JSON array of {name, reportedDate, repMngr, reason, errorId, incidentType, incidentNature}
   shoddy_pos_count INTEGER,      -- count of positive incidents (Sales/Trainer/PT)
   shoddy_pos_details TEXT,        -- JSON array of {name, reportedDate, repMngr, reason, errorId, incidentType, incidentNature}
-  polls_participated INTEGER     -- count of polls participated in (All teams). NULL means the polls dashboard has no record for this email, not a confirmed 0.
+  polls_participated INTEGER,    -- count of polls participated in (All teams). NULL means the polls dashboard has no record for this email, not a confirmed 0.
+  mgr_feedback_count INTEGER,    -- count of manager feedback entries on file (All teams)
+  mgr_feedback_details TEXT      -- JSON array of {managerEmpCode, managerName, strength, improvement, other, date}
 );
 
 CREATE TABLE IF NOT EXISTS pip_status (
