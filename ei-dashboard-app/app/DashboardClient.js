@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import {
-  STATUS, decorate, NAV, TITLES, PATHS, CARD_DEFS, METRIC_HEADS,
+  STATUS, decorate, NAV, TITLES, PATHS, METRIC_HEADS,
   WORRY_BANDS, POS_SIGNALS, NEG_SIGNALS, NJ_QUESTIONS, appliesToTeam, feedbackRating,
 } from '../lib/data';
 
@@ -1066,8 +1066,16 @@ function EmailPreviewModal({ onClose, week }) {
 }
 
 function Report15Modal({ employees, dept, onClose }) {
-  const cards = CARD_DEFS[dept] || CARD_DEFS.Sales;
-  const emp = employees.filter((e) => e.team === dept).map(decorate);
+  // Reports are active-employee-only, and use the same Total / Not to be
+  // Monitored / Under Watch definition as the department screens — an NJ is
+  // under watch until their status is explicitly 'Confirmed', not based on
+  // score. See Dept() in this file for the same rule.
+  const emp = employees.filter((e) => e.team === dept && e.active !== false).map(decorate);
+  const cards = [
+    { label: 'Total', count: emp.length, color: '#A855F7' },
+    { label: 'Not to be Monitored', count: emp.filter((e) => e.status === 'Confirmed').length, color: '#14B8A6' },
+    { label: 'Under Watch', count: emp.filter((e) => e.status !== 'Confirmed').length, color: '#8B8CF6' },
+  ];
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 680, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
@@ -1077,8 +1085,8 @@ function Report15Modal({ employees, dept, onClose }) {
         </div>
         <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 18 }}>
           <div style={{ fontSize: 12.5, color: '#8A90A8' }}>Snapshot generated for 13 Jul 2026 → 27 Jul 2026.</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
-            {cards.map(([label, count, color]) => (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
+            {cards.map(({ label, count, color }) => (
               <div key={label} style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.025)', borderRadius: 12, padding: '12px 13px' }}>
                 <div className="disp" style={{ fontSize: 22, fontWeight: 600, color, letterSpacing: '-0.02em' }}>{count}</div>
                 <div style={{ fontSize: 10.5, color: '#A8AEC4', marginTop: 3, lineHeight: 1.3 }}>{label}</div>
@@ -1095,7 +1103,7 @@ function Report15Modal({ employees, dept, onClose }) {
                   <span className="mono" style={{ fontWeight: 600, color: e.bandColor, width: 50, textAlign: 'right' }}>{e.scoreStr}</span>
                 </div>
               ))}
-              {!emp.length && <div style={{ fontSize: 12.5, color: '#6E7488' }}>No employees in this department in the mock dataset.</div>}
+              {!emp.length && <div style={{ fontSize: 12.5, color: '#6E7488' }}>No active employees in this department.</div>}
             </div>
           </div>
         </div>

@@ -41,12 +41,15 @@ function namesMatch(employeeName, csmName) {
 const audits = await getEnquiryAudits('2020-01-01', '2030-01-01');
 const salesEmployees = await db.execute("SELECT id, name FROM employees WHERE team = 'Sales'");
 
+// Every employee is checked against the full, successfully-fetched audit
+// feed, so a name match of zero is a confirmed zero negative audits, not an
+// unknown — write it rather than leaving neg_audits null forever (null
+// would otherwise show as "no data traced" in the Worry Index instead of a
+// real, counted 0).
 let updated = 0;
-let unmatched = 0;
+let confirmedZero = 0;
 for (const emp of salesEmployees.rows) {
   const matches = audits.filter((a) => namesMatch(emp.name, a.csmName));
-  if (!matches.length) { unmatched++; continue; }
-
   const negatives = matches.filter((a) => isNegativeRating(a.rating));
   const remarks = negatives.map((a) => ({
     createdOn: a.createdOn,
@@ -59,9 +62,9 @@ for (const emp of salesEmployees.rows) {
     sql: 'UPDATE employees SET neg_audits = ?, audit_remarks = ? WHERE id = ?',
     args: [negatives.length, JSON.stringify(remarks), emp.id],
   });
-  updated++;
+  if (matches.length) updated++; else confirmedZero++;
 }
 
-console.log(`Synced audit data for ${updated} Sales employees (${unmatched} had no matching audit rows).`);
+console.log(`Synced audit data for ${updated} Sales employees with matched records (${confirmedZero} confirmed zero — no name match in the feed).`);
 const check = await db.execute("SELECT id, name, neg_audits FROM employees WHERE team = 'Sales' ORDER BY neg_audits DESC");
 for (const r of check.rows) console.log(' ', r.id, r.name, r.neg_audits);

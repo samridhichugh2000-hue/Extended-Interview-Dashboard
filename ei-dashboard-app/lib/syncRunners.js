@@ -190,12 +190,15 @@ export async function syncAudit() {
   const audits = await getEnquiryAudits('2020-01-01', '2030-01-01');
   const salesEmployees = await db.execute("SELECT id, name FROM employees WHERE team = 'Sales'");
 
+  // Every employee is checked against the full, successfully-fetched audit
+  // feed, so a name match of zero is a confirmed zero negative audits, not
+  // an unknown — write it rather than leaving neg_audits null forever (null
+  // would otherwise show as "no data traced" in the Worry Index instead of
+  // a real, counted 0).
   let updated = 0;
-  let unmatched = 0;
+  let confirmedZero = 0;
   for (const emp of salesEmployees.rows) {
     const matches = audits.filter((a) => namesMatch(emp.name, a.csmName));
-    if (!matches.length) { unmatched++; continue; }
-
     const negatives = matches.filter((a) => isNegativeRating(a.rating));
     const remarks = negatives.map((a) => ({
       createdOn: a.createdOn,
@@ -208,10 +211,10 @@ export async function syncAudit() {
       sql: 'UPDATE employees SET neg_audits = ?, audit_remarks = ? WHERE id = ?',
       args: [negatives.length, JSON.stringify(remarks), emp.id],
     });
-    updated++;
+    if (matches.length) updated++; else confirmedZero++;
   }
 
-  return { message: `Synced audit data for ${updated} Sales employees (${unmatched} unmatched).` };
+  return { message: `Synced audit data for ${updated} Sales employees with matched records (${confirmedZero} confirmed zero — no name match in the feed).` };
 }
 
 export async function syncSc() {
@@ -553,15 +556,19 @@ export async function syncMgrFeedback() {
   // on/after it, so a reused code's prior occupant doesn't attach here.
   const allEmployees = await db.execute("SELECT id, tenure_days FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team')");
 
+  // Every employee is checked against the full, successfully-fetched
+  // feedback dataset (filtered to since their join date), so zero results
+  // is a confirmed 0, not an unknown — write it rather than leaving
+  // mgr_feedback_count null forever (null would otherwise show as "no data
+  // traced" in the Worry Index instead of a real, counted 0).
   const statements = [];
   let updated = 0;
-  let unmatched = 0;
+  let confirmedZero = 0;
   for (const emp of allEmployees.rows) {
     const empCode = parseInt(emp.id.replace('EMP', ''), 10);
     const since = joinDate(emp.tenure_days);
     const all = byEmpCode.get(empCode) || [];
     const feedback = all.filter((f) => new Date(f.date) >= since).sort((a, b) => new Date(b.date) - new Date(a.date));
-    if (!feedback.length) { unmatched++; continue; }
 
     const details = feedback.map((f) => ({
       managerEmpCode: f.managerEmpCode,
@@ -575,14 +582,14 @@ export async function syncMgrFeedback() {
       sql: 'UPDATE employees SET mgr_feedback_count = ?, mgr_feedback_details = ? WHERE id = ?',
       args: [feedback.length, JSON.stringify(details), emp.id],
     });
-    updated++;
+    if (feedback.length) updated++; else confirmedZero++;
   }
 
   // Same batching as syncSc/syncAssignments/syncPolls — one round trip for
   // all employee updates instead of one per employee.
   if (statements.length) await db.batch(statements, 'write');
 
-  return { message: `Synced manager feedback for ${updated} employees (${unmatched} confirmed at 0 since join).` };
+  return { message: `Synced manager feedback for ${updated} employees with matched records (${confirmedZero} confirmed at 0 since join).` };
 }
 
 export async function syncPolls() {

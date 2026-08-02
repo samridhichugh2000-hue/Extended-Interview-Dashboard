@@ -42,7 +42,7 @@ const allEmployees = await db.execute("SELECT id, tenure_days FROM employees WHE
 // on/after it, so a reused code's prior occupant doesn't attach here.
 const statements = [];
 let updated = 0;
-let unmatched = 0;
+let confirmedZero = 0;
 let excludedPreJoin = 0;
 for (const emp of allEmployees.rows) {
   const empCode = parseInt(emp.id.replace('EMP', ''), 10);
@@ -50,7 +50,6 @@ for (const emp of allEmployees.rows) {
   const all = byEmpCode.get(empCode) || [];
   const feedback = all.filter((f) => new Date(f.date) >= since).sort((a, b) => new Date(b.date) - new Date(a.date));
   excludedPreJoin += all.length - feedback.length;
-  if (!feedback.length) unmatched++;
 
   const details = feedback.map((f) => ({
     managerEmpCode: f.managerEmpCode,
@@ -64,11 +63,11 @@ for (const emp of allEmployees.rows) {
     sql: 'UPDATE employees SET mgr_feedback_count = ?, mgr_feedback_details = ? WHERE id = ?',
     args: [feedback.length, JSON.stringify(details), emp.id],
   });
-  updated++;
+  if (feedback.length) updated++; else confirmedZero++;
 }
 
 if (statements.length) await db.batch(statements, 'write');
 
-console.log(`Synced manager feedback for ${updated} employees (${unmatched} confirmed at 0 since join; ${excludedPreJoin} pre-join rows excluded as recycled-emp-code noise).`);
+console.log(`Synced manager feedback for ${updated} employees with matched records (${confirmedZero} confirmed at 0 since join; ${excludedPreJoin} pre-join rows excluded as recycled-emp-code noise).`);
 const check = await db.execute("SELECT id, name, team, mgr_feedback_count FROM employees WHERE mgr_feedback_count > 0 ORDER BY mgr_feedback_count DESC");
 for (const r of check.rows) console.log(' ', r.id, r.name, r.team, r.mgr_feedback_count);
