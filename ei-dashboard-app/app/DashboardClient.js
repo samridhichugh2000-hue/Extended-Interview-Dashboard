@@ -981,20 +981,23 @@ function EmployeeModal({ emp, onClose }) {
             <div>
               <div className="mono" style={{ fontSize: 10, letterSpacing: '.12em', color: '#5C6178', textTransform: 'uppercase', marginBottom: 10 }}>Signal breakdown — every parameter for {emp.team}</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                {emp.signalReport.map((s) => (
-                  <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 12, opacity: s.status === 'fired' ? 1 : 0.55 }}>
-                    <span style={{ flex: 1, fontSize: 13, color: '#C7CBDA', display: 'flex', alignItems: 'center', gap: 8 }}>
-                      {s.label}
-                      {s.status !== 'fired' && (
-                        <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase', flex: 'none' }}>
-                          {s.status === 'not-tracked' ? 'not tracked' : s.status === 'no-data' ? 'no data traced' : 'no incident'}
-                        </span>
-                      )}
-                    </span>
-                    <span className="mono" style={{ fontSize: 10, color: '#5C6178' }}>{s.weight}</span>
-                    <span style={{ width: 56, textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12.5, fontWeight: 600, color: s.status === 'fired' ? (s.pts < 0 ? '#F87171' : '#5EEAD4') : '#5C6178' }}>{s.status === 'fired' ? s.ptsStr : '—'}</span>
-                  </div>
-                ))}
+                {emp.signalReport.map((s) => {
+                  const notSynced = s.status === 'no-data' || s.status === 'not-tracked';
+                  return (
+                    <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 12, opacity: notSynced ? 0.55 : 1 }}>
+                      <span style={{ flex: 1, fontSize: 13, color: notSynced ? '#6E7488' : '#FFFFFF', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {s.label}
+                        {s.status !== 'fired' && (
+                          <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase', flex: 'none' }}>
+                            {s.status === 'not-tracked' ? 'not tracked' : s.status === 'no-data' ? 'no data traced' : 'no incident'}
+                          </span>
+                        )}
+                      </span>
+                      <span className="mono" style={{ fontSize: 10, color: '#5C6178' }}>{s.weight}</span>
+                      <span style={{ width: 56, textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12.5, fontWeight: 600, color: s.status === 'fired' ? (s.pts < 0 ? '#F87171' : '#5EEAD4') : notSynced ? '#5C6178' : '#FFFFFF' }}>{s.status === 'fired' ? s.ptsStr : s.status === 'clear' ? '0' : '—'}</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
