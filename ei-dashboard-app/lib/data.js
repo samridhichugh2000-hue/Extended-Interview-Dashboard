@@ -116,14 +116,19 @@ export const SIGNAL_DEFS = [
   { label: 'TBTs requested', teams: 'Trainer', pts: 1, live: true,
     hasData: (e) => e.tbtCount != null,
     fires: (e) => e.tbtCount > 0 },
-  { label: 'Shoddy marked by NJ on others', teams: 'All', pts: 1, live: true,
+  // Sourced from Koenig's incident feed (lib/koenigShoddyApi.js) — despite the
+  // "shoddy" naming on that module, its positive-nature records are HR
+  // incidents logged in the NJ's favor, not specifically about catching
+  // someone else's shoddy work. "Shoddy marked by NJ on others" was a mislabel
+  // of the same data and has been folded into this signal rather than double-
+  // counted separately.
+  { label: 'HR incidents (positive)', teams: 'All', pts: 1, live: true,
     hasData: (e) => e.shoddyPosCount != null,
     fires: (e) => e.shoddyPosCount > 0 },
   { label: 'Skills count ≥ weeks since joining', teams: 'Trainer', pts: 1, live: true,
     hasData: (e) => e.skillsCount != null,
     fires: (e) => { const wks = Math.floor((e.tenure ?? 0) / 7); return wks > 0 && (e.skillsCount ?? 0) >= wks; } },
   // positive, not yet tracked — no data source exists for these at all
-  { label: 'HR incidents (positive)', teams: 'All', pts: 0.5, live: false, hasData: () => false, fires: () => false },
   { label: 'Polls participated', teams: 'All', pts: 0.5, live: false, hasData: () => false, fires: () => false },
   { label: 'Marking course inhouse', teams: 'Trainer', pts: 0.5, live: false, hasData: () => false, fires: () => false },
   { label: 'Ideas for improvement', teams: 'All', pts: 1, live: false, hasData: () => false, fires: () => false },
