@@ -363,7 +363,7 @@ export async function syncAssignments() {
     byEmpCode.get(r.empCode).push(r);
   }
 
-  const trainerEmployees = await db.execute("SELECT id, tenure_days FROM employees WHERE team = 'Trainer'");
+  const trainerEmployees = await db.execute("SELECT id, tenure_days FROM employees WHERE team = 'Trainer' AND active = 1");
 
   const statements = [];
   let updated = 0;
@@ -490,7 +490,7 @@ export async function syncShoddy() {
   const db = getDb();
   const { getShoddyRecords } = await import('./koenigShoddyApi.js');
 
-  const allEmployees = await db.execute("SELECT id FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team')");
+  const allEmployees = await db.execute("SELECT id FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team') AND active = 1");
 
   let updated = 0;
   let unmatched = 0;

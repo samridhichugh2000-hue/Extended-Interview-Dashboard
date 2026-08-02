@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import {
   STATUS, decorate, NAV, TITLES, PATHS, CARD_DEFS, STATUS_MAP, METRIC_HEADS,
-  WORRY_BANDS, POS_SIGNALS, NEG_SIGNALS, NJ_QUESTIONS,
+  WORRY_BANDS, POS_SIGNALS, NEG_SIGNALS, NJ_QUESTIONS, appliesToTeam,
 } from '../lib/data';
 
 const card = { border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 16 };
@@ -24,7 +24,7 @@ export default function DashboardClient({ employees, responses, newJoiners, dept
           {screen === 'overview' && <Overview employees={employees} newJoiners={newJoiners} deptCounts={deptCounts} go={go} setModal={setModal} />}
           {screen === 'dept' && <Dept employees={employees} dept={dept} filter={filter} setFilter={setFilter} setModal={setModal} />}
           {screen === 'papip' && <PaPip employees={employees} filter={filter} setFilter={setFilter} setModal={setModal} />}
-          {screen === 'worryindex' && <WorryIndex employees={employees} setModal={setModal} />}
+          {screen === 'worryindex' && <WorryIndex employees={employees} filter={filter} setFilter={setFilter} setModal={setModal} />}
           {screen === 'reports' && <Reports employees={employees} responses={responses} />}
         </div>
       </div>
@@ -213,9 +213,9 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
         onClick: e.techCallsCount > 0 ? () => setTechCallsModal(e) : null,
       });
       cells.push({
-        value: (e.shoddyNegCount ?? 0) + (e.shoddyPosCount ?? 0) || '—',
-        color: e.shoddyNegCount > 0 ? '#F87171' : e.shoddyPosCount > 0 ? '#5EEAD4' : '#6E7488',
-        onClick: (e.shoddyNegCount > 0 || e.shoddyPosCount > 0) ? () => setShoddyModal(e) : null,
+        value: e.active === false ? '—' : ((e.shoddyNegCount == null && e.shoddyPosCount == null) ? '—' : (e.shoddyNegCount ?? 0) + (e.shoddyPosCount ?? 0)),
+        color: e.active === false ? '#6E7488' : (e.shoddyNegCount > 0 ? '#F87171' : e.shoddyPosCount > 0 ? '#5EEAD4' : '#6E7488'),
+        onClick: e.active === false ? null : ((e.shoddyNegCount > 0 || e.shoddyPosCount > 0) ? () => setShoddyModal(e) : null),
       });
     }
     if (dept === 'Trainer') {
@@ -231,9 +231,9 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
         onClick: e.negFeedback > 0 ? () => setNegFbModal(e) : null,
       });
       cells.push({
-        value: e.assignmentsCount ?? '—',
-        color: e.assignmentsCount > 0 ? '#5EEAD4' : '#6E7488',
-        onClick: e.assignmentsCount > 0 ? () => setAssignmentsModal(e) : null,
+        value: e.active === false ? '—' : (e.assignmentsCount ?? '—'),
+        color: e.active === false ? '#6E7488' : (e.assignmentsCount > 0 ? '#5EEAD4' : '#6E7488'),
+        onClick: e.active === false ? null : (e.assignmentsCount > 0 ? () => setAssignmentsModal(e) : null),
       });
       cells.push({
         value: e.skillsCount ?? '—',
@@ -251,16 +251,16 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
         onClick: e.tbtCount > 0 ? () => setTbtModal(e) : null,
       });
       cells.push({
-        value: (e.shoddyNegCount ?? 0) + (e.shoddyPosCount ?? 0) || '—',
-        color: e.shoddyNegCount > 0 ? '#F87171' : e.shoddyPosCount > 0 ? '#5EEAD4' : '#6E7488',
-        onClick: (e.shoddyNegCount > 0 || e.shoddyPosCount > 0) ? () => setShoddyModal(e) : null,
+        value: e.active === false ? '—' : ((e.shoddyNegCount == null && e.shoddyPosCount == null) ? '—' : (e.shoddyNegCount ?? 0) + (e.shoddyPosCount ?? 0)),
+        color: e.active === false ? '#6E7488' : (e.shoddyNegCount > 0 ? '#F87171' : e.shoddyPosCount > 0 ? '#5EEAD4' : '#6E7488'),
+        onClick: e.active === false ? null : ((e.shoddyNegCount > 0 || e.shoddyPosCount > 0) ? () => setShoddyModal(e) : null),
       });
     }
     if (dept === 'PT Team') {
       cells.push({
-        value: (e.shoddyNegCount ?? 0) + (e.shoddyPosCount ?? 0) || '—',
-        color: e.shoddyNegCount > 0 ? '#F87171' : e.shoddyPosCount > 0 ? '#5EEAD4' : '#6E7488',
-        onClick: (e.shoddyNegCount > 0 || e.shoddyPosCount > 0) ? () => setShoddyModal(e) : null,
+        value: e.active === false ? '—' : ((e.shoddyNegCount == null && e.shoddyPosCount == null) ? '—' : (e.shoddyNegCount ?? 0) + (e.shoddyPosCount ?? 0)),
+        color: e.active === false ? '#6E7488' : (e.shoddyNegCount > 0 ? '#F87171' : e.shoddyPosCount > 0 ? '#5EEAD4' : '#6E7488'),
+        onClick: e.active === false ? null : ((e.shoddyNegCount > 0 || e.shoddyPosCount > 0) ? () => setShoddyModal(e) : null),
       });
     }
     return { ...d, cells };
@@ -678,11 +678,37 @@ function PaPip({ employees, filter, setFilter, setModal }) {
   );
 }
 
-function WorryIndex({ employees, setModal }) {
-  const ranked = employees.map(decorate).sort((a, b) => a.score - b.score);
+function WorryIndex({ employees, filter, setFilter, setModal }) {
+  const active = employees.map(decorate).filter((e) => !e.inactive);
+  const tabs = [['All Departments', null], ['Sales', 'Sales'], ['Trainer', 'Trainer'], ['PT Team', 'PT Team']].map(([label, val]) => ({
+    label, val, active: filter === val || (!filter && !val),
+    count: val ? active.filter((e) => e.team === val).length : active.length,
+  }));
+  const ranked = active.filter((e) => !filter || e.team === filter).sort((a, b) => a.score - b.score);
+  const bandCounts = ranked.reduce((acc, e) => {
+    acc[e.bandLabel] = (acc[e.bandLabel] || 0) + 1;
+    return acc;
+  }, {});
+  // Reference tables scope to whichever department tab is selected, and each
+  // row shows real coverage for that scope instead of just the static weight.
+  const coverageFor = (s) => {
+    const eligible = ranked.filter((e) => appliesToTeam(s.teams, e.team));
+    const fired = eligible.filter((e) => e.signals.some((sig) => sig.label === s.label)).length;
+    const noData = eligible.filter((e) => e.signalReport.find((r) => r.label === s.label)?.status === 'no-data').length;
+    return { eligible: eligible.length, fired, noData };
+  };
+  const posSignals = POS_SIGNALS.filter((s) => !filter || appliesToTeam(s.teams, filter));
+  const negSignals = NEG_SIGNALS.filter((s) => !filter || appliesToTeam(s.teams, filter));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {tabs.map((t) => (
+          <div key={t.label} onClick={() => setFilter(t.val)} style={{ cursor: 'pointer', border: `1px solid ${t.active ? 'rgba(99,102,241,0.45)' : 'rgba(255,255,255,0.1)'}`, background: t.active ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.03)', color: t.active ? '#FFFFFF' : '#9BA1B8', borderRadius: 999, padding: '8px 16px', fontSize: 13, display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span>{t.label}</span><span className="mono" style={{ fontSize: 11, opacity: 0.75 }}>{t.count}</span>
+          </div>
+        ))}
+      </div>
       <div>
         <div className="disp" style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>Bands</div>
         <div style={{ fontSize: 12.5, color: '#8A90A8', marginBottom: 14 }}>Every signal carries a credit weight — minor ±0.5, average ±1, major ±2. The running total places the NJ in one of four bands.</div>
@@ -691,7 +717,7 @@ function WorryIndex({ employees, setModal }) {
             <div key={b.label} style={{ border: `1px solid ${b.color}4D`, background: `${b.color}12`, borderRadius: 14, padding: 18 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                 <div className="disp" style={{ fontSize: 17, fontWeight: 600, color: b.color }}>{b.label}</div>
-                <div className="disp" style={{ fontSize: 20, fontWeight: 600, color: b.color }}>{b.count}</div>
+                <div className="disp" style={{ fontSize: 20, fontWeight: 600, color: b.color }}>{bandCounts[b.label] || 0}</div>
               </div>
               <div className="mono" style={{ fontSize: 12, color: '#8A90A8', marginTop: 4 }}>{b.range}</div>
               <div style={{ fontSize: 12.5, color: '#8A90A8', marginTop: 8, lineHeight: 1.5 }}>{b.desc}</div>
@@ -724,31 +750,49 @@ function WorryIndex({ employees, setModal }) {
           <div style={{ padding: '14px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)' }} className="mono">
             <span style={{ fontSize: 10.5, letterSpacing: '.14em', color: '#14B8A6', textTransform: 'uppercase' }}>Positive signals</span>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr .9fr .5fr', padding: '9px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.08em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-            <span>Signal</span><span>Applies to</span><span style={{ textAlign: 'right' }}>Weight</span>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr .8fr .5fr .9fr', padding: '9px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.08em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            <span>Signal</span><span>Applies to</span><span style={{ textAlign: 'right' }}>Weight</span><span style={{ textAlign: 'right' }}>Coverage</span>
           </div>
-          {POS_SIGNALS.map((s) => (
-            <div key={s.label} style={{ display: 'grid', gridTemplateColumns: '1fr .9fr .5fr', padding: '10px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-              <span style={{ fontSize: 13, color: '#C7CBDA' }}>{s.label}</span>
-              <span style={{ fontSize: 11, color: '#6E7488' }}>{s.teams}</span>
-              <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12.5, color: '#14B8A6' }}>{s.w}</span>
-            </div>
-          ))}
+          {posSignals.map((s) => {
+            const cov = coverageFor(s);
+            return (
+              <div key={s.label} style={{ display: 'grid', gridTemplateColumns: '1fr .8fr .5fr .9fr', padding: '10px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.04)', opacity: s.live ? 1 : 0.45 }}>
+                <span style={{ fontSize: 13, color: '#C7CBDA', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {s.label}
+                  {!s.live && <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase' }}>not tracked</span>}
+                </span>
+                <span style={{ fontSize: 11, color: '#6E7488' }}>{s.teams}</span>
+                <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12.5, color: '#14B8A6' }}>{s.w}</span>
+                <span style={{ textAlign: 'right', fontSize: 11, color: '#6E7488' }}>
+                  {s.live ? `fired ${cov.fired}/${cov.eligible}${cov.noData ? ` · ${cov.noData} no data` : ''}` : '—'}
+                </span>
+              </div>
+            );
+          })}
         </div>
         <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 16, background: 'rgba(244,63,94,0.03)', overflow: 'hidden' }}>
           <div style={{ padding: '14px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)' }} className="mono">
             <span style={{ fontSize: 10.5, letterSpacing: '.14em', color: '#F43F5E', textTransform: 'uppercase' }}>Negative signals</span>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr .9fr .5fr', padding: '9px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.08em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-            <span>Signal</span><span>Applies to</span><span style={{ textAlign: 'right' }}>Weight</span>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr .8fr .5fr .9fr', padding: '9px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.08em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            <span>Signal</span><span>Applies to</span><span style={{ textAlign: 'right' }}>Weight</span><span style={{ textAlign: 'right' }}>Coverage</span>
           </div>
-          {NEG_SIGNALS.map((s) => (
-            <div key={s.label} style={{ display: 'grid', gridTemplateColumns: '1fr .9fr .5fr', padding: '10px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-              <span style={{ fontSize: 13, color: '#C7CBDA' }}>{s.label}</span>
-              <span style={{ fontSize: 11, color: '#6E7488' }}>{s.teams}</span>
-              <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12.5, color: '#F87171' }}>{s.w}</span>
-            </div>
-          ))}
+          {negSignals.map((s) => {
+            const cov = coverageFor(s);
+            return (
+              <div key={s.label} style={{ display: 'grid', gridTemplateColumns: '1fr .8fr .5fr .9fr', padding: '10px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.04)', opacity: s.live ? 1 : 0.45 }}>
+                <span style={{ fontSize: 13, color: '#C7CBDA', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {s.label}
+                  {!s.live && <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase' }}>not tracked</span>}
+                </span>
+                <span style={{ fontSize: 11, color: '#6E7488' }}>{s.teams}</span>
+                <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12.5, color: '#F87171' }}>{s.w}</span>
+                <span style={{ textAlign: 'right', fontSize: 11, color: '#6E7488' }}>
+                  {s.live ? `fired ${cov.fired}/${cov.eligible}${cov.noData ? ` · ${cov.noData} no data` : ''}` : '—'}
+                </span>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -935,13 +979,20 @@ function EmployeeModal({ emp, onClose }) {
               <div style={{ marginTop: 16, fontSize: 12.5, color: '#8A90A8', lineHeight: 1.55 }}>{emp.trendNote}</div>
             </div>
             <div>
-              <div className="mono" style={{ fontSize: 10, letterSpacing: '.12em', color: '#5C6178', textTransform: 'uppercase', marginBottom: 10 }}>Signal breakdown</div>
+              <div className="mono" style={{ fontSize: 10, letterSpacing: '.12em', color: '#5C6178', textTransform: 'uppercase', marginBottom: 10 }}>Signal breakdown — every parameter for {emp.team}</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                {emp.signals.map((s) => (
-                  <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <span style={{ flex: 1, fontSize: 13, color: '#C7CBDA' }}>{s.label}</span>
+                {emp.signalReport.map((s) => (
+                  <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 12, opacity: s.status === 'fired' ? 1 : 0.55 }}>
+                    <span style={{ flex: 1, fontSize: 13, color: '#C7CBDA', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {s.label}
+                      {s.status !== 'fired' && (
+                        <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase', flex: 'none' }}>
+                          {s.status === 'not-tracked' ? 'not tracked' : s.status === 'no-data' ? 'no data traced' : 'no incident'}
+                        </span>
+                      )}
+                    </span>
                     <span className="mono" style={{ fontSize: 10, color: '#5C6178' }}>{s.weight}</span>
-                    <span style={{ width: 56, textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12.5, fontWeight: 600, color: s.pts.indexOf('−') === 0 ? '#F87171' : '#5EEAD4' }}>{s.pts}</span>
+                    <span style={{ width: 56, textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12.5, fontWeight: 600, color: s.status === 'fired' ? (s.pts < 0 ? '#F87171' : '#5EEAD4') : '#5C6178' }}>{s.status === 'fired' ? s.ptsStr : '—'}</span>
                   </div>
                 ))}
               </div>

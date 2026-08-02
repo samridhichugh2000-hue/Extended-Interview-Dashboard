@@ -26,7 +26,7 @@ for (const r of rows) {
   byEmpCode.get(r.empCode).push(r);
 }
 
-const trainerEmployees = await db.execute("SELECT id, tenure_days FROM employees WHERE team = 'Trainer'");
+const trainerEmployees = await db.execute("SELECT id, tenure_days FROM employees WHERE team = 'Trainer' AND active = 1");
 
 // Emp codes get recycled — a code's prior occupant can have assignment rows
 // dating years before the current NJ joined. Reconstruct the join date from
