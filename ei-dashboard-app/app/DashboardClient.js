@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import {
-  STATUS, decorate, NAV, TITLES, PATHS, CARD_DEFS, STATUS_MAP, METRIC_HEADS,
+  STATUS, decorate, NAV, TITLES, PATHS, CARD_DEFS, METRIC_HEADS,
   WORRY_BANDS, POS_SIGNALS, NEG_SIGNALS, NJ_QUESTIONS, appliesToTeam, feedbackRating,
 } from '../lib/data';
 
@@ -95,7 +95,9 @@ function Overview({ employees, newJoiners, deptCounts, go, setModal }) {
     { label: 'Trainer', count: counts.Trainer, bg: 'rgba(168,85,247,0.14)', border: 'rgba(168,85,247,0.35)', color: '#D8B4FE', dept: 'Trainer' },
     { label: 'PT', count: counts['PT Team'], bg: 'rgba(20,184,166,0.14)', border: 'rgba(20,184,166,0.35)', color: '#5EEAD4', dept: 'PT Team' },
   ];
-  const reviewQueue = activeEmployees.slice(0, 5).map(decorate);
+  // Worst-first — only NJs currently running a negative Worry Index score,
+  // the ones that actually need review, not just the first 5 in DB order.
+  const reviewQueue = activeEmployees.map(decorate).filter((e) => e.score < 0).sort((a, b) => a.score - b.score);
   const paPipList = activeEmployees.filter((e) => e.status !== 'In Progress').map((e) => ({ name: e.name, due: e.due, type: e.status === 'PIP Issued' ? 'PIP' : 'PA', active: e.active, ...STATUS[e.status] }));
 
   return (
@@ -133,21 +135,24 @@ function Overview({ employees, newJoiners, deptCounts, go, setModal }) {
       <div style={{ display: 'grid', gridTemplateColumns: '1.55fr 1fr', gap: 16, alignItems: 'start' }}>
         <div style={{ ...card, overflow: 'hidden' }}>
           <div style={{ padding: '16px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div><div className="disp" style={{ fontSize: 15, fontWeight: 600 }}>NJ Review Queue</div><div style={{ fontSize: 11.5, color: '#6E7488', marginTop: 2 }}>Top 5 by priority — PIP, then PA, then In Progress</div></div>
+            <div><div className="disp" style={{ fontSize: 15, fontWeight: 600 }}>NJ Review Queue</div><div style={{ fontSize: 11.5, color: '#6E7488', marginTop: 2 }}>Every NJ with a negative Worry Index score, worst first</div></div>
             <span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>click a row →</span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1.6fr .8fr 1.1fr .9fr .7fr', padding: '10px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 10, letterSpacing: '.1em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
             <span>Employee</span><span>Team</span><span>Manager</span><span>Status</span><span style={{ textAlign: 'right' }}>Score</span>
           </div>
-          {reviewQueue.map((e) => (
-            <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: '1.6fr .8fr 1.1fr .9fr .7fr', padding: '13px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontWeight: 600 }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id} · day {e.tenure}</span></div>
-              <span style={{ color: '#A8AEC4', fontSize: 12.5 }}>{e.team}</span>
-              <span style={{ color: '#A8AEC4', fontSize: 12.5 }}>{e.manager}</span>
-              <span style={{ justifySelf: 'start', fontSize: 11, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` }}>{e.inactive ? 'Inactive' : e.status}</span>
-              <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontWeight: 600, color: e.bandColor }}>{e.scoreStr}</span>
-            </div>
-          ))}
+          <div style={{ maxHeight: 296, overflow: 'auto' }}>
+            {reviewQueue.map((e) => (
+              <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: '1.6fr .8fr 1.1fr .9fr .7fr', padding: '13px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontWeight: 600 }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id} · day {e.tenure}</span></div>
+                <span style={{ color: '#A8AEC4', fontSize: 12.5 }}>{e.team}</span>
+                <span style={{ color: '#A8AEC4', fontSize: 12.5 }}>{e.manager}</span>
+                <span style={{ justifySelf: 'start', fontSize: 11, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` }}>{e.inactive ? 'Inactive' : e.status}</span>
+                <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontWeight: 600, color: e.bandColor }}>{e.scoreStr}</span>
+              </div>
+            ))}
+            {!reviewQueue.length && <div style={{ padding: '18px', fontSize: 12.5, color: '#6E7488' }}>No NJ currently has a negative Worry Index score.</div>}
+          </div>
         </div>
 
         <div style={{ ...card, overflow: 'hidden' }}>
@@ -182,12 +187,22 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
   const [pollsModal, setPollsModal] = useState(null);
   const deptEmp = employees.filter((e) => e.team === dept);
   const pool = deptEmp.length ? deptEmp : employees;
-  const filtered = filter ? pool.filter((e) => e.status === filter) : pool;
-  const statusCards = (CARD_DEFS[dept] || CARD_DEFS.Sales).map(([label, count, color]) => ({
-    label, count, color,
-    active: filter && STATUS_MAP[label] === filter,
-    filterVal: STATUS_MAP[label] || null,
-  }));
+  // Not to be Monitored / Under Watch is a status call, not a score call —
+  // the weekly Worry Index score fluctuates, but an NJ stays under watch
+  // until HR explicitly confirms them (status 'Confirmed', the "Mark
+  // closed" action). Every other status (In Progress, PA Issued, PIP
+  // Issued) counts as still under watch. Exited employees aren't monitored
+  // either way, so both buckets — and Total — are active-only, and the two
+  // buckets always add up to Total exactly.
+  const activeDeptEmp = deptEmp.filter((e) => e.active !== false);
+  const filtered = filter === 'Confirmed' ? pool.filter((e) => e.active !== false && e.status === 'Confirmed')
+    : filter === 'UnderWatch' ? pool.filter((e) => e.active !== false && e.status !== 'Confirmed')
+    : pool;
+  const statusCards = [
+    { label: 'Total', count: activeDeptEmp.length, color: '#A855F7', filterVal: null, isTotal: true },
+    { label: 'Not to be Monitored', count: activeDeptEmp.filter((e) => e.status === 'Confirmed').length, color: '#14B8A6', filterVal: 'Confirmed' },
+    { label: 'Under Watch', count: activeDeptEmp.filter((e) => e.status !== 'Confirmed').length, color: '#8B8CF6', filterVal: 'UnderWatch' },
+  ].map((s) => ({ ...s, active: s.isTotal ? !filter : filter === s.filterVal }));
   const baseHeads = METRIC_HEADS[dept] || METRIC_HEADS.Sales;
   const mh = dept === 'Sales' ? [...baseHeads, 'Neg. Audits', 'SCs Raised', 'Tech Calls', 'Shoddy Log', 'Mgr Feedback', 'Polls']
     : dept === 'Trainer' ? [...baseHeads, 'Exams', 'Neg. Feedback', 'Assignments', 'Skills', 'In-House Skills', 'Tech Calls', 'TBTs', 'Shoddy Log', 'Mgr Feedback', 'Polls']
@@ -287,10 +302,10 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
         {statusCards.map((s) => (
-          <div key={s.label} onClick={() => s.filterVal && setFilter(filter === s.filterVal ? null : s.filterVal)}
-            style={{ cursor: s.filterVal ? 'pointer' : 'default', border: `1px solid ${s.active ? s.color : 'rgba(255,255,255,0.09)'}`, background: s.active ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.025)', borderRadius: 12, padding: '13px 14px' }}>
+          <div key={s.label} onClick={() => setFilter(s.isTotal ? null : (filter === s.filterVal ? null : s.filterVal))}
+            style={{ cursor: 'pointer', border: `1px solid ${s.active ? s.color : 'rgba(255,255,255,0.09)'}`, background: s.active ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.025)', borderRadius: 12, padding: '13px 14px' }}>
             <div className="disp" style={{ fontSize: 24, fontWeight: 600, color: s.color, letterSpacing: '-0.02em' }}>{s.count}</div>
             <div style={{ fontSize: 11, color: '#A8AEC4', marginTop: 3, lineHeight: 1.3 }}>{s.label}</div>
           </div>
@@ -301,7 +316,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
         <div style={{ flex: 1, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#6E7488' }}>Search by name or employee ID…</div>
         <div style={{ border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#8A90A8' }}>DOJ: 01 Feb 2026 → 27 Jul 2026</div>
         <div onClick={() => setFilter(null)} style={{ border: '1px solid rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.1)', color: '#A5A7FA', borderRadius: 10, padding: '10px 14px', fontSize: 13, cursor: 'pointer' }}>
-          {filter ? `Filter: ${filter} ×` : 'No filter applied'}
+          {filter ? `Filter: ${filter === 'Confirmed' ? 'Not to be Monitored' : filter === 'UnderWatch' ? 'Under Watch' : filter} ×` : 'No filter applied'}
         </div>
       </div>
 
@@ -331,6 +346,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
             </div>
           </div>
         ))}
+        {!rows.length && <div style={{ padding: '18px', fontSize: 12.5, color: '#6E7488' }}>No employees match this filter.</div>}
       </div>
       {auditModal && <AuditRemarksModal emp={auditModal} onClose={() => setAuditModal(null)} />}
       {scModal && <ScListModal emp={scModal} onClose={() => setScModal(null)} />}
