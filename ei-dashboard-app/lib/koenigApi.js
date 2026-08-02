@@ -3,6 +3,7 @@ const BASE_URL = process.env.KOENIG_API_BASE_URL;
 // Access/device tokens aren't documented with an expiry — cache in memory per
 // server process and re-fetch on the first 401/error rather than on a timer.
 let tokenCache = null;
+let tokenPromise = null;
 
 async function fetchToken() {
   const res = await fetch(`${BASE_URL}/api/Kites/Operator/GetToken`, {
@@ -20,9 +21,18 @@ async function fetchToken() {
   return { accessToken: json.content.accessToken, deviceToken: json.content.deviceToken };
 }
 
+// GetToken invalidates any previously issued token for these credentials, so
+// concurrent callers racing to fetch their own token would keep invalidating
+// each other's — memoize the in-flight request so they share one fetch.
 async function getToken({ forceRefresh = false } = {}) {
-  if (!tokenCache || forceRefresh) tokenCache = await fetchToken();
-  return tokenCache;
+  if (forceRefresh) { tokenCache = null; tokenPromise = null; }
+  if (tokenCache) return tokenCache;
+  if (!tokenPromise) {
+    tokenPromise = fetchToken()
+      .then((t) => { tokenCache = t; return t; })
+      .finally(() => { tokenPromise = null; });
+  }
+  return tokenPromise;
 }
 
 // Fetches new joiners between `from` and `to` (YYYY-MM-DD). One retry with a
