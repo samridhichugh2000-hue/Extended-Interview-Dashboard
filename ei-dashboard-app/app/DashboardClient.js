@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import {
   STATUS, decorate, NAV, TITLES, PATHS, CARD_DEFS, STATUS_MAP, METRIC_HEADS,
-  WORRY_BANDS, POS_SIGNALS, NEG_SIGNALS, NJ_QUESTIONS, appliesToTeam,
+  WORRY_BANDS, POS_SIGNALS, NEG_SIGNALS, NJ_QUESTIONS, appliesToTeam, feedbackRating,
 } from '../lib/data';
 
 const card = { border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 16 };
@@ -173,10 +173,12 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
   const [negFbModal, setNegFbModal] = useState(null);
   const [assignmentsModal, setAssignmentsModal] = useState(null);
   const [skillsModal, setSkillsModal] = useState(null);
+  const [inHouseSkillsModal, setInHouseSkillsModal] = useState(null);
   const [techCallsModal, setTechCallsModal] = useState(null);
   const [techCallsConvModal, setTechCallsConvModal] = useState(null);
   const [tbtModal, setTbtModal] = useState(null);
   const [shoddyModal, setShoddyModal] = useState(null);
+  const [mgrFeedbackModal, setMgrFeedbackModal] = useState(null);
   const [pollsModal, setPollsModal] = useState(null);
   const deptEmp = employees.filter((e) => e.team === dept);
   const pool = deptEmp.length ? deptEmp : employees;
@@ -187,9 +189,9 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
     filterVal: STATUS_MAP[label] || null,
   }));
   const baseHeads = METRIC_HEADS[dept] || METRIC_HEADS.Sales;
-  const mh = dept === 'Sales' ? [...baseHeads, 'Neg. Audits', 'SCs Raised', 'Tech Calls', 'Shoddy Log', 'Polls']
-    : dept === 'Trainer' ? [...baseHeads, 'Exams', 'Neg. Feedback', 'Assignments', 'Skills', 'Tech Calls', 'TBTs', 'Shoddy Log', 'Polls']
-    : [...baseHeads, 'Shoddy Log', 'Polls'];
+  const mh = dept === 'Sales' ? [...baseHeads, 'Neg. Audits', 'SCs Raised', 'Tech Calls', 'Shoddy Log', 'Mgr Feedback', 'Polls']
+    : dept === 'Trainer' ? [...baseHeads, 'Exams', 'Neg. Feedback', 'Assignments', 'Skills', 'In-House Skills', 'Tech Calls', 'TBTs', 'Shoddy Log', 'Mgr Feedback', 'Polls']
+    : [...baseHeads, 'Shoddy Log', 'Mgr Feedback', 'Polls'];
   const rows = filtered.map((e) => {
     const d = decorate(e);
     const cells = baseHeads.map((_, i) => ({
@@ -242,6 +244,11 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
         onClick: e.skillsCount > 0 ? () => setSkillsModal(e) : null,
       });
       cells.push({
+        value: e.inHouseSkillsCount ?? '—',
+        color: e.inHouseSkillsCount > 0 ? '#5EEAD4' : '#6E7488',
+        onClick: e.inHouseSkillsCount > 0 ? () => setInHouseSkillsModal(e) : null,
+      });
+      cells.push({
         value: e.techCallsConverted ?? '—',
         color: e.techCallsConverted > 0 ? '#5EEAD4' : '#6E7488',
         onClick: e.techCallsConverted !== null && e.techCallsConverted !== undefined ? () => setTechCallsConvModal(e) : null,
@@ -264,6 +271,11 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
         onClick: e.active === false ? null : ((e.shoddyNegCount > 0 || e.shoddyPosCount > 0) ? () => setShoddyModal(e) : null),
       });
     }
+    cells.push({
+      value: e.active === false ? '—' : (e.mgrFeedbackCount ?? '—'),
+      color: e.active === false ? '#6E7488' : (e.mgrFeedbackCount > 0 ? '#5EEAD4' : '#6E7488'),
+      onClick: e.active !== false && e.mgrFeedbackCount > 0 ? () => setMgrFeedbackModal(e) : null,
+    });
     cells.push({
       value: e.active === false ? '—' : (e.pollsParticipated ?? '—'),
       color: e.active === false ? '#6E7488' : (e.pollsParticipated > 0 ? '#5EEAD4' : '#6E7488'),
@@ -326,11 +338,13 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
       {techCallsConvModal && <TechCallsConvertedModal emp={techCallsConvModal} onClose={() => setTechCallsConvModal(null)} />}
       {tbtModal && <TbtModal emp={tbtModal} onClose={() => setTbtModal(null)} />}
       {shoddyModal && <ShoddyModal emp={shoddyModal} onClose={() => setShoddyModal(null)} />}
+      {mgrFeedbackModal && <MgrFeedbackModal emp={mgrFeedbackModal} onClose={() => setMgrFeedbackModal(null)} />}
       {pollsModal && <PollsModal emp={pollsModal} onClose={() => setPollsModal(null)} />}
       {examModal && <ExamSummaryModal emp={examModal} onClose={() => setExamModal(null)} />}
       {negFbModal && <NegFeedbackModal emp={negFbModal} onClose={() => setNegFbModal(null)} />}
       {assignmentsModal && <AssignmentsModal emp={assignmentsModal} onClose={() => setAssignmentsModal(null)} />}
       {skillsModal && <SkillsModal emp={skillsModal} onClose={() => setSkillsModal(null)} />}
+      {inHouseSkillsModal && <InHouseSkillsModal emp={inHouseSkillsModal} onClose={() => setInHouseSkillsModal(null)} />}
     </div>
   );
 }
@@ -469,6 +483,48 @@ function PollsModal({ emp, onClose }) {
           <div style={{ fontSize: 12, color: '#6E7488', lineHeight: 1.5 }}>
             The polls dashboard only reports a total participation count for this feed — no per-poll date or topic is available to show.
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MgrFeedbackModal({ emp, onClose }) {
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 640, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — manager feedback</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>{emp.mgrFeedbackCount} {emp.mgrFeedbackCount === 1 ? 'entry' : 'entries'} on file</div>
+          </div>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+        </div>
+        <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {emp.mgrFeedbackDetails.map((f, i) => {
+            const rating = feedbackRating(f);
+            const ratingStyle = rating === 'below'
+              ? { border: '1px solid rgba(244,63,94,0.3)', background: 'rgba(244,63,94,0.06)' }
+              : rating === 'good'
+              ? { border: '1px solid rgba(20,184,166,0.3)', background: 'rgba(20,184,166,0.05)' }
+              : { border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)' };
+            return (
+            <div key={i} style={{ ...ratingStyle, borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, fontSize: 11 }}>
+                <span className="mono" style={{ color: '#8A90A8' }}>{f.date || '—'}</span>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  {rating && <span className="mono" style={{ fontSize: 9.5, letterSpacing: '.06em', textTransform: 'uppercase', padding: '2px 7px', borderRadius: 999, color: rating === 'below' ? '#F87171' : '#5EEAD4', border: `1px solid ${rating === 'below' ? 'rgba(244,63,94,0.4)' : 'rgba(20,184,166,0.4)'}` }}>{rating === 'below' ? 'Below satisfactory' : 'Satisfactory'}</span>}
+                  <span className="mono" style={{ color: '#6E7488' }}>{f.managerName || '—'}</span>
+                </div>
+              </div>
+              {f.strength && <div style={{ fontSize: 13, color: '#5EEAD4', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}><b style={{ color: '#A8AEC4', fontWeight: 600 }}>Strength: </b>{f.strength}</div>}
+              {f.improvement && <div style={{ fontSize: 13, color: '#F59E0B', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}><b style={{ color: '#A8AEC4', fontWeight: 600 }}>Improvement: </b>{f.improvement}</div>}
+              {f.other && <div style={{ fontSize: 13, color: '#C7CBDA', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}><b style={{ color: '#A8AEC4', fontWeight: 600 }}>Other: </b>{f.other}</div>}
+              {!f.strength && !f.improvement && !f.other && <div style={{ fontSize: 12.5, color: '#6E7488' }}>No text recorded for this entry.</div>}
+            </div>
+            );
+          })}
+          {!emp.mgrFeedbackDetails.length && <div style={{ fontSize: 12.5, color: '#6E7488' }}>No manager feedback on file.</div>}
         </div>
       </div>
     </div>
@@ -663,6 +719,38 @@ function SkillsModal({ emp, onClose }) {
             </div>
           ))}
           {!emp.skillsDetails.length && <div style={{ fontSize: 12.5, color: '#6E7488', paddingTop: 12 }}>No skill records on file.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InHouseSkillsModal({ emp, onClose }) {
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 680, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — in-house skills</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>{emp.inHouseSkillsCount} {emp.inHouseSkillsCount === 1 ? 'course' : 'courses'} marked in-house</div>
+          </div>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+        </div>
+        <div style={{ padding: '8px 24px 24px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.3fr .9fr', padding: '10px 0', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+            <span>Course</span><span>Trainer</span><span>Marked on</span>
+          </div>
+          {emp.inHouseSkillsDetails.map((s) => (
+            <div key={s.courseId} style={{ display: 'grid', gridTemplateColumns: '2fr 1.3fr .9fr', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
+              <span style={{ color: '#C7CBDA' }}>{s.courseName}</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <span style={{ color: '#A8AEC4' }}>{s.trainerName || '—'}</span>
+                {!s.trainerActive && <span style={{ fontSize: 10.5, color: '#F59E0B', width: 'fit-content', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 6, padding: '2px 6px' }}>Trainer inactive</span>}
+              </div>
+              <span className="mono" style={{ color: '#A8AEC4' }}>{s.markDate || '—'}</span>
+            </div>
+          ))}
+          {!emp.inHouseSkillsDetails.length && <div style={{ fontSize: 12.5, color: '#6E7488', paddingTop: 12 }}>No in-house skill records on file.</div>}
         </div>
       </div>
     </div>
@@ -986,7 +1074,6 @@ function EmployeeModal({ emp, onClose }) {
   const d = decorate(emp);
   const bandPct = Math.round(Math.max(0, Math.min(1, (emp.score + 12) / 24)) * 100) + '%';
   const weeks = emp.weeks.map((w) => ({ ...w, color: w.state.indexOf('No') === 0 ? '#F87171' : w.state.indexOf('low') > -1 ? '#F59E0B' : '#5EEAD4' }));
-  const feedback = emp.feedback.map((f) => ({ ...f, color: f.quality === 'below' ? '#F87171' : f.quality === 'above' ? '#5EEAD4' : '#A5A7FA' }));
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 50 }}>
@@ -1043,14 +1130,25 @@ function EmployeeModal({ emp, onClose }) {
                 </div>
               ))}
             </div>
-            <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, padding: 18, background: 'rgba(255,255,255,0.02)' }}>
+            <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, padding: 18, background: 'rgba(255,255,255,0.02)', maxHeight: 260, overflow: 'auto' }}>
               <div className="disp" style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Manager feedback</div>
-              {feedback.map((f) => (
-                <div key={f.milestone} style={{ padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}><span className="mono" style={{ color: '#8A90A8' }}>{f.milestone}</span><span style={{ color: f.color }}>{f.quality}</span></div>
-                  <div style={{ fontSize: 12, color: '#8A90A8', marginTop: 4, lineHeight: 1.45 }}>{f.comment}</div>
+              {(emp.mgrFeedbackDetails || []).map((f, i) => {
+                const rating = feedbackRating(f);
+                const ratingColor = rating === 'below' ? '#F87171' : rating === 'good' ? '#5EEAD4' : '#6E7488';
+                return (
+                <div key={i} style={{ padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', borderLeft: rating ? `2px solid ${ratingColor}` : undefined, paddingLeft: rating ? 8 : undefined }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
+                    <span className="mono" style={{ color: '#8A90A8' }}>{f.date || '—'}</span>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      {rating && <span className="mono" style={{ fontSize: 9, letterSpacing: '.05em', textTransform: 'uppercase', color: ratingColor }}>{rating === 'below' ? 'Below satisfactory' : 'Satisfactory'}</span>}
+                      <span style={{ color: '#6E7488' }}>{f.managerName || '—'}</span>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 12, color: '#8A90A8', marginTop: 4, lineHeight: 1.45 }}>{f.strength || f.improvement || f.other || 'No text recorded for this entry.'}</div>
                 </div>
-              ))}
+                );
+              })}
+              {!(emp.mgrFeedbackDetails || []).length && <div style={{ fontSize: 12.5, color: '#6E7488' }}>No manager feedback on file.</div>}
             </div>
           </div>
           <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, padding: 18, background: 'rgba(255,255,255,0.02)' }}>

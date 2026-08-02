@@ -105,6 +105,22 @@ export const WORRY_BANDS = [
 // API really returned none) from a field that was never synced for this NJ
 // (null/undefined) — the two look identical as "didn't fire" otherwise, and
 // the whole point of tracking this is telling HR which is which.
+// Koenig's manager feedback feed has no structured rating field — the three
+// sub-ratings (Discipline / role suitability / WFH capability) arrive as
+// free text embedded in AreaOfStrength, e.g. "Discipline : Average; Suitable
+// for the role hired for? : Above Average; WFH capable - Below Average".
+// "Below Average" is this feed's equivalent of "below satisfactory"; check
+// for it before the bare "average" match since "average" is a substring of
+// "below average". Returns 'below' | 'good' | null (no rating language
+// found at all, e.g. a blank entry).
+export function feedbackRating(entry) {
+  const text = [entry?.strength, entry?.improvement, entry?.other].filter(Boolean).join(' ').toLowerCase();
+  if (!text) return null;
+  if (/below average|below satisfactory|unsatisfactory/.test(text)) return 'below';
+  if (/average|satisfactory|good|excellent/.test(text)) return 'good';
+  return null;
+}
+
 export const SIGNAL_DEFS = [
   // positive, live
   { label: 'Tech calls attended', teams: 'Sales', pts: 1, live: true,
@@ -137,8 +153,10 @@ export const SIGNAL_DEFS = [
   { label: 'Polls participated', teams: 'All', pts: 0.5, live: true,
     hasData: (e) => e.pollsParticipated != null,
     fires: (e) => e.pollsParticipated > 0 },
+  { label: 'Marking course inhouse', teams: 'Trainer', pts: 0.5, live: true,
+    hasData: (e) => e.inHouseSkillsCount != null,
+    fires: (e) => e.inHouseSkillsCount > 0 },
   // positive, not yet tracked — no data source exists for these at all
-  { label: 'Marking course inhouse', teams: 'Trainer', pts: 0.5, live: false, hasData: () => false, fires: () => false },
   { label: 'Ideas for improvement', teams: 'All', pts: 1, live: false, hasData: () => false, fires: () => false },
   { label: 'Applied for KGT', teams: 'All', pts: 1, live: false, hasData: () => false, fires: () => false },
   // negative, live
@@ -159,7 +177,9 @@ export const SIGNAL_DEFS = [
     fires: (e) => e.negAudits > 0 },
   // negative, not yet tracked
   { label: 'Weekly progress email not received', teams: 'All', pts: -1, live: false, hasData: () => false, fires: () => false },
-  { label: 'Manager feedback below satisfactory', teams: 'All', pts: -1, live: false, hasData: () => false, fires: () => false },
+  { label: 'Manager feedback below satisfactory', teams: 'All', pts: -1, live: true,
+    hasData: (e) => e.mgrFeedbackCount != null,
+    fires: (e) => (e.mgrFeedbackDetails || []).some((f) => feedbackRating(f) === 'below') },
   { label: 'Not replying to HR emails', teams: 'All', pts: -1, live: false, hasData: () => false, fires: () => false },
   { label: 'Audio / video not OK in meetings', teams: 'All', pts: -1, live: false, hasData: () => false, fires: () => false },
   { label: 'Weekly email shows less progress', teams: 'All', pts: -2, live: false, hasData: () => false, fires: () => false },

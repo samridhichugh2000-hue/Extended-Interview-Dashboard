@@ -65,6 +65,8 @@ export async function getEmployees() {
       assignmentsDetails: e.assignments_details ? JSON.parse(e.assignments_details) : [],
       skillsCount: e.skills_count,
       skillsDetails: e.skills_details ? JSON.parse(e.skills_details) : [],
+      inHouseSkillsCount: e.in_house_skills_count,
+      inHouseSkillsDetails: e.in_house_skills_details ? JSON.parse(e.in_house_skills_details) : [],
       techCallsCount: e.tech_calls_count,
       techCallsDetails: e.tech_calls_details ? JSON.parse(e.tech_calls_details) : [],
       techCallsConverted: e.tech_calls_converted,
@@ -75,6 +77,8 @@ export async function getEmployees() {
       shoddyPosCount: e.shoddy_pos_count,
       shoddyPosDetails: e.shoddy_pos_details ? JSON.parse(e.shoddy_pos_details) : [],
       pollsParticipated: e.polls_participated,
+      mgrFeedbackCount: e.mgr_feedback_count,
+      mgrFeedbackDetails: e.mgr_feedback_details ? JSON.parse(e.mgr_feedback_details) : [],
     };
     // Worry Index score/signals/trend are derived live from the real synced
     // fields above rather than read off employees.score, which is only ever

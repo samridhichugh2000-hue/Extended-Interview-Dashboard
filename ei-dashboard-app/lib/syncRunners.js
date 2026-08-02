@@ -421,6 +421,28 @@ export async function syncSkills() {
   return { message: `Synced skills — ${updated} Trainer employees have at least one (${unmatched} have none).` };
 }
 
+export async function syncInHouseSkills() {
+  const db = getDb();
+  const { getInHouseSkills } = await import('./koenigInHouseSkillsApi.js');
+
+  const trainerEmployees = await db.execute("SELECT id FROM employees WHERE team = 'Trainer'");
+
+  let updated = 0;
+  let unmatched = 0;
+  for (const emp of trainerEmployees.rows) {
+    const empCode = emp.id.replace('EMP', '');
+    const skills = await getInHouseSkills(empCode);
+
+    await db.execute({
+      sql: 'UPDATE employees SET in_house_skills_count = ?, in_house_skills_details = ? WHERE id = ?',
+      args: [skills.length, JSON.stringify(skills), emp.id],
+    });
+    if (skills.length) updated++; else unmatched++;
+  }
+
+  return { message: `Synced in-house skills — ${updated} Trainer employees have at least one (${unmatched} have none).` };
+}
+
 export async function syncTechCalls() {
   const db = getDb();
   const { getTechCalls } = await import('./koenigTechCallApi.js');
@@ -508,6 +530,61 @@ export async function syncShoddy() {
   return { message: `Synced Shoddy data — ${updated} employees have at least one record (${unmatched} have none).` };
 }
 
+export async function syncMgrFeedback() {
+  const db = getDb();
+  const { getManagerFeedback } = await import('./koenigManagerFeedbackApi.js');
+
+  function joinDate(tenureDays) {
+    const d = new Date();
+    d.setDate(d.getDate() - tenureDays);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  const rows = await getManagerFeedback('01-Jan-2020', '01-Jan-2030');
+  const byEmpCode = new Map();
+  for (const r of rows) {
+    if (!byEmpCode.has(r.empCode)) byEmpCode.set(r.empCode, []);
+    byEmpCode.get(r.empCode).push(r);
+  }
+
+  // Emp codes get recycled, same as SC/assignments — reconstruct each
+  // employee's join date from tenure_days and only count feedback dated
+  // on/after it, so a reused code's prior occupant doesn't attach here.
+  const allEmployees = await db.execute("SELECT id, tenure_days FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team')");
+
+  const statements = [];
+  let updated = 0;
+  let unmatched = 0;
+  for (const emp of allEmployees.rows) {
+    const empCode = parseInt(emp.id.replace('EMP', ''), 10);
+    const since = joinDate(emp.tenure_days);
+    const all = byEmpCode.get(empCode) || [];
+    const feedback = all.filter((f) => new Date(f.date) >= since).sort((a, b) => new Date(b.date) - new Date(a.date));
+    if (!feedback.length) { unmatched++; continue; }
+
+    const details = feedback.map((f) => ({
+      managerEmpCode: f.managerEmpCode,
+      managerName: f.managerName,
+      strength: f.strength,
+      improvement: f.improvement,
+      other: f.other,
+      date: f.date,
+    }));
+    statements.push({
+      sql: 'UPDATE employees SET mgr_feedback_count = ?, mgr_feedback_details = ? WHERE id = ?',
+      args: [feedback.length, JSON.stringify(details), emp.id],
+    });
+    updated++;
+  }
+
+  // Same batching as syncSc/syncAssignments/syncPolls — one round trip for
+  // all employee updates instead of one per employee.
+  if (statements.length) await db.batch(statements, 'write');
+
+  return { message: `Synced manager feedback for ${updated} employees (${unmatched} confirmed at 0 since join).` };
+}
+
 export async function syncPolls() {
   const db = getDb();
   const { getPollsParticipation } = await import('./pollsApi.js');
@@ -545,9 +622,11 @@ export const SYNC_RUNNERS = {
   negfeedback: syncNegFeedback,
   assignments: syncAssignments,
   skills: syncSkills,
+  inhouseskills: syncInHouseSkills,
   techcalls: syncTechCalls,
   'techcalls-trainer': syncTechCallsTrainer,
   tbt: syncTbt,
   shoddy: syncShoddy,
   polls: syncPolls,
+  mgrfeedback: syncMgrFeedback,
 };

@@ -21,11 +21,13 @@ const SCRIPTS = [
   'sync-negfeedback.mjs',
   'sync-assignments.mjs',
   'sync-skills.mjs',
+  'sync-inhouse-skills.mjs',
   'sync-techcalls.mjs',
   'sync-techcalls-trainer.mjs',
   'sync-tbt.mjs',
   'sync-shoddy.mjs',
   'sync-polls.mjs',
+  'sync-mgrfeedback.mjs',
 ];
 
 function run(script) {
