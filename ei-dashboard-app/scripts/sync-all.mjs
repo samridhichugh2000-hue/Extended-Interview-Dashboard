@@ -25,6 +25,7 @@ const SCRIPTS = [
   'sync-techcalls-trainer.mjs',
   'sync-tbt.mjs',
   'sync-shoddy.mjs',
+  'sync-polls.mjs',
 ];
 
 function run(script) {

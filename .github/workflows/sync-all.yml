@@ -95,3 +95,6 @@ jobs:
           KOENIG_SHODDY_API_PASSWORD: ${{ secrets.KOENIG_SHODDY_API_PASSWORD }}
           KOENIG_SHODDY_API_ROLE: ${{ secrets.KOENIG_SHODDY_API_ROLE }}
           KOENIG_SHODDY_API_KEY: ${{ secrets.KOENIG_SHODDY_API_KEY }}
+
+          POLLS_API_BASE_URL: ${{ secrets.POLLS_API_BASE_URL }}
+          POLLS_API_KEY: ${{ secrets.POLLS_API_KEY }}

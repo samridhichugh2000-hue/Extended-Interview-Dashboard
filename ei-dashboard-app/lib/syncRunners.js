@@ -508,6 +508,32 @@ export async function syncShoddy() {
   return { message: `Synced Shoddy data — ${updated} employees have at least one record (${unmatched} have none).` };
 }
 
+export async function syncPolls() {
+  const db = getDb();
+  const { getPollsParticipation } = await import('./pollsApi.js');
+
+  const allEmployees = await db.execute("SELECT id, email FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team') AND active = 1");
+
+  const statements = [];
+  let updated = 0;
+  let noEmail = 0;
+  let unmatched = 0;
+  for (const emp of allEmployees.rows) {
+    if (!emp.email) { noEmail++; continue; }
+    const result = await getPollsParticipation(emp.email);
+    if (!result) { unmatched++; continue; }
+
+    statements.push({ sql: 'UPDATE employees SET polls_participated = ? WHERE id = ?', args: [result.participated, emp.id] });
+    updated++;
+  }
+
+  // Same batching as syncSc/syncAssignments — one round trip for all
+  // employee updates instead of one per employee.
+  if (statements.length) await db.batch(statements, 'write');
+
+  return { message: `Synced poll participation for ${updated} employees (${unmatched} had no record on the polls dashboard, ${noEmail} had no email on file).` };
+}
+
 export const SYNC_RUNNERS = {
   koenig: syncKoenig,
   pip: syncPip,
@@ -523,4 +549,5 @@ export const SYNC_RUNNERS = {
   'techcalls-trainer': syncTechCallsTrainer,
   tbt: syncTbt,
   shoddy: syncShoddy,
+  polls: syncPolls,
 };

@@ -22,6 +22,7 @@
     "sync:techcalls-trainer": "node scripts/sync-techcalls-trainer.mjs",
     "sync:tbt": "node scripts/sync-tbt.mjs",
     "sync:shoddy": "node scripts/sync-shoddy.mjs",
+    "sync:polls": "node scripts/sync-polls.mjs",
     "sync:all": "node scripts/sync-all.mjs"
   },
   "dependencies": {
