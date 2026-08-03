@@ -22,7 +22,7 @@ export default function DashboardClient({ employees, responses, week, newJoiners
         <Topbar screen={screen} dept={dept} />
         <div style={{ padding: '26px 28px 60px', flex: 1 }}>
           {screen === 'overview' && <Overview employees={employees} newJoiners={newJoiners} deptCounts={deptCounts} go={go} setModal={setModal} />}
-          {screen === 'dept' && <Dept employees={employees} dept={dept} filter={filter} setFilter={setFilter} setModal={setModal} />}
+          {screen === 'dept' && <Dept key={dept} employees={employees} dept={dept} filter={filter} setFilter={setFilter} setModal={setModal} />}
           {screen === 'papip' && <PaPip employees={employees} filter={filter} setFilter={setFilter} setModal={setModal} />}
           {screen === 'worryindex' && <WorryIndex employees={employees} filter={filter} setFilter={setFilter} setModal={setModal} />}
           {screen === 'reports' && <Reports employees={employees} responses={responses} week={week} />}
@@ -172,6 +172,7 @@ function Overview({ employees, newJoiners, deptCounts, go, setModal }) {
 }
 
 function Dept({ employees, dept, filter, setFilter, setModal }) {
+  const [search, setSearch] = useState('');
   const [auditModal, setAuditModal] = useState(null);
   const [scModal, setScModal] = useState(null);
   const [examModal, setExamModal] = useState(null);
@@ -195,9 +196,11 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
   // either way, so both buckets — and Total — are active-only, and the two
   // buckets always add up to Total exactly.
   const activeDeptEmp = deptEmp.filter((e) => e.active !== false);
-  const filtered = filter === 'Confirmed' ? pool.filter((e) => e.active !== false && e.status === 'Confirmed')
+  const statusFiltered = filter === 'Confirmed' ? pool.filter((e) => e.active !== false && e.status === 'Confirmed')
     : filter === 'UnderWatch' ? pool.filter((e) => e.active !== false && e.status !== 'Confirmed')
     : pool;
+  const q = search.trim().toLowerCase();
+  const filtered = q ? statusFiltered.filter((e) => e.name.toLowerCase().includes(q) || String(e.id).toLowerCase().includes(q)) : statusFiltered;
   const statusCards = [
     { label: 'Total', count: activeDeptEmp.length, color: '#A855F7', filterVal: null, isTotal: true },
     { label: 'Not to be Monitored', count: activeDeptEmp.filter((e) => e.status === 'Confirmed').length, color: '#14B8A6', filterVal: 'Confirmed' },
@@ -313,7 +316,12 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
       </div>
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-        <div style={{ flex: 1, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#6E7488' }}>Search by name or employee ID…</div>
+        <input
+          value={search}
+          onChange={(ev) => setSearch(ev.target.value)}
+          placeholder="Search by name or employee ID…"
+          style={{ flex: 1, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#E4E6F0', outline: 'none' }}
+        />
         <div style={{ border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#8A90A8' }}>DOJ: 01 Feb 2026 → 27 Jul 2026</div>
         <div onClick={() => setFilter(null)} style={{ border: '1px solid rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.1)', color: '#A5A7FA', borderRadius: 10, padding: '10px 14px', fontSize: 13, cursor: 'pointer' }}>
           {filter ? `Filter: ${filter === 'Confirmed' ? 'Not to be Monitored' : filter === 'UnderWatch' ? 'Under Watch' : filter} ×` : 'No filter applied'}
