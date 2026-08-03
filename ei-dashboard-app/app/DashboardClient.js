@@ -785,7 +785,7 @@ function PaPip({ employees, filter, setFilter, setModal }) {
   const tabs = [['All Departments', 6, null], ['Sales', 3, 'Sales'], ['Trainer', 2, 'Trainer'], ['PT Team', 1, 'PT Team']].map(([label, count, d]) => ({
     label, count, val: d, active: filter === d || (!filter && !d),
   }));
-  const rows = employees.filter((e) => e.active !== false && e.status !== 'In Progress').filter((e) => !filter || e.team === filter).map(decorate);
+  const rows = employees.filter((e) => e.active !== false && e.status !== 'In Progress').filter((e) => !filter || e.team === filter).map(decorate).sort((a, b) => a.score - b.score);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
