@@ -121,20 +121,35 @@ export function feedbackRating(entry) {
   return null;
 }
 
+// `count` is only present on signals backed by a real occurrence count (not
+// a one-off boolean/threshold state) — computeSignalReport multiplies pts by
+// this count when the signal fires, so 3 negative audits score 3 × -2, not
+// a flat -2 regardless of how many happened. Signals without a `count`
+// (thresholds like "skills ≥ weeks since joining", or single per-week
+// booleans like "zero assignments" / "email overdue") stay flat — there's
+// no meaningful "how many times" for those.
+function belowSatisfactoryCount(e) {
+  return (e.mgrFeedbackDetails || []).filter((f) => feedbackRating(f) === 'below').length;
+}
+
 export const SIGNAL_DEFS = [
   // positive, live
   { label: 'Tech calls attended', teams: 'Sales', pts: 1, live: true,
     hasData: (e) => e.techCallsCount != null,
-    fires: (e) => e.techCallsCount > 0 },
+    fires: (e) => e.techCallsCount > 0,
+    count: (e) => e.techCallsCount },
   { label: 'Tech calls converted', teams: 'Trainer', pts: 1, live: true,
     hasData: (e) => e.techCallsConverted != null,
-    fires: (e) => e.techCallsConverted > 0 },
+    fires: (e) => e.techCallsConverted > 0,
+    count: (e) => e.techCallsConverted },
   { label: 'SCs raised', teams: 'Sales', pts: 1, live: true,
     hasData: (e) => e.scRaised != null,
-    fires: (e) => e.scRaised > 0 },
+    fires: (e) => e.scRaised > 0,
+    count: (e) => e.scRaised },
   { label: 'TBTs requested', teams: 'Trainer', pts: 1, live: true,
     hasData: (e) => e.tbtCount != null,
-    fires: (e) => e.tbtCount > 0 },
+    fires: (e) => e.tbtCount > 0,
+    count: (e) => e.tbtCount },
   // Sourced from Koenig's incident feed (lib/koenigShoddyApi.js) — despite the
   // "shoddy" naming on that module, its positive-nature records are HR
   // incidents logged in the NJ's favor, not specifically about catching
@@ -143,7 +158,10 @@ export const SIGNAL_DEFS = [
   // counted separately.
   { label: 'HR incidents (positive)', teams: 'All', pts: 1, live: true,
     hasData: (e) => e.shoddyPosCount != null,
-    fires: (e) => e.shoddyPosCount > 0 },
+    fires: (e) => e.shoddyPosCount > 0,
+    count: (e) => e.shoddyPosCount },
+  // Threshold, not an occurrence count — "how many times" doesn't apply, so
+  // this stays flat regardless of how far skillsCount clears the bar.
   { label: 'Skills count ≥ weeks since joining', teams: 'Trainer', pts: 1, live: true,
     hasData: (e) => e.skillsCount != null,
     fires: (e) => { const wks = Math.floor((e.tenure ?? 0) / 7); return wks > 0 && (e.skillsCount ?? 0) >= wks; } },
@@ -152,36 +170,47 @@ export const SIGNAL_DEFS = [
   // all — distinct from a confirmed 0 participation count.
   { label: 'Polls participated', teams: 'All', pts: 0.5, live: true,
     hasData: (e) => e.pollsParticipated != null,
-    fires: (e) => e.pollsParticipated > 0 },
+    fires: (e) => e.pollsParticipated > 0,
+    count: (e) => e.pollsParticipated },
   { label: 'Marking course inhouse', teams: 'Trainer', pts: 0.5, live: true,
     hasData: (e) => e.inHouseSkillsCount != null,
-    fires: (e) => e.inHouseSkillsCount > 0 },
+    fires: (e) => e.inHouseSkillsCount > 0,
+    count: (e) => e.inHouseSkillsCount },
   // positive, not yet tracked — no data source exists for these at all
   { label: 'Ideas for improvement', teams: 'All', pts: 1, live: false, hasData: () => false, fires: () => false },
   { label: 'Applied for KGT', teams: 'All', pts: 1, live: false, hasData: () => false, fires: () => false },
   // negative, live
   { label: 'Shoddy marked against NJ', teams: 'All', pts: -1, live: true,
     hasData: (e) => e.shoddyNegCount != null,
-    fires: (e) => e.shoddyNegCount > 0 },
+    fires: (e) => e.shoddyNegCount > 0,
+    count: (e) => e.shoddyNegCount },
+  // Boolean absence-of-any state, not a count — either they have zero
+  // assignments 2 weeks out or they don't.
   { label: 'Zero assignments 2 weeks ahead', teams: 'Trainer', pts: -1, live: true,
     hasData: (e) => e.assignmentsCount != null,
     fires: (e) => (e.tenure ?? 0) >= 14 && !e.assignmentsCount },
   { label: 'Failure in exam', teams: 'Trainer', pts: -2, live: true,
     hasData: (e) => e.examFail != null,
-    fires: (e) => e.examFail > 0 },
+    fires: (e) => e.examFail > 0,
+    count: (e) => e.examFail },
   { label: 'Negative feedback on delivery', teams: 'Trainer', pts: -2, live: true,
     hasData: (e) => e.negFeedback != null,
-    fires: (e) => e.negFeedback > 0 },
+    fires: (e) => e.negFeedback > 0,
+    count: (e) => e.negFeedback },
   { label: 'Negative enquiry audit', teams: 'Sales', pts: -2, live: true,
     hasData: (e) => e.negAudits != null,
-    fires: (e) => e.negAudits > 0 },
+    fires: (e) => e.negAudits > 0,
+    count: (e) => e.negAudits },
   // negative, not yet tracked
+  // Per-week boolean state (this week is either Overdue or it isn't), not an
+  // occurrence count.
   { label: 'Weekly progress email not received', teams: 'All', pts: -1, live: true,
     hasData: (e) => e.weeklyReportState != null,
     fires: (e) => e.weeklyReportState === 'Overdue' },
   { label: 'Manager feedback below satisfactory', teams: 'All', pts: -1, live: true,
     hasData: (e) => e.mgrFeedbackCount != null,
-    fires: (e) => (e.mgrFeedbackDetails || []).some((f) => feedbackRating(f) === 'below') },
+    fires: (e) => belowSatisfactoryCount(e) > 0,
+    count: belowSatisfactoryCount },
   { label: 'Not replying to HR emails', teams: 'All', pts: -1, live: false, hasData: () => false, fires: () => false },
   { label: 'Audio / video not OK in meetings', teams: 'All', pts: -1, live: false, hasData: () => false, fires: () => false },
   { label: 'Weekly email shows less progress', teams: 'All', pts: -2, live: false, hasData: () => false, fires: () => false },
@@ -215,7 +244,12 @@ export function computeSignalReport(e) {
     .filter((d) => appliesToTeam(d.teams, e.team))
     .map((d) => {
       const status = !d.live ? 'not-tracked' : !d.hasData(e) ? 'no-data' : d.fires(e) ? 'fired' : 'clear';
-      return { label: d.label, pts: d.pts, ptsStr: fmtPts(d.pts), weight: weightClass(d.pts), status };
+      // Occurrence count multiplies the per-unit pts (3 negative audits score
+      // 3 × -2, not a flat -2) — weight classification stays keyed to the
+      // per-unit severity in d.pts, not the multiplied total.
+      const count = status === 'fired' && d.count ? d.count(e) : null;
+      const pts = count ? d.pts * count : d.pts;
+      return { label: d.label, pts, ptsStr: fmtPts(pts), weight: weightClass(d.pts), status, count };
     });
 }
 // Only fired signals feed the actual score.

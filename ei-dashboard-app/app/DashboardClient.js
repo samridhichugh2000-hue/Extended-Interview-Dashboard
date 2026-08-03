@@ -1150,6 +1150,9 @@ function EmployeeModal({ emp, onClose }) {
                     <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 12, opacity: notSynced ? 0.55 : 1 }}>
                       <span style={{ flex: 1, fontSize: 13, color: notSynced ? '#6E7488' : '#FFFFFF', display: 'flex', alignItems: 'center', gap: 8 }}>
                         {s.label}
+                        {s.status === 'fired' && s.count > 1 && (
+                          <span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>×{s.count}</span>
+                        )}
                         {s.status !== 'fired' && (
                           <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase', flex: 'none' }}>
                             {s.status === 'not-tracked' ? 'not tracked' : s.status === 'no-data' ? 'no data traced' : 'no incident'}
