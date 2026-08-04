@@ -947,8 +947,9 @@ function Reports({ employees, responses, week }) {
   const [expanded, setExpanded] = useState(null);
   const [emailPreview, setEmailPreview] = useState(false);
   const [toast, setToast] = useState(null);
-  const [report15, setReport15] = useState(null); // dept name or null
+  const [report15Preview, setReport15Preview] = useState(false);
   const [sending, setSending] = useState(false);
+  const [sending15, setSending15] = useState(false);
 
   const flashToast = (msg) => {
     setToast(msg);
@@ -970,6 +971,21 @@ function Reports({ employees, responses, week }) {
     }
   };
 
+  const send15Now = async () => {
+    if (sending15) return;
+    if (!window.confirm('Send the 15-Day Report (Sales, Trainer, PT Team) now? This sends real email.')) return;
+    setSending15(true);
+    try {
+      const res = await fetch('/api/report15/send', { method: 'POST' });
+      const json = await res.json();
+      flashToast(json.ok ? json.message : `Send failed: ${json.error}`);
+    } catch (err) {
+      flashToast(`Send failed: ${err.message}`);
+    } finally {
+      setSending15(false);
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18, position: 'relative' }}>
       {toast && (
@@ -988,17 +1004,16 @@ function Reports({ employees, responses, week }) {
         </div>
         <div style={{ border: '1px solid rgba(20,184,166,0.25)', background: 'linear-gradient(150deg,rgba(20,184,166,0.1),transparent)', borderRadius: 16, padding: 22 }}>
           <div className="disp" style={{ fontSize: 16, fontWeight: 600 }}>15-Day Report</div>
-          <div style={{ fontSize: 13, color: '#8A90A8', marginTop: 6, lineHeight: 1.5 }}>On-demand snapshot per department: status movement, new PA/PIP cases, worry score deltas since last run.</div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
-            {['Sales', 'Trainer', 'PT Team'].map((d) => (
-              <span key={d} onClick={() => setReport15(d)} className="hoverbtn" style={{ border: '1px solid rgba(20,184,166,0.45)', color: '#5EEAD4', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, cursor: 'pointer' }}>Generate · {d}</span>
-            ))}
+          <div style={{ fontSize: 13, color: '#8A90A8', marginTop: 6, lineHeight: 1.5 }}>Live Worry Index snapshot across Sales, Trainer and PT Team — every active NJ, full parameter breakdown, sent as one email.</div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+            <span onClick={() => setReport15Preview(true)} className="hoverbtn" style={{ border: '1px solid rgba(20,184,166,0.45)', color: '#5EEAD4', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, cursor: 'pointer' }}>Preview report</span>
+            <span onClick={send15Now} className="hoverbtn" style={{ border: '1px solid rgba(255,255,255,0.12)', color: '#C7CBDA', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, cursor: sending15 ? 'default' : 'pointer', opacity: sending15 ? 0.6 : 1 }}>{sending15 ? 'Sending…' : 'Send now'}</span>
           </div>
         </div>
       </div>
 
       {emailPreview && <EmailPreviewModal onClose={() => setEmailPreview(false)} week={week} />}
-      {report15 && <Report15Modal employees={employees} dept={report15} onClose={() => setReport15(null)} />}
+      {report15Preview && <Report15PreviewModal onClose={() => setReport15Preview(false)} />}
       <div style={{ ...card, overflow: 'hidden' }}>
         <div style={{ padding: '15px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
           <span className="disp" style={{ fontSize: 15, fontWeight: 600 }}>Weekly response tracker · {week}</span>
@@ -1073,48 +1088,18 @@ function EmailPreviewModal({ onClose, week }) {
   );
 }
 
-function Report15Modal({ employees, dept, onClose }) {
-  // Reports are active-employee-only, and use the same Total / Not to be
-  // Monitored / Under Watch definition as the department screens — an NJ is
-  // under watch until their status is explicitly 'Confirmed', not based on
-  // score. See Dept() in this file for the same rule.
-  const emp = employees.filter((e) => e.team === dept && e.active !== false).map(decorate);
-  const cards = [
-    { label: 'Total', count: emp.length, color: '#A855F7' },
-    { label: 'Not to be Monitored', count: emp.filter((e) => e.status === 'Confirmed').length, color: '#14B8A6' },
-    { label: 'Under Watch', count: emp.filter((e) => e.status !== 'Confirmed').length, color: '#8B8CF6' },
-  ];
+function Report15PreviewModal({ onClose }) {
+  // Renders /api/report15/preview in an iframe — the exact HTML the real
+  // send would email, from the same buildReport15Html() call, so this can
+  // never drift from what actually gets sent.
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 680, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
-        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span className="disp" style={{ fontSize: 17, fontWeight: 600 }}>15-Day Report — {dept}</span>
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, zIndex: 60 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 1220, height: '100%', maxHeight: '92vh', display: 'flex', flexDirection: 'column', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)', overflow: 'hidden' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flex: 'none' }}>
+          <span className="disp" style={{ fontSize: 16, fontWeight: 600 }}>15-Day Report — preview</span>
           <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15 }}>×</div>
         </div>
-        <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 18 }}>
-          <div style={{ fontSize: 12.5, color: '#8A90A8' }}>Snapshot generated for 13 Jul 2026 → 27 Jul 2026.</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
-            {cards.map(({ label, count, color }) => (
-              <div key={label} style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.025)', borderRadius: 12, padding: '12px 13px' }}>
-                <div className="disp" style={{ fontSize: 22, fontWeight: 600, color, letterSpacing: '-0.02em' }}>{count}</div>
-                <div style={{ fontSize: 10.5, color: '#A8AEC4', marginTop: 3, lineHeight: 1.3 }}>{label}</div>
-              </div>
-            ))}
-          </div>
-          <div>
-            <div className="mono" style={{ fontSize: 10, letterSpacing: '.12em', color: '#5C6178', textTransform: 'uppercase', marginBottom: 10 }}>Worry score movement</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {emp.map((e) => (
-                <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
-                  <span>{e.name}</span>
-                  <span style={{ fontSize: 12, color: '#8A90A8', flex: 1, textAlign: 'right', marginRight: 12 }}>{e.status}</span>
-                  <span className="mono" style={{ fontWeight: 600, color: e.bandColor, width: 50, textAlign: 'right' }}>{e.scoreStr}</span>
-                </div>
-              ))}
-              {!emp.length && <div style={{ fontSize: 12.5, color: '#6E7488' }}>No active employees in this department.</div>}
-            </div>
-          </div>
-        </div>
+        <iframe src="/api/report15/preview" style={{ flex: 1, border: 'none', background: '#fff' }} title="15-Day Report preview" />
       </div>
     </div>
   );
