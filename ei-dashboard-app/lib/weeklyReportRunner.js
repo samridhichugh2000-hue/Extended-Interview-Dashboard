@@ -16,6 +16,7 @@ export function initialEmailHtml({ name, q1, q2, link }) {
         <li style="margin-bottom:8px;">${q2}</li>
       </ol>
       <p>Your responses will help HR track your progress, understand your current priorities, and identify any support required during your initial months with the organization.</p>
+      <p style="color:#B91C1C;font-weight:600;">Please note: failure to respond to this email will lead to a shoddy mark against you.</p>
       <p>Thank you for your time and participation.</p>
       <p>Best regards,<br/>EI Dashboard</p>
       <p><a href="${link}" style="display:inline-block;background:#6366F1;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;">Submit your answers</a></p>
