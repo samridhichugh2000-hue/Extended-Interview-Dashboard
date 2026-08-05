@@ -134,7 +134,7 @@ function belowSatisfactoryCount(e) {
 
 export const SIGNAL_DEFS = [
   // positive, live
-  { label: 'Tech calls attended', teams: 'Sales', pts: 1, live: true,
+  { label: 'Tech calls', teams: 'Sales', pts: 1, live: true,
     hasData: (e) => e.techCallsCount != null,
     fires: (e) => e.techCallsCount > 0,
     count: (e) => e.techCallsCount },
@@ -160,15 +160,22 @@ export const SIGNAL_DEFS = [
     hasData: (e) => e.shoddyPosCount != null,
     fires: (e) => e.shoddyPosCount > 0,
     count: (e) => e.shoddyPosCount },
-  // Threshold, not an occurrence count — "how many times" doesn't apply, so
-  // this stays flat regardless of how far skillsCount clears the bar.
-  { label: 'Skills count ≥ weeks since joining', teams: 'Trainer', pts: 1, live: true,
+  // Penalty scales with the shortfall — -0.5 for every week skillsCount
+  // trails behind weeks since joining.
+  { label: 'Skills count < weeks since joining', teams: 'Trainer', pts: -0.5, live: true,
     hasData: (e) => e.skillsCount != null,
-    fires: (e) => { const wks = Math.floor((e.tenure ?? 0) / 7); return wks > 0 && (e.skillsCount ?? 0) >= wks; } },
+    fires: (e) => { const wks = Math.floor((e.tenure ?? 0) / 7); return wks > 0 && (e.skillsCount ?? 0) < wks; },
+    count: (e) => Math.floor((e.tenure ?? 0) / 7) - (e.skillsCount ?? 0) },
+  // Mirror bonus — +0.5 for every week skillsCount leads weeks since
+  // joining. Equal counts fire neither signal.
+  { label: 'Skills count > weeks since joining', teams: 'Trainer', pts: 0.5, live: true,
+    hasData: (e) => e.skillsCount != null,
+    fires: (e) => { const wks = Math.floor((e.tenure ?? 0) / 7); return wks > 0 && (e.skillsCount ?? 0) > wks; },
+    count: (e) => (e.skillsCount ?? 0) - Math.floor((e.tenure ?? 0) / 7) },
   // Sourced from the standalone Polls Dashboard API (lib/pollsApi.js), matched
   // by email. Null means that email has no record on the polls dashboard at
   // all — distinct from a confirmed 0 participation count.
-  { label: 'Polls participated', teams: 'All', pts: 0.5, live: true,
+  { label: 'Polls participated', teams: 'All', pts: 0.1, live: true,
     hasData: (e) => e.pollsParticipated != null,
     fires: (e) => e.pollsParticipated > 0,
     count: (e) => e.pollsParticipated },
@@ -193,6 +200,10 @@ export const SIGNAL_DEFS = [
     hasData: (e) => e.examFail != null,
     fires: (e) => e.examFail > 0,
     count: (e) => e.examFail },
+  { label: 'Passed exam', teams: 'Trainer', pts: 1, live: true,
+    hasData: (e) => e.examPass != null,
+    fires: (e) => e.examPass > 0,
+    count: (e) => e.examPass },
   { label: 'Negative feedback on delivery', teams: 'Trainer', pts: -2, live: true,
     hasData: (e) => e.negFeedback != null,
     fires: (e) => e.negFeedback > 0,
@@ -248,7 +259,7 @@ export function computeSignalReport(e) {
       // 3 × -2, not a flat -2) — weight classification stays keyed to the
       // per-unit severity in d.pts, not the multiplied total.
       const count = status === 'fired' && d.count ? d.count(e) : null;
-      const pts = count ? d.pts * count : d.pts;
+      const pts = count ? Math.round(d.pts * count * 100) / 100 : d.pts;
       return { label: d.label, pts, ptsStr: fmtPts(pts), weight: weightClass(d.pts), status, count };
     });
 }

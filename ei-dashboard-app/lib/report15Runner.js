@@ -43,8 +43,13 @@ function th(label, { right, } = {}) {
   return `<th style="padding:8px;color:#fff;font-size:10.5px;${align}">${label}</th>`;
 }
 
-function weightCell(weightMap, label) {
+function weightCell(weightMap, label, label2) {
   if (!label) return `<td style="padding:5px 8px;background:${WORRY_BG};border-bottom:2px solid #22221E;"></td>`;
+  if (label2) {
+    const pts = weightMap.get(label);
+    const pts2 = weightMap.get(label2);
+    return `<td style="padding:5px 8px;background:${WORRY_BG};border-bottom:2px solid #22221E;font-weight:700;font-size:11.5px;text-align:right;"><span style="color:#B23A2E;">${fmtPts(pts)}</span>/<span style="color:#2F6E5E;">${fmtPts(pts2)}</span></td>`;
+  }
   const pts = weightMap.get(label);
   const color = pts > 0 ? '#2F6E5E' : '#B23A2E';
   return `<td style="padding:5px 8px;background:${WORRY_BG};border-bottom:2px solid #22221E;font-weight:700;font-size:11.5px;color:${color};text-align:right;">${fmtPts(pts)}</td>`;
@@ -97,26 +102,26 @@ export async function buildReport15Html(employees) {
   const salesHead = [
     th('Emp ID'), th('Name'), th('DOJ'), th('Tenure', { right: true }),
     th('Tech calls', { right: true }), th('SCs raised', { right: true }), th('Neg audits', { right: true }),
-    th('Shoddy (neg)', { right: true }), th('Shoddy (pos)', { right: true }), th('Polls', { right: true }),
+    th('Shoddy (neg)', { right: true }), th('Shoddy (pos)', { right: true }), th('Polls participated', { right: true }),
     th('Worry Index', { right: true }), th('Calculation'), th('Status'),
   ].join('');
   const salesWeights = [
     weightCell(weightMap), weightCell(weightMap), weightCell(weightMap), weightCell(weightMap),
-    weightCell(weightMap, 'Tech calls attended'), weightCell(weightMap, 'SCs raised'), weightCell(weightMap, 'Negative enquiry audit'),
+    weightCell(weightMap, 'Tech calls'), weightCell(weightMap, 'SCs raised'), weightCell(weightMap, 'Negative enquiry audit'),
     weightCell(weightMap, 'Shoddy marked against NJ'), weightCell(weightMap, 'HR incidents (positive)'), weightCell(weightMap, 'Polls participated'),
     weightCell(weightMap), weightCell(weightMap), weightCell(weightMap),
   ].join('');
 
   const trainerHead = [
     th('Emp ID'), th('Name'), th('DOJ'), th('Tenure', { right: true }),
-    th('Exam fail', { right: true }), th('Neg FB', { right: true }), th('Assign', { right: true }), th('Skills', { right: true }),
-    th('Inhouse', { right: true }), th('Tech conv', { right: true }), th('TBTs requested', { right: true }), th('Shoddy (neg)', { right: true }),
-    th('Shoddy (pos)', { right: true }), th('Polls', { right: true }), th('Worry Index', { right: true }), th('Calculation'), th('Status'),
+    th('Exams failed', { right: true }), th('Negative Feedback', { right: true }), th('Assignments (0 in 1 month)', { right: true }), th('Skills Marked', { right: true }),
+    th('Course marked inhouse', { right: true }), th('Tech Calls converted', { right: true }), th('TBTs requested', { right: true }), th('Shoddy (neg)', { right: true }),
+    th('Shoddy (pos)', { right: true }), th('Polls participated', { right: true }), th('Worry Index', { right: true }), th('Calculation'), th('Status'),
   ].join('');
   const trainerWeights = [
     weightCell(weightMap), weightCell(weightMap), weightCell(weightMap), weightCell(weightMap),
     weightCell(weightMap, 'Failure in exam'), weightCell(weightMap, 'Negative feedback on delivery'),
-    weightCell(weightMap, 'Zero assignments 2 weeks ahead'), weightCell(weightMap, 'Skills count ≥ weeks since joining'),
+    weightCell(weightMap, 'Zero assignments 2 weeks ahead'), weightCell(weightMap, 'Skills count < weeks since joining', 'Skills count > weeks since joining'),
     weightCell(weightMap, 'Marking course inhouse'), weightCell(weightMap, 'Tech calls converted'), weightCell(weightMap, 'TBTs requested'),
     weightCell(weightMap, 'Shoddy marked against NJ'), weightCell(weightMap, 'HR incidents (positive)'), weightCell(weightMap, 'Polls participated'),
     weightCell(weightMap), weightCell(weightMap), weightCell(weightMap),
@@ -124,7 +129,7 @@ export async function buildReport15Html(employees) {
 
   const ptHead = [
     th('Emp ID'), th('Name'), th('DOJ'), th('Tenure', { right: true }),
-    th('Shoddy (neg)', { right: true }), th('Shoddy (pos)', { right: true }), th('Polls', { right: true }),
+    th('Shoddy (neg)', { right: true }), th('Shoddy (pos)', { right: true }), th('Polls participated', { right: true }),
     th('Worry Index', { right: true }), th('Calculation'), th('Status'),
   ].join('');
   const ptWeights = [
