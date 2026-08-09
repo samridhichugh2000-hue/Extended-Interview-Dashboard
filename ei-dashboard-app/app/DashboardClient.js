@@ -996,7 +996,7 @@ function Reports({ employees, responses, week }) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <div style={{ border: '1px solid rgba(99,102,241,0.25)', background: 'linear-gradient(150deg,rgba(99,102,241,0.12),transparent)', borderRadius: 16, padding: 22 }}>
           <div className="disp" style={{ fontSize: 16, fontWeight: 600 }}>Weekly Report</div>
-          <div style={{ fontSize: 13, color: '#8A90A8', marginTop: 6, lineHeight: 1.5 }}>Sends 2 progress questions to every active NJ who hasn't received one yet this week ({week}), with a link to submit answers. No automatic schedule yet — trigger manually below.</div>
+          <div style={{ fontSize: 13, color: '#8A90A8', marginTop: 6, lineHeight: 1.5 }}>Sends 2 progress questions to every active NJ who hasn't received one yet this week ({week}), with a link to submit answers, Cc'd to their manager. Runs automatically daily at 9AM IST, or trigger manually below.</div>
           <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
             <span onClick={() => setEmailPreview(true)} className="hoverbtn" style={{ border: '1px solid rgba(99,102,241,0.45)', color: '#A5A7FA', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, cursor: 'pointer' }}>Preview email</span>
             <span onClick={sendNow} className="hoverbtn" style={{ border: '1px solid rgba(255,255,255,0.12)', color: '#C7CBDA', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, cursor: sending ? 'default' : 'pointer', opacity: sending ? 0.6 : 1 }}>{sending ? 'Sending…' : 'Send now'}</span>

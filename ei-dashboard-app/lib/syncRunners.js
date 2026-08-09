@@ -640,4 +640,8 @@ export const SYNC_RUNNERS = {
     const { sendWeeklyReports } = await import('./weeklyReportRunner.js');
     return sendWeeklyReports();
   },
+  weeklyresponsereport: async () => {
+    const { sendWeeklyResponseReport } = await import('./weeklyResponseReportRunner.js');
+    return sendWeeklyResponseReport();
+  },
 };

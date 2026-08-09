@@ -3,6 +3,10 @@
     {
       "path": "/api/sync/weeklyreport",
       "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/sync/weeklyresponsereport",
+      "schedule": "30 6 * * 2"
     }
   ]
 }
