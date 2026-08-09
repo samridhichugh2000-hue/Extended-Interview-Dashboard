@@ -1,6 +1,7 @@
 import { getDb } from './db';
 import { computeSignalReport, computeWorryScore, trendNoteFor } from './data';
 import { getIsoWeek, isWeekOver } from './weekUtils';
+import { getManagerEmail } from './managerDirectory';
 
 // A 'Pending' response for a week that has fully passed reads as 'Overdue' —
 // derived live at read time rather than stored, same "derive, don't
@@ -48,6 +49,7 @@ export async function getEmployees() {
       email: e.email,
       team: e.team,
       manager: e.manager,
+      managerEmail: getManagerEmail(e.manager),
       doj: e.doj,
       tenure: e.tenure_days,
       status: e.status,
