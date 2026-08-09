@@ -38,10 +38,18 @@ async function getGraphToken({ forceRefresh = false } = {}) {
 }
 
 // Sends as SENDER_EMAIL's mailbox via application permissions (Mail.Send).
-// `to`/`cc` may be a single address or an array.
-export async function sendMail({ to, cc, subject, html }) {
+// `to`/`cc` may be a single address or an array. `attachments`, if given, is
+// [{ name, contentType, content }] with `content` already base64-encoded —
+// Graph's fileAttachment shape wants base64 in contentBytes directly.
+export async function sendMail({ to, cc, subject, html, attachments }) {
   const toList = (Array.isArray(to) ? to : [to]).map((address) => ({ emailAddress: { address } }));
   const ccList = cc ? (Array.isArray(cc) ? cc : [cc]).map((address) => ({ emailAddress: { address } })) : [];
+  const attachmentList = (attachments || []).map((a) => ({
+    '@odata.type': '#microsoft.graph.fileAttachment',
+    name: a.name,
+    contentType: a.contentType,
+    contentBytes: a.content,
+  }));
 
   const call = async (token) => {
     const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(SENDER_EMAIL)}/sendMail`, {
@@ -53,6 +61,7 @@ export async function sendMail({ to, cc, subject, html }) {
           body: { contentType: 'HTML', content: html },
           toRecipients: toList,
           ccRecipients: ccList,
+          attachments: attachmentList,
         },
         saveToSentItems: true,
       }),
