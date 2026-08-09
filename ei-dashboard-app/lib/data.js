@@ -1,3 +1,5 @@
+import { getIsoWeek, isPastTuesdayCheckIn } from './weekUtils';
+
 export const C = { rose: '#F43F5E', amber: '#F59E0B', indigo: '#8B8CF6', teal: '#14B8A6', purple: '#A855F7' };
 
 export const STATUS = {
@@ -213,11 +215,14 @@ export const SIGNAL_DEFS = [
     fires: (e) => e.negAudits > 0,
     count: (e) => e.negAudits },
   // negative, not yet tracked
-  // Per-week boolean state (this week is either Overdue or it isn't), not an
-  // occurrence count.
+  // Per-week boolean state (not received vs received), not an occurrence
+  // count. Fires from Tuesday 12PM IST onward — the same cutoff the weekly
+  // response digest report uses — rather than waiting for the full week
+  // (isWeekOver/'Overdue') to close out, so a non-response starts counting
+  // against the score days before the week actually ends.
   { label: 'Weekly progress email not received', teams: 'All', pts: -1, live: true,
     hasData: (e) => e.weeklyReportState != null,
-    fires: (e) => e.weeklyReportState === 'Overdue' },
+    fires: (e) => e.weeklyReportState !== 'Received' && isPastTuesdayCheckIn(getIsoWeek(new Date())) },
   { label: 'Manager feedback below satisfactory', teams: 'All', pts: -1, live: true,
     hasData: (e) => e.mgrFeedbackCount != null,
     fires: (e) => belowSatisfactoryCount(e) > 0,
