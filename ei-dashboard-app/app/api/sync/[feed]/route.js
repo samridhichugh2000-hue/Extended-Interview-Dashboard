@@ -12,8 +12,16 @@ export const maxDuration = 60;
 async function handle(request, { params }) {
   const { feed } = params;
 
+  // Two valid callers: cron-job.org (external scheduler, sends x-sync-secret
+  // or ?secret=) and Vercel Cron (sends `Authorization: Bearer <CRON_SECRET>`
+  // automatically whenever a CRON_SECRET env var is set — see
+  // https://vercel.com/docs/cron-jobs/manage-cron-jobs#securing-cron-jobs).
   const provided = request.headers.get('x-sync-secret') || new URL(request.url).searchParams.get('secret');
-  if (!process.env.SYNC_TRIGGER_SECRET || provided !== process.env.SYNC_TRIGGER_SECRET) {
+  const bearer = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
+  const authorized =
+    (process.env.SYNC_TRIGGER_SECRET && provided === process.env.SYNC_TRIGGER_SECRET) ||
+    (process.env.CRON_SECRET && bearer === process.env.CRON_SECRET);
+  if (!authorized) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

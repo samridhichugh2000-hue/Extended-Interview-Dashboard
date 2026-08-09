@@ -1064,6 +1064,7 @@ function EmailPreviewModal({ onClose, week }) {
         <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ fontSize: 12, color: '#6E7488' }}>
             <div><span className="mono">From:</span> samridhi.chugh@koenig-solutions.com</div>
+            <div><span className="mono">Cc:</span> [Manager email]</div>
             <div><span className="mono">Subject:</span> Weekly NJ Check-In - [Name]</div>
           </div>
           <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 12, padding: 18, background: 'rgba(255,255,255,0.02)', fontSize: 13.5, color: '#C7CBDA', lineHeight: 1.6 }}>
@@ -1078,10 +1079,11 @@ function EmailPreviewModal({ onClose, week }) {
               </div>
             ))}
             <p style={{ marginBottom: 12 }}>Your responses will help HR track your progress, understand your current priorities, and identify any support required during your initial months with the organization.</p>
+            <p style={{ marginBottom: 12, color: '#F87171', fontWeight: 600 }}>Please note: non-response to this email will lead to a Shoddy by HR.</p>
             <p style={{ marginBottom: 12 }}>Thank you for your time and participation.</p>
             <p>Best regards,<br />EI Dashboard</p>
           </div>
-          <div style={{ fontSize: 11.5, color: '#6E7488' }}>Sent per-employee with their own team's questions and a unique submission link. This is the {week} template — no automatic schedule yet, sent via "Send now" above.</div>
+          <div style={{ fontSize: 11.5, color: '#6E7488' }}>Sent per-employee with their own team's questions and a unique submission link, Cc'd to their manager. Runs automatically daily at 9AM IST, or via "Send now" above.</div>
         </div>
       </div>
     </div>

@@ -16,7 +16,7 @@ export function initialEmailHtml({ name, q1, q2, link }) {
         <li style="margin-bottom:8px;">${q2}</li>
       </ol>
       <p>Your responses will help HR track your progress, understand your current priorities, and identify any support required during your initial months with the organization.</p>
-      <p style="color:#B91C1C;font-weight:600;">Please note: failure to respond to this email will lead to a shoddy mark against you.</p>
+      <p style="color:#B91C1C;font-weight:600;">Please note: non-response to this email will lead to a Shoddy by HR.</p>
       <p>Thank you for your time and participation.</p>
       <p>Best regards,<br/>EI Dashboard</p>
       <p><a href="${link}" style="display:inline-block;background:#6366F1;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;">Submit your answers</a></p>
@@ -32,12 +32,13 @@ export async function sendWeeklyReports() {
   const { NJ_QUESTIONS } = await import('./data.js');
   const { sendMail } = await import('./graphMailer.js');
   const { getIsoWeek } = await import('./weekUtils.js');
+  const { getManagerEmail } = await import('./managerDirectory.js');
 
   const week = getIsoWeek(new Date());
   const questionsByTeam = new Map(NJ_QUESTIONS.map((q) => [q.team, q]));
   const baseUrl = process.env.APP_BASE_URL;
 
-  const employees = await db.execute("SELECT id, name, email, team FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team') AND active = 1");
+  const employees = await db.execute("SELECT id, name, email, team, manager FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team') AND active = 1");
 
   const already = await db.execute({ sql: 'SELECT employee_id FROM weekly_responses WHERE week = ?', args: [week] });
   const alreadySent = new Set(already.rows.map((r) => r.employee_id));
@@ -63,6 +64,7 @@ export async function sendWeeklyReports() {
 
     await sendMail({
       to: emp.email,
+      cc: getManagerEmail(emp.manager),
       subject: `Weekly NJ Check-In - ${emp.name}`,
       html: initialEmailHtml({ name: emp.name, q1: q.q1, q2: q.q2, link }),
     });
