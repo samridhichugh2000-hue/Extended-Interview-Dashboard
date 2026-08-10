@@ -25,7 +25,7 @@ export async function POST(request, { params }) {
 
   const db = getDb();
   const existing = await db.execute({
-    sql: `SELECT wr.*, e.name, e.email FROM weekly_responses wr
+    sql: `SELECT wr.*, e.name, e.email, e.manager FROM weekly_responses wr
           JOIN employees e ON e.id = wr.employee_id
           WHERE wr.token = ?`,
     args: [token],
@@ -48,9 +48,10 @@ export async function POST(request, { params }) {
   if (row.email) {
     try {
       const { sendMail } = await import('../../../../lib/graphMailer');
+      const { getManagerEmail } = await import('../../../../lib/managerDirectory');
       await sendMail({
         to: row.email,
-        cc: process.env.GRAPH_SENDER_EMAIL,
+        cc: getManagerEmail(row.manager),
         subject: `Your response has been recorded — ${row.week}`,
         html: confirmationEmailHtml({ name: row.name, week: row.week, q1: row.q1, a1, q2: row.q2, a2 }),
       });
