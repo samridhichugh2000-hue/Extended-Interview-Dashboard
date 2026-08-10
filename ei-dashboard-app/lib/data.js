@@ -194,8 +194,9 @@ export const SIGNAL_DEFS = [
     fires: (e) => e.shoddyNegCount > 0,
     count: (e) => e.shoddyNegCount },
   // Boolean absence-of-any state, not a count — either they have zero
-  // assignments 2 weeks out or they don't.
-  { label: 'Zero assignments 2 weeks ahead', teams: 'Trainer', pts: -1, live: true,
+  // assignments for every week since joining (including future weeks) or
+  // they don't.
+  { label: 'Zero assignments since joining, including future', teams: 'Trainer', pts: -1, live: true,
     hasData: (e) => e.assignmentsCount != null,
     fires: (e) => (e.tenure ?? 0) >= 14 && !e.assignmentsCount },
   { label: 'Failure in exam', teams: 'Trainer', pts: -5, live: true,

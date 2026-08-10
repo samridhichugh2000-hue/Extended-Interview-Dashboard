@@ -114,14 +114,14 @@ export async function buildReport15Html(employees) {
 
   const trainerHead = [
     th('Emp ID'), th('Name'), th('DOJ'), th('Tenure', { right: true }),
-    th('Exams failed', { right: true }), th('Negative Feedback', { right: true }), th('Assignments (0 in 1 month)', { right: true }), th('Skills Marked', { right: true }),
+    th('Exams failed', { right: true }), th('Negative Feedback', { right: true }), th('Assignments (for every week since joining and without assignments, including future)', { right: true }), th('Skills Marked', { right: true }),
     th('Course marked inhouse', { right: true }), th('Tech Calls converted', { right: true }), th('TBTs requested', { right: true }), th('Shoddy (neg)', { right: true }),
     th('Shoddy (pos)', { right: true }), th('Polls participated', { right: true }), th('Worry Index', { right: true }), th('Calculation'), th('Status'),
   ].join('');
   const trainerWeights = [
     weightCell(weightMap), weightCell(weightMap), weightCell(weightMap), weightCell(weightMap),
     weightCell(weightMap, 'Failure in exam'), weightCell(weightMap, 'Negative feedback on delivery'),
-    weightCell(weightMap, 'Zero assignments 2 weeks ahead'), weightCell(weightMap, 'Skills count < weeks since joining', 'Skills count > weeks since joining'),
+    weightCell(weightMap, 'Zero assignments since joining, including future'), weightCell(weightMap, 'Skills count < weeks since joining', 'Skills count > weeks since joining'),
     weightCell(weightMap, 'Marking course inhouse'), weightCell(weightMap, 'Tech calls converted'), weightCell(weightMap, 'TBTs requested'),
     weightCell(weightMap, 'Shoddy marked against NJ'), weightCell(weightMap, 'HR incidents (positive)'), weightCell(weightMap, 'Polls participated'),
     weightCell(weightMap), weightCell(weightMap), weightCell(weightMap),
