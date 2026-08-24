@@ -51,9 +51,15 @@ function normalizeEmpId(raw) {
 
 const { from, to } = sixMonthsAgo();
 const rawNewJoiners = await getNewJoiners(from, to);
+const skipped = rawNewJoiners.filter((nj) => nj.section === null || !nj.empId);
 const newJoiners = rawNewJoiners
   .filter((nj) => nj.section !== null && nj.empId)
   .map((nj) => ({ ...nj, empId: normalizeEmpId(nj.empId) }));
+
+if (skipped.length) {
+  console.warn(`Skipped ${skipped.length} of ${rawNewJoiners.length} rows from Koenig (missing section and/or empId):`);
+  for (const nj of skipped) console.warn('  ', nj.empId ?? '(no empId)', nj.name ?? '(no name)', 'section:', nj.section);
+}
 
 if (!newJoiners.length) {
   console.error('Koenig API returned zero usable new joiners — aborting without touching Turso.');
