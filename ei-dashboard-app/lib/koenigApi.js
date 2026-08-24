@@ -84,7 +84,7 @@ function isActive(dor, lwd) {
 // sections. "Blue Collared" is excluded entirely — it isn't tracked here.
 export function classifySection(department) {
   if (department === 'Blue Collared') return null;
-  if (department === 'Sales') return 'Sales';
+  if (department === 'Sales' || department === 'Sales and Operations') return 'Sales';
   if (department === 'Training Delivery Inhouse') return 'Trainer';
   return 'PT Team';
 }
