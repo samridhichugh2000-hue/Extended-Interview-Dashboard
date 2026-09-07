@@ -22,19 +22,29 @@ function normalizeEmpId(raw) {
   return 'EMP' + (Number.isFinite(n) ? n : String(raw).trim());
 }
 
-function sixMonthsAgo() {
+const FETCH_FROM = '2015-01-01';
+const NJ_TRACKING_DAYS = 182; // ~6 months — only genuinely new joiners get inserted
+
+function fetchRange() {
   const to = new Date();
-  const from = new Date(to);
-  from.setMonth(from.getMonth() - 6);
   const fmt = (d) => d.toISOString().slice(0, 10);
-  return { from: fmt(from), to: fmt(to) };
+  return { from: FETCH_FROM, to: fmt(to) };
 }
 
+// Koenig's `active` flag is only returned for rows inside the from/to range
+// we query with — it isn't exposed independent of that window. A rolling
+// "last 6 months" window meant anyone who aged past 6 months tenure dropped
+// out of every future pull, freezing their active/tenure_days at the last
+// value we ever saw, even after they resigned. Fetching back to FETCH_FROM
+// keeps already-known rows getting fresh active/tenure_days updates for as
+// long as Koenig reports on them; new INSERTs are still gated to genuinely
+// recent joiners (see NJ_TRACKING_DAYS) so this doesn't backfill old hires
+// we never tracked as NJs.
 export async function syncKoenig() {
   const db = getDb();
   const { getNewJoiners } = await import('./koenigApi.js');
 
-  const { from, to } = sixMonthsAgo();
+  const { from, to } = fetchRange();
   const rawNewJoiners = await getNewJoiners(from, to);
   const newJoiners = rawNewJoiners
     .filter((nj) => nj.section !== null && nj.empId)
@@ -61,7 +71,7 @@ export async function syncKoenig() {
         args: [nj.name, nj.email || null, nj.section, nj.managerName || '—', displayDate(nj.joiningDate), tenureDays(nj.joiningDate), nj.active ? 1 : 0, nj.empId],
       });
       updatedCount++;
-    } else {
+    } else if (tenureDays(nj.joiningDate) < NJ_TRACKING_DAYS) {
       await db.execute({
         sql: `INSERT INTO employees (id, name, email, team, manager, doj, tenure_days, status, score, trend_note, hr_note, metric1, metric2, metric3, alert, active)
               VALUES (?, ?, ?, ?, ?, ?, ?, 'In Progress', 0, NULL, NULL, NULL, NULL, NULL, NULL, ?)`,
