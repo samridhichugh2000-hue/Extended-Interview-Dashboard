@@ -198,9 +198,15 @@ export const SIGNAL_DEFS = [
     hasData: (e) => e.inHouseSkillsCount != null,
     fires: (e) => e.inHouseSkillsCount > 0,
     count: (e) => e.inHouseSkillsCount },
+  // Sourced from the standalone Polls Dashboard's KGT (ownership-transfer
+  // request) endpoint, matched by emp_code. Null means the polls dashboard
+  // has no record for this emp_code at all — distinct from a confirmed 0.
+  { label: 'Applied for KGT', teams: 'All', pts: 1, live: true,
+    hasData: (e) => e.kgtCount != null,
+    fires: (e) => e.kgtCount > 0,
+    count: (e) => e.kgtCount },
   // positive, not yet tracked — no data source exists for these at all
   { label: 'Ideas for improvement', teams: 'All', pts: 1, live: false, hasData: () => false, fires: () => false },
-  { label: 'Applied for KGT', teams: 'All', pts: 1, live: false, hasData: () => false, fires: () => false },
   // negative, live
   { label: 'Shoddy marked against NJ', teams: 'All', pts: -5, live: true,
     hasData: (e) => e.shoddyNegCount != null,

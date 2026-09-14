@@ -628,6 +628,29 @@ export async function syncPolls() {
   return { message: `Synced poll participation for ${updated} employees (${unmatched} had no record on the polls dashboard, ${noEmail} had no email on file).` };
 }
 
+export async function syncKgt() {
+  const db = getDb();
+  const { getKgtParticipation } = await import('./kgtApi.js');
+
+  const allEmployees = await db.execute("SELECT id FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team') AND active = 1");
+
+  let updated = 0;
+  let unmatched = 0;
+  for (const emp of allEmployees.rows) {
+    const empCode = emp.id.replace('EMP', '');
+    const result = await getKgtParticipation(empCode);
+    if (!result) { unmatched++; continue; }
+
+    await db.execute({
+      sql: 'UPDATE employees SET kgt_count = ?, kgt_details = ? WHERE id = ?',
+      args: [result.count, JSON.stringify(result.kgts), emp.id],
+    });
+    updated++;
+  }
+
+  return { message: `Synced KGT participation for ${updated} employees (${unmatched} had no record on the polls dashboard).` };
+}
+
 export const SYNC_RUNNERS = {
   koenig: syncKoenig,
   pip: syncPip,
@@ -645,6 +668,7 @@ export const SYNC_RUNNERS = {
   tbt: syncTbt,
   shoddy: syncShoddy,
   polls: syncPolls,
+  kgt: syncKgt,
   mgrfeedback: syncMgrFeedback,
   weeklyreport: async () => {
     const { sendWeeklyReports } = await import('./weeklyReportRunner.js');

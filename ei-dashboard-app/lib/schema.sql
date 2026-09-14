@@ -46,6 +46,8 @@ CREATE TABLE IF NOT EXISTS employees (
   shoddy_pos_count INTEGER,      -- count of positive incidents (Sales/Trainer/PT)
   shoddy_pos_details TEXT,        -- JSON array of {name, reportedDate, repMngr, reason, errorId, incidentType, incidentNature}
   polls_participated INTEGER,    -- count of polls participated in (All teams). NULL means the polls dashboard has no record for this email, not a confirmed 0.
+  kgt_count INTEGER,             -- count of KGTs (ownership-transfer requests) participated in (All teams). NULL means the polls dashboard has no record for this emp_code, not a confirmed 0.
+  kgt_details TEXT,              -- JSON array of {kgt_id, topic, department, submitted_at, release_date, closure_date}
   mgr_feedback_count INTEGER,    -- count of manager feedback entries on file (All teams)
   mgr_feedback_details TEXT      -- JSON array of {managerEmpCode, managerName, strength, improvement, other, date}
 );

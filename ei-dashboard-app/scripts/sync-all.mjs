@@ -27,6 +27,7 @@ const SCRIPTS = [
   'sync-tbt.mjs',
   'sync-shoddy.mjs',
   'sync-polls.mjs',
+  'sync-kgt.mjs',
   'sync-mgrfeedback.mjs',
 ];
 
