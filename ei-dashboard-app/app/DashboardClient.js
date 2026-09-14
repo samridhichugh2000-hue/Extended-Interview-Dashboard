@@ -537,7 +537,7 @@ function KgtModal({ emp, onClose }) {
         <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
           {emp.kgtDetails.map((kgt, i) => (
             <div key={i} style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {Object.entries(kgt).map(([k, v]) => (
+              {[['topic', kgt.topic], ['submitted_at', kgt.submitted_at]].map(([k, v]) => (
                 <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 12.5 }}>
                   <span style={{ color: '#8A90A8' }}>{k}</span>
                   <span style={{ color: '#C7CBDA', textAlign: 'right' }}>{v === null || v === undefined || v === '' ? '—' : String(v)}</span>
