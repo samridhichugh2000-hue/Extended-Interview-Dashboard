@@ -122,7 +122,7 @@ export async function getEmployees() {
 export async function getWeeklyResponses(week) {
   const db = getDb();
   const res = await db.execute({
-    sql: `SELECT wr.*, e.name, e.team FROM weekly_responses wr
+    sql: `SELECT wr.*, e.name, e.team, e.active FROM weekly_responses wr
           JOIN employees e ON e.id = wr.employee_id
           WHERE wr.week = ? AND wr.sent_at IS NOT NULL
           ORDER BY e.name ASC`,
@@ -131,6 +131,7 @@ export async function getWeeklyResponses(week) {
   return res.rows.map((r) => ({
     name: r.name,
     team: r.team,
+    active: !!r.active,
     sent: r.sent_at,
     received: r.received_at || '—',
     state: effectiveState(r.week, r.state),
