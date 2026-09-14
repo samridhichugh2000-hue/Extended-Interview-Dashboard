@@ -96,16 +96,60 @@ const MANAGER_EMAILS = {
   'Sunil Kumar Kushwaha': 'Sunilkumar.kushwaha@koenig-solutions.com',
   'Karan Lakhina': 'karan.lakhina@koenig-solutions.com',
   'Vipin Nautiyal': 'Vipin.Nautiyal@koenig-solutions.com',
+  'Nancy': 'nancy@koenig-solutions.com',
+  'Kuldeep Singh': 'Kuldeep.Singh@koenig-solutions.com',
+  'Mohsin Afzal Bhat': 'Mohsin.Afzal@koenig-solutions.com',
+  'Ritik Chadha': 'ritik.chadha@koenig-solutions.com',
+  'Roohi Belur Raheem': 'roohi.raheem@koenig-solutions.com',
+  'Sana Sadiq Pathan': 'Sana.Williams@koenig-solutions.com',
+  'Tanvi Sareen': 'tanvi.sareen@koenig-solutions.com',
+};
+
+// Koenig's New Joiners feed sometimes reports only a manager's first name
+// (e.g. "Sandeep" instead of "Sandeep Singh") — a source-data gap, confirmed
+// by cross-referencing the Manager Feedback feed's full names for real
+// employees, not a parsing issue on our side. Where that first name is
+// ambiguous against MANAGER_EMAILS (more than one manager shares it), guessing
+// would risk CC'ing the wrong person, so those are resolved explicitly here
+// rather than left to fall through to the general fallback below.
+const AMBIGUOUS_FIRST_NAME_ALIASES = {
+  abhishek: 'abhishek.soni@koenig-solutions.com', // vs. Abhishek Vidiyala — confirmed via HR
+  nidhi: 'nidhi.kumra@koenig-solutions.com', // vs. Nidhi Karthik Nayak — confirmed via manager-feedback cross-check
+  sandeep: 'sandeep.singh@koenig-solutions.com', // vs. Sandeep Joshi — confirmed via manager-feedback cross-check
 };
 
 const emailByNormalizedName = new Map(
   Object.entries(MANAGER_EMAILS).map(([name, email]) => [normalize(name), email])
 );
 
+// name -> [firstWord, lastWord] for every directory entry, used by the
+// truncated-name fallback below.
+const directoryTokens = Object.entries(MANAGER_EMAILS).map(([name, email]) => {
+  const words = normalize(name).split(' ');
+  return { first: words[0], last: words[words.length - 1], email };
+});
+
 function normalize(name) {
-  return (name || '').trim().toLowerCase();
+  return (name || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 export function getManagerEmail(managerName) {
-  return emailByNormalizedName.get(normalize(managerName)) || null;
+  const key = normalize(managerName);
+  if (!key) return null;
+
+  const exact = emailByNormalizedName.get(key);
+  if (exact) return exact;
+
+  if (AMBIGUOUS_FIRST_NAME_ALIASES[key]) return AMBIGUOUS_FIRST_NAME_ALIASES[key];
+
+  // Koenig occasionally drops a middle name ("Hardik Ankush Tike" -> directory
+  // has "Hardik Tike") or reports only a first name ("Prashant" -> directory
+  // has "Prashant Ranjan"). Match on first+last word, but only when exactly
+  // one directory entry qualifies — an ambiguous partial match is treated as
+  // unresolved (null) rather than guessed.
+  const words = key.split(' ');
+  const first = words[0];
+  const last = words[words.length - 1];
+  const candidates = directoryTokens.filter((d) => d.first === first && (words.length === 1 || d.last === last));
+  return candidates.length === 1 ? candidates[0].email : null;
 }
