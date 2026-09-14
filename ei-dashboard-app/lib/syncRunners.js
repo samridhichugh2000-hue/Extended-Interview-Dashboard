@@ -460,19 +460,19 @@ export async function syncTechCalls() {
   const db = getDb();
   const { getTechCalls } = await import('./koenigTechCallApi.js');
 
-  const salesEmployees = await db.execute("SELECT id FROM employees WHERE team = 'Sales'");
+  const salesEmployees = await db.execute("SELECT id, name FROM employees WHERE team = 'Sales'");
 
   let updated = 0;
   let unmatched = 0;
   for (const emp of salesEmployees.rows) {
     const empCode = emp.id.replace('EMP', '');
-    const calls = await getTechCalls(empCode);
+    const result = await getTechCalls(empCode, emp.name);
 
     await db.execute({
       sql: 'UPDATE employees SET tech_calls_count = ?, tech_calls_details = ? WHERE id = ?',
-      args: [calls.length, JSON.stringify(calls), emp.id],
+      args: [result ? result.techCalls : 0, JSON.stringify(result ? [result.raw] : []), emp.id],
     });
-    if (calls.length) updated++; else unmatched++;
+    if (result) updated++; else unmatched++;
   }
 
   return { message: `Synced tech calls — ${updated} Sales employees have at least one (${unmatched} have none).` };

@@ -35,20 +35,19 @@ async function getToken({ forceRefresh = false } = {}) {
   return tokenPromise;
 }
 
-// Get Tech Call Data for CSM — per-employee like exam summary/skills. Every
-// probe against the live feed so far (every current Sales employee, and a
-// spread of arbitrary EmpIds) returned the API's own
-// "No matching record found" placeholder row rather than real data, so the
-// actual field names for a genuine record are unconfirmed. Rows are passed
-// through as-is (raw) instead of mapped to named fields, so whatever shape
-// real data turns out to have still displays reasonably once it exists.
-export async function getTechCalls(empCode) {
+// Get Tech Call Data for CSM — per-employee, matched by EmpId *and* CSMName
+// together (leaving CSMName blank always returns the API's own "No matching
+// record found" placeholder, even for a valid EmpId — confirmed against a
+// known-good EmpId/CSMName pair from Koenig's own API docs). Returns a single
+// summary row per employee — {CSM, EmpId, "Tech Call", Converted} — not a
+// per-call list.
+export async function getTechCalls(empCode, csmName) {
   const call = async (token) => {
     const url = `${BASE_URL}/api/Kites/Operator/common?apikey=${process.env.KOENIG_TECHCALL_API_KEY}&accessToken=${encodeURIComponent(token.accessToken)}&deviceToken=${encodeURIComponent(token.deviceToken)}`;
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ EmpId: String(empCode), CSMName: '' }),
+      body: JSON.stringify({ EmpId: String(empCode), CSMName: csmName || '' }),
     });
     if (!res.ok) throw new Error(`Koenig Tech Call common API failed: ${res.status} ${res.statusText}`);
     return res.json();
@@ -64,7 +63,9 @@ export async function getTechCalls(empCode) {
   }
 
   const rows = typeof json.content === 'string' ? JSON.parse(json.content) : json.content;
-  if (!rows || !rows.length) return [];
-  if (rows.length === 1 && rows[0].Message) return []; // "No matching record found" placeholder
-  return rows;
+  if (!rows || !rows.length) return null;
+  if (rows[0].Message) return null; // "No matching record found" placeholder — no name match
+
+  const row = rows[0];
+  return { techCalls: row['Tech Call'] ?? 0, converted: row.Converted ?? 0, raw: row };
 }
