@@ -93,6 +93,8 @@ export async function getEmployees() {
       shoddyPosCount: e.shoddy_pos_count,
       shoddyPosDetails: e.shoddy_pos_details ? JSON.parse(e.shoddy_pos_details) : [],
       pollsParticipated: e.polls_participated,
+      kgtCount: e.kgt_count,
+      kgtDetails: e.kgt_details ? JSON.parse(e.kgt_details) : [],
       mgrFeedbackCount: e.mgr_feedback_count,
       mgrFeedbackDetails: e.mgr_feedback_details ? JSON.parse(e.mgr_feedback_details) : [],
       // null = no weekly_responses row yet for this week (e.g. feature hasn't
