@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   STATUS, decorate, NAV, TITLES, PATHS, METRIC_HEADS,
   WORRY_BANDS, POS_SIGNALS, NEG_SIGNALS, NJ_QUESTIONS, appliesToTeam, feedbackRating,
@@ -7,13 +8,210 @@ import {
 
 const card = { border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 16 };
 
+// "Without X" quick filters — every department table + Worry Index screen
+// can multi-select these on top of the existing status/search filters. Not
+// applied to fields that mean something different at zero (e.g. neg. audits
+// or shoddy — zero there is good news, not a coverage gap worth searching
+// for), only to the "did this NJ engage with X at all" signals.
+const COMMON_MISSING_FILTERS = [
+  { key: 'mgrFeedback', label: 'Without Mgr Feedback', test: (e) => !(e.mgrFeedbackCount > 0) },
+  { key: 'polls', label: 'Without Polls', test: (e) => !(e.pollsParticipated > 0) },
+  { key: 'kgt', label: 'Without KGT', test: (e) => !(e.kgtCount > 0) },
+  { key: 'withShoddy', label: 'With Shoddy Log', test: (e) => (e.shoddyNegCount > 0 || e.shoddyPosCount > 0) },
+];
+const DEPT_MISSING_FILTERS = {
+  Sales: [
+    { key: 'techCalls', label: 'Without Tech Calls', test: (e) => !(e.techCallsCount > 0) },
+    { key: 'scRaised', label: 'Without SCs Raised', test: (e) => !(e.scRaised > 0) },
+    { key: 'withNegAudits', label: 'With Neg. Audits', test: (e) => e.negAudits > 0 },
+  ],
+  Trainer: [
+    { key: 'exams', label: 'Without Exams', test: (e) => !(e.examPass > 0) },
+    { key: 'assignments', label: 'Without Assignments', test: (e) => !(e.assignmentsCount > 0) },
+    { key: 'skills', label: 'Without Skills', test: (e) => !(e.skillsCount > 0) },
+    { key: 'inHouseSkills', label: 'Without In-House Skills', test: (e) => !(e.inHouseSkillsCount > 0) },
+    { key: 'techCallsConverted', label: 'Without Tech Calls Converted', test: (e) => !(e.techCallsConverted > 0) },
+    { key: 'tbt', label: 'Without TBTs', test: (e) => !(e.tbtCount > 0) },
+    { key: 'withNegFeedback', label: 'With Neg. Feedback', test: (e) => e.negFeedback > 0 },
+  ],
+  'PT Team': [],
+};
+function missingFiltersFor(dept) {
+  return [...(dept ? DEPT_MISSING_FILTERS[dept] || [] : []), ...COMMON_MISSING_FILTERS];
+}
+
+// Shared Close/Alert actions — used by the Dept table's row chips and by
+// EmployeeModal, so both stay in sync with the same fetch/confirm/refresh
+// behavior instead of duplicating it.
+function useEmployeeActions() {
+  const router = useRouter();
+  const [pending, setPending] = useState(null); // `${action}:${id}` while a request is in flight
+
+  const closeEmployee = async (emp, { onDone } = {}) => {
+    if (pending) return;
+    if (!window.confirm(`Mark ${emp.name} as closed (Not to be Monitored)?`)) return;
+    setPending(`close:${emp.id}`);
+    try {
+      const res = await fetch(`/api/employees/${emp.id}/close`, { method: 'POST' });
+      const json = await res.json();
+      if (!json.ok) { window.alert(`Failed: ${json.error}`); return; }
+      router.refresh();
+      onDone?.();
+    } catch (err) {
+      window.alert(`Failed: ${err.message}`);
+    } finally {
+      setPending(null);
+    }
+  };
+
+  // Clicking "Alert" opens a preview (below) with the fired signals as
+  // checkboxes rather than sending immediately — confirmSendAlert is what
+  // that preview's "Send" button actually calls.
+  const [alertTarget, setAlertTarget] = useState(null);
+  const [alertOnDone, setAlertOnDone] = useState(null);
+
+  const openAlertPreview = (emp, { onDone } = {}) => {
+    if (!emp.email) { window.alert('No email on file for this employee.'); return; }
+    setAlertTarget(emp);
+    setAlertOnDone(() => onDone || null);
+  };
+
+  const confirmSendAlert = async (signals) => {
+    const emp = alertTarget;
+    if (!emp || pending) return;
+    setPending(`alert:${emp.id}`);
+    try {
+      const res = await fetch(`/api/employees/${emp.id}/alert`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: emp.name, email: emp.email, score: emp.scoreStr, bandLabel: emp.bandLabel, signals }),
+      });
+      const json = await res.json();
+      window.alert(json.ok ? 'Alert email sent.' : `Failed: ${json.error}`);
+      if (json.ok) {
+        setAlertTarget(null);
+        alertOnDone?.();
+      }
+    } catch (err) {
+      window.alert(`Failed: ${err.message}`);
+    } finally {
+      setPending(null);
+    }
+  };
+
+  const alertModal = alertTarget && (
+    <AlertPreviewModal
+      emp={alertTarget}
+      pending={pending === `alert:${alertTarget.id}`}
+      onClose={() => setAlertTarget(null)}
+      onSend={confirmSendAlert}
+    />
+  );
+
+  return { pending, closeEmployee, openAlertPreview, alertModal };
+}
+
+function AlertPreviewModal({ emp, pending, onClose, onSend }) {
+  const fired = emp.signalReport.filter((s) => s.status === 'fired');
+  // Negative signals are why this NJ is being alerted in the first place —
+  // pre-checked. Positive ones are available to add for balance, but off
+  // by default.
+  const [selected, setSelected] = useState(() => new Set(fired.filter((s) => s.pts < 0).map((s) => s.label)));
+  const toggle = (label) => setSelected((prev) => {
+    const next = new Set(prev);
+    next.has(label) ? next.delete(label) : next.add(label);
+    return next;
+  });
+  const chosen = fired.filter((s) => selected.has(s.label));
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 70 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 560, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — alert preview</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>Worry Index {emp.scoreStr} · {emp.bandLabel} · to {emp.email}, Cc HR@koenig-solutions.com</div>
+          </div>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+        </div>
+        <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div>
+            <div className="mono" style={{ fontSize: 10, letterSpacing: '.12em', color: '#5C6178', textTransform: 'uppercase', marginBottom: 10 }}>Select parameters to include</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {fired.map((s) => (
+                <label key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 10, padding: '9px 12px' }}>
+                  <input type="checkbox" checked={selected.has(s.label)} onChange={() => toggle(s.label)} style={{ width: 15, height: 15, flex: 'none' }} />
+                  <span style={{ flex: 1, fontSize: 13, color: '#C7CBDA' }}>{s.label}</span>
+                  <span className="mono" style={{ fontSize: 12, fontWeight: 600, color: s.pts < 0 ? '#F87171' : '#5EEAD4' }}>{s.ptsStr}</span>
+                </label>
+              ))}
+              {!fired.length && <div style={{ fontSize: 12.5, color: '#6E7488' }}>No fired signals to report.</div>}
+            </div>
+          </div>
+          <div>
+            <div className="mono" style={{ fontSize: 10, letterSpacing: '.12em', color: '#5C6178', textTransform: 'uppercase', marginBottom: 10 }}>Email preview</div>
+            <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 12, padding: 18, background: 'rgba(255,255,255,0.02)', fontSize: 13, color: '#C7CBDA', lineHeight: 1.6 }}>
+              <p>Hi {emp.name},</p>
+              <p>Your current Worry Index stands at <b>{emp.scoreStr}</b> ({emp.bandLabel}). This has been flagged for HR review.</p>
+              {!!chosen.length && (
+                <>
+                  <p style={{ marginBottom: 4 }}>The following was noted:</p>
+                  <ul style={{ margin: '0 0 12px', paddingLeft: 18 }}>
+                    {chosen.map((s) => <li key={s.label}>{s.label} ({s.ptsStr})</li>)}
+                  </ul>
+                </>
+              )}
+              <p>Someone from HR will be reaching out shortly to discuss your progress and any support you may need.</p>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <span onClick={onClose} className="hoverbtn" style={{ border: '1px solid rgba(255,255,255,0.12)', color: '#C7CBDA', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>Cancel</span>
+            <span
+              onClick={() => !pending && onSend(chosen.map((s) => ({ label: s.label, ptsStr: s.ptsStr })))}
+              className="hoverbtn"
+              style={{ border: '1px solid rgba(244,63,94,0.45)', color: '#F87171', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: pending ? 'default' : 'pointer', opacity: pending ? 0.6 : 1 }}
+            >
+              {pending ? 'Sending…' : 'Send alert'}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function IncludeInactiveToggle({ value, onChange }) {
+  return (
+    <div onClick={() => onChange(!value)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, border: `1px solid ${value ? 'rgba(99,102,241,0.45)' : 'rgba(255,255,255,0.1)'}`, background: value ? 'rgba(99,102,241,0.14)' : 'rgba(255,255,255,0.03)', color: value ? '#FFFFFF' : '#9BA1B8', borderRadius: 10, padding: '10px 14px', fontSize: 13, flex: 'none' }}>
+      <span style={{ width: 14, height: 14, borderRadius: 4, border: `1px solid ${value ? '#A5A7FA' : 'rgba(255,255,255,0.25)'}`, background: value ? '#6366F1' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#fff' }}>{value ? '✓' : ''}</span>
+      Include inactives
+    </div>
+  );
+}
+
+function MissingFilterChips({ defs, active, onToggle }) {
+  if (!defs.length) return null;
+  return (
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      {defs.map((d) => {
+        const on = active.includes(d.key);
+        return (
+          <div key={d.key} onClick={() => onToggle(d.key)} style={{ cursor: 'pointer', border: `1px solid ${on ? 'rgba(244,63,94,0.45)' : 'rgba(255,255,255,0.1)'}`, background: on ? 'rgba(244,63,94,0.14)' : 'rgba(255,255,255,0.03)', color: on ? '#F87171' : '#9BA1B8', borderRadius: 999, padding: '7px 13px', fontSize: 12.5 }}>
+            {d.label}{on ? ' ×' : ''}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function DashboardClient({ employees, responses, week, newJoiners, deptCounts }) {
   const [screen, setScreen] = useState('overview');
   const [dept, setDept] = useState('Sales');
   const [filter, setFilter] = useState(null);
   const [modal, setModal] = useState(null);
 
-  const go = (s, d) => { setScreen(s); if (d) setDept(d); setFilter(null); };
+  const go = (s, d, f) => { setScreen(s); if (d) setDept(d); setFilter(f ?? null); };
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex' }}>
@@ -25,7 +223,7 @@ export default function DashboardClient({ employees, responses, week, newJoiners
           {screen === 'dept' && <Dept key={dept} employees={employees} dept={dept} filter={filter} setFilter={setFilter} setModal={setModal} />}
           {screen === 'papip' && <PaPip employees={employees} filter={filter} setFilter={setFilter} setModal={setModal} />}
           {screen === 'worryindex' && <WorryIndex employees={employees} filter={filter} setFilter={setFilter} setModal={setModal} />}
-          {screen === 'reports' && <Reports employees={employees} responses={responses} week={week} />}
+          {screen === 'reports' && <Reports employees={employees} responses={responses} week={week} filter={filter} setFilter={setFilter} />}
         </div>
       </div>
       {modal && <EmployeeModal emp={modal} onClose={() => setModal(null)} />}
@@ -90,6 +288,7 @@ function Topbar({ screen, dept }) {
 function Overview({ employees, newJoiners, deptCounts, go, setModal }) {
   const activeEmployees = employees.filter((e) => e.active !== false);
   const counts = deptCounts;
+  const pendingMailCount = activeEmployees.filter((e) => e.weeklyReportState === 'Pending').length;
   const chips = [
     { label: 'Sales', count: counts.Sales, bg: 'rgba(99,102,241,0.14)', border: 'rgba(99,102,241,0.35)', color: '#A5A7FA', dept: 'Sales' },
     { label: 'Trainer', count: counts.Trainer, bg: 'rgba(168,85,247,0.14)', border: 'rgba(168,85,247,0.35)', color: '#D8B4FE', dept: 'Trainer' },
@@ -125,10 +324,10 @@ function Overview({ employees, newJoiners, deptCounts, go, setModal }) {
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, color: '#6E7488', marginTop: 7 }}><span>Critical 7</span><span>Low 11</span><span>Medium 13</span><span>Good 11</span></div>
         </div>
-        <div style={{ border: '1px solid rgba(245,158,11,0.25)', background: 'linear-gradient(150deg,rgba(245,158,11,0.13),rgba(245,158,11,0.02))', borderRadius: 16, padding: 20, animation: 'floatcard 6s ease-in-out infinite 1.2s' }}>
-          <div style={{ fontSize: 12, color: '#A8AEC4' }}>Feedback Pending</div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, margin: '8px 0 4px' }}><span className="disp" style={{ fontSize: 38, fontWeight: 600, letterSpacing: '-0.03em' }}>9</span><span style={{ fontSize: 11.5, color: '#6E7488' }}>managers overdue</span></div>
-          <div style={{ marginTop: 12, border: '1px solid rgba(245,158,11,0.4)', color: '#F59E0B', borderRadius: 8, padding: '7px 12px', fontSize: 12, textAlign: 'center', cursor: 'pointer' }}>Send reminder to all</div>
+        <div onClick={() => go('reports', null, 'Pending')} style={{ cursor: 'pointer', border: '1px solid rgba(245,158,11,0.25)', background: 'linear-gradient(150deg,rgba(245,158,11,0.13),rgba(245,158,11,0.02))', borderRadius: 16, padding: 20, animation: 'floatcard 6s ease-in-out infinite 1.2s' }}>
+          <div style={{ fontSize: 12, color: '#A8AEC4' }}>Weekly progress mail pending NJs</div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, margin: '8px 0 4px' }}><span className="disp" style={{ fontSize: 38, fontWeight: 600, letterSpacing: '-0.03em' }}>{pendingMailCount}</span><span style={{ fontSize: 11.5, color: '#6E7488' }}>haven't responded yet</span></div>
+          <div style={{ marginTop: 12, border: '1px solid rgba(245,158,11,0.4)', color: '#F59E0B', borderRadius: 8, padding: '7px 12px', fontSize: 12, textAlign: 'center' }}>View pending NJs →</div>
         </div>
       </div>
 
@@ -173,6 +372,10 @@ function Overview({ employees, newJoiners, deptCounts, go, setModal }) {
 
 function Dept({ employees, dept, filter, setFilter, setModal }) {
   const [search, setSearch] = useState('');
+  const [includeInactive, setIncludeInactive] = useState(false);
+  const [missing, setMissing] = useState([]);
+  const toggleMissing = (key) => setMissing((m) => (m.includes(key) ? m.filter((k) => k !== key) : [...m, key]));
+  const { pending, closeEmployee, openAlertPreview, alertModal } = useEmployeeActions();
   const [auditModal, setAuditModal] = useState(null);
   const [scModal, setScModal] = useState(null);
   const [examModal, setExamModal] = useState(null);
@@ -194,14 +397,20 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
   // until HR explicitly confirms them (status 'Confirmed', the "Mark
   // closed" action). Every other status (In Progress, PA Issued, PIP
   // Issued) counts as still under watch. Exited employees aren't monitored
-  // either way, so both buckets — and Total — are active-only, and the two
-  // buckets always add up to Total exactly.
+  // either way, so both buckets — and Total — are active-only regardless of
+  // the "Include inactives" toggle, and the two buckets always add up to
+  // Total exactly.
   const activeDeptEmp = deptEmp.filter((e) => e.active !== false);
-  const statusFiltered = filter === 'Confirmed' ? pool.filter((e) => e.active !== false && e.status === 'Confirmed')
-    : filter === 'UnderWatch' ? pool.filter((e) => e.active !== false && e.status !== 'Confirmed')
-    : pool;
+  // "Include inactives" only affects the row list below, not the status
+  // cards above (those are a fixed "monitored population" concept).
+  const visiblePool = includeInactive ? pool : pool.filter((e) => e.active !== false);
+  const statusFiltered = filter === 'Confirmed' ? visiblePool.filter((e) => e.status === 'Confirmed')
+    : filter === 'UnderWatch' ? visiblePool.filter((e) => e.status !== 'Confirmed')
+    : visiblePool;
   const q = search.trim().toLowerCase();
-  const filtered = q ? statusFiltered.filter((e) => e.name.toLowerCase().includes(q) || String(e.id).toLowerCase().includes(q)) : statusFiltered;
+  const searched = q ? statusFiltered.filter((e) => e.name.toLowerCase().includes(q) || String(e.id).toLowerCase().includes(q)) : statusFiltered;
+  const missingDefs = missingFiltersFor(dept);
+  const filtered = missing.length ? searched.filter((e) => missing.every((k) => missingDefs.find((d) => d.key === k)?.test(e))) : searched;
   const statusCards = [
     { label: 'Total', count: activeDeptEmp.length, color: '#A855F7', filterVal: null, isTotal: true },
     { label: 'Not to be Monitored', count: activeDeptEmp.filter((e) => e.status === 'Confirmed').length, color: '#14B8A6', filterVal: 'Confirmed' },
@@ -328,11 +537,13 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
           placeholder="Search by name or employee ID…"
           style={{ flex: 1, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#E4E6F0', outline: 'none' }}
         />
-        <div style={{ border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#8A90A8' }}>DOJ: 01 Feb 2026 → 27 Jul 2026</div>
-        <div onClick={() => setFilter(null)} style={{ border: '1px solid rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.1)', color: '#A5A7FA', borderRadius: 10, padding: '10px 14px', fontSize: 13, cursor: 'pointer' }}>
+        <IncludeInactiveToggle value={includeInactive} onChange={setIncludeInactive} />
+        <div onClick={() => setFilter(null)} style={{ border: '1px solid rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.1)', color: '#A5A7FA', borderRadius: 10, padding: '10px 14px', fontSize: 13, cursor: 'pointer', flex: 'none' }}>
           {filter ? `Filter: ${filter === 'Confirmed' ? 'Not to be Monitored' : filter === 'UnderWatch' ? 'Under Watch' : filter} ×` : 'No filter applied'}
         </div>
       </div>
+
+      <MissingFilterChips defs={missingDefs} active={missing} onToggle={toggleMissing} />
 
       <div style={{ ...card, overflow: 'hidden' }}>
         <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
@@ -355,13 +566,22 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
             ))}
             <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` }}>{e.inactive ? 'Inactive' : e.status}</span>
             <div style={{ justifySelf: 'end', display: 'flex', gap: 6, alignItems: 'center' }} onClick={(ev) => ev.stopPropagation()}>
-              <span style={{ fontSize: 10.5, color: '#F59E0B', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 7, padding: '4px 8px' }}>{e.alert}</span>
-              <span style={{ fontSize: 10.5, color: '#8A90A8', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 7, padding: '4px 8px' }}>Close</span>
+              {!e.inactive && e.bandLabel === 'Critical' && (
+                <span onClick={() => openAlertPreview(e)} style={{ fontSize: 10.5, color: '#F87171', border: '1px solid rgba(244,63,94,0.4)', borderRadius: 7, padding: '4px 8px', cursor: 'pointer' }}>
+                  Alert
+                </span>
+              )}
+              {!e.inactive && (e.status === 'Confirmed'
+                ? <span style={{ fontSize: 10.5, color: '#6E7488', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 7, padding: '4px 8px' }}>Closed</span>
+                : <span onClick={() => closeEmployee(e)} style={{ fontSize: 10.5, color: '#8A90A8', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 7, padding: '4px 8px', cursor: pending === `close:${e.id}` ? 'default' : 'pointer', opacity: pending === `close:${e.id}` ? 0.6 : 1 }}>
+                    {pending === `close:${e.id}` ? 'Closing…' : 'Close'}
+                  </span>)}
             </div>
           </div>
         ))}
         {!rows.length && <div style={{ padding: '18px', fontSize: 12.5, color: '#6E7488' }}>No employees match this filter.</div>}
       </div>
+      {alertModal}
       {auditModal && <AuditRemarksModal emp={auditModal} onClose={() => setAuditModal(null)} />}
       {scModal && <ScListModal emp={scModal} onClose={() => setScModal(null)} />}
       {techCallsModal && <TechCallsModal emp={techCallsModal} onClose={() => setTechCallsModal(null)} />}
@@ -821,10 +1041,22 @@ function InHouseSkillsModal({ emp, onClose }) {
 }
 
 function PaPip({ employees, filter, setFilter, setModal }) {
+  const [search, setSearch] = useState('');
+  const [includeInactive, setIncludeInactive] = useState(false);
+  const [missing, setMissing] = useState([]);
+  const toggleMissing = (key) => setMissing((m) => (m.includes(key) ? m.filter((k) => k !== key) : [...m, key]));
   const tabs = [['All Departments', 6, null], ['Sales', 3, 'Sales'], ['Trainer', 2, 'Trainer'], ['PT Team', 1, 'PT Team']].map(([label, count, d]) => ({
     label, count, val: d, active: filter === d || (!filter && !d),
   }));
-  const rows = employees.filter((e) => e.active !== false && e.status !== 'In Progress').filter((e) => !filter || e.team === filter).map(decorate).sort((a, b) => a.score - b.score);
+  const q = search.trim().toLowerCase();
+  const missingDefs = missingFiltersFor(filter);
+  const rows = employees
+    .filter((e) => (includeInactive || e.active !== false) && e.status !== 'In Progress')
+    .filter((e) => !filter || e.team === filter)
+    .filter((e) => !q || e.name.toLowerCase().includes(q) || String(e.id).toLowerCase().includes(q))
+    .map(decorate)
+    .filter((e) => !missing.length || missing.every((k) => missingDefs.find((d) => d.key === k)?.test(e)))
+    .sort((a, b) => a.score - b.score);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -840,6 +1072,16 @@ function PaPip({ employees, filter, setFilter, setModal }) {
           </div>
         ))}
       </div>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <input
+          value={search}
+          onChange={(ev) => setSearch(ev.target.value)}
+          placeholder="Search by name or employee ID…"
+          style={{ flex: 1, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#E4E6F0', outline: 'none' }}
+        />
+        <IncludeInactiveToggle value={includeInactive} onChange={setIncludeInactive} />
+      </div>
+      <MissingFilterChips defs={missingDefs} active={missing} onToggle={toggleMissing} />
       <div style={{ ...card, overflow: 'hidden' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1.4fr .7fr .8fr .8fr 1.9fr .7fr', padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           <span>Employee</span><span>Type</span><span>Issued</span><span>Review by</span><span>Worry parameters breached</span><span style={{ textAlign: 'right' }}>Score</span>
@@ -856,18 +1098,29 @@ function PaPip({ employees, filter, setFilter, setModal }) {
             <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontWeight: 600, color: e.bandColor }}>{e.scoreStr}</span>
           </div>
         ))}
+        {!rows.length && <div style={{ padding: '18px', fontSize: 12.5, color: '#6E7488' }}>No PA/PIP cases match this filter.</div>}
       </div>
     </div>
   );
 }
 
 function WorryIndex({ employees, filter, setFilter, setModal }) {
-  const active = employees.map(decorate).filter((e) => !e.inactive);
+  const [search, setSearch] = useState('');
+  const [includeInactive, setIncludeInactive] = useState(false);
+  const [missing, setMissing] = useState([]);
+  const toggleMissing = (key) => setMissing((m) => (m.includes(key) ? m.filter((k) => k !== key) : [...m, key]));
+  const active = employees.map(decorate).filter((e) => includeInactive || !e.inactive);
   const tabs = [['All Departments', null], ['Sales', 'Sales'], ['Trainer', 'Trainer'], ['PT Team', 'PT Team']].map(([label, val]) => ({
     label, val, active: filter === val || (!filter && !val),
     count: val ? active.filter((e) => e.team === val).length : active.length,
   }));
-  const ranked = active.filter((e) => !filter || e.team === filter).sort((a, b) => a.score - b.score);
+  const q = search.trim().toLowerCase();
+  const missingDefs = missingFiltersFor(filter);
+  const ranked = active
+    .filter((e) => !filter || e.team === filter)
+    .filter((e) => !q || e.name.toLowerCase().includes(q) || String(e.id).toLowerCase().includes(q))
+    .filter((e) => !missing.length || missing.every((k) => missingDefs.find((d) => d.key === k)?.test(e)))
+    .sort((a, b) => a.score - b.score);
   const bandCounts = ranked.reduce((acc, e) => {
     acc[e.bandLabel] = (acc[e.bandLabel] || 0) + 1;
     return acc;
@@ -892,6 +1145,16 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
           </div>
         ))}
       </div>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <input
+          value={search}
+          onChange={(ev) => setSearch(ev.target.value)}
+          placeholder="Search by name or employee ID…"
+          style={{ flex: 1, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#E4E6F0', outline: 'none' }}
+        />
+        <IncludeInactiveToggle value={includeInactive} onChange={setIncludeInactive} />
+      </div>
+      <MissingFilterChips defs={missingDefs} active={missing} onToggle={toggleMissing} />
       <div>
         <div className="disp" style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>Bands</div>
         <div style={{ fontSize: 12.5, color: '#8A90A8', marginBottom: 14 }}>Every signal carries a credit weight — minor ±0.5, average ±1, major ±2. The running total places the NJ in one of four bands.</div>
@@ -926,6 +1189,7 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
             <span style={{ fontSize: 12, color: '#8A90A8' }}>{e.trendNote}</span>
           </div>
         ))}
+        {!ranked.length && <div style={{ padding: '18px', fontSize: 12.5, color: '#6E7488' }}>No NJ matches this filter.</div>}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 22 }}>
@@ -982,13 +1246,27 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
   );
 }
 
-function Reports({ employees, responses, week }) {
+function Reports({ employees, responses, week, filter, setFilter }) {
   const [expanded, setExpanded] = useState(null);
   const [emailPreview, setEmailPreview] = useState(false);
   const [toast, setToast] = useState(null);
   const [report15Preview, setReport15Preview] = useState(false);
   const [sending, setSending] = useState(false);
   const [sending15, setSending15] = useState(false);
+  const [search, setSearch] = useState('');
+  const [includeInactive, setIncludeInactive] = useState(false);
+  // `filter` here doubles as the Pending/Received/Overdue state tab, set by
+  // DashboardClient's go() so Overview's "Weekly progress mail pending NJs"
+  // card can land here pre-filtered to Pending.
+  const stateFilter = filter;
+  const setStateFilter = setFilter;
+
+  const q = search.trim().toLowerCase();
+  const filteredResponses = responses
+    .filter((r) => includeInactive || r.active !== false)
+    .filter((r) => !stateFilter || r.state === stateFilter)
+    .filter((r) => !q || r.name.toLowerCase().includes(q));
+  const stateTabs = ['Pending', 'Received', 'Overdue'];
 
   const flashToast = (msg) => {
     setToast(msg);
@@ -1053,13 +1331,33 @@ function Reports({ employees, responses, week }) {
 
       {emailPreview && <EmailPreviewModal onClose={() => setEmailPreview(false)} week={week} />}
       {report15Preview && <Report15PreviewModal onClose={() => setReport15Preview(false)} />}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <input
+          value={search}
+          onChange={(ev) => setSearch(ev.target.value)}
+          placeholder="Search by name…"
+          style={{ flex: 1, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#E4E6F0', outline: 'none' }}
+        />
+        <IncludeInactiveToggle value={includeInactive} onChange={setIncludeInactive} />
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {stateTabs.map((s) => {
+          const on = stateFilter === s;
+          return (
+            <div key={s} onClick={() => setStateFilter(on ? null : s)} style={{ cursor: 'pointer', border: `1px solid ${on ? 'rgba(99,102,241,0.45)' : 'rgba(255,255,255,0.1)'}`, background: on ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.03)', color: on ? '#FFFFFF' : '#9BA1B8', borderRadius: 999, padding: '8px 16px', fontSize: 13 }}>
+              {s}
+            </div>
+          );
+        })}
+      </div>
       <div style={{ ...card, overflow: 'hidden' }}>
         <div style={{ padding: '15px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
           <span className="disp" style={{ fontSize: 15, fontWeight: 600 }}>Weekly response tracker · {week}</span>
           <span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>click a row to read the response →</span>
         </div>
         {!responses.length && <div style={{ padding: '18px', fontSize: 12.5, color: '#6E7488' }}>No weekly report sent yet for {week}.</div>}
-        {responses.map((r) => {
+        {!!responses.length && !filteredResponses.length && <div style={{ padding: '18px', fontSize: 12.5, color: '#6E7488' }}>No responses match this filter.</div>}
+        {filteredResponses.map((r) => {
           const canExpand = r.state === 'Received';
           const open = expanded === r.name;
           const st = r.state === 'Overdue' ? STATUS['PIP Issued'] : r.state === 'Received' ? STATUS['Confirmed'] : STATUS['In Progress'];
@@ -1150,6 +1448,7 @@ function Report15PreviewModal({ onClose }) {
 
 function EmployeeModal({ emp, onClose }) {
   const d = decorate(emp);
+  const { pending, closeEmployee, openAlertPreview, alertModal } = useEmployeeActions();
   const bandPct = Math.round(Math.max(0, Math.min(1, (emp.score + 12) / 24)) * 100) + '%';
   const weeks = emp.weeks.map((w) => ({ ...w, color: w.state === 'Overdue' ? '#F87171' : w.state === 'Received' ? '#5EEAD4' : '#A5A7FA' }));
 
@@ -1236,13 +1535,22 @@ function EmployeeModal({ emp, onClose }) {
             <div className="disp" style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>HR notes</div>
             <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '12px 14px', fontSize: 13, color: '#A8AEC4', lineHeight: 1.55, background: 'rgba(0,0,0,0.2)' }}>{emp.hrNote}</div>
             <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
-              <span style={{ border: '1px solid rgba(245,158,11,0.45)', color: '#F59E0B', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, cursor: 'pointer' }}>Send feedback alert</span>
+              {d.bandLabel === 'Critical' && !d.inactive && (
+                <span onClick={() => openAlertPreview(d, { onDone: onClose })} style={{ border: '1px solid rgba(245,158,11,0.45)', color: '#F59E0B', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, cursor: 'pointer' }}>
+                  Send feedback alert
+                </span>
+              )}
               <span style={{ border: '1px solid rgba(244,63,94,0.45)', color: '#F87171', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, cursor: 'pointer' }}>Issue PIP</span>
-              <span style={{ border: '1px solid rgba(20,184,166,0.45)', color: '#5EEAD4', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, cursor: 'pointer' }}>Mark closed</span>
+              {!d.inactive && (d.status === 'Confirmed'
+                ? <span style={{ border: '1px solid rgba(255,255,255,0.14)', color: '#6E7488', borderRadius: 8, padding: '7px 13px', fontSize: 12.5 }}>Closed</span>
+                : <span onClick={() => closeEmployee(d, { onDone: onClose })} style={{ border: '1px solid rgba(20,184,166,0.45)', color: '#5EEAD4', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, cursor: pending === `close:${d.id}` ? 'default' : 'pointer', opacity: pending === `close:${d.id}` ? 0.6 : 1 }}>
+                    {pending === `close:${d.id}` ? 'Closing…' : 'Mark closed'}
+                  </span>)}
             </div>
           </div>
         </div>
       </div>
+      {alertModal}
     </div>
   );
 }
