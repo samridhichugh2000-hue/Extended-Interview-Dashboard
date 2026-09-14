@@ -19,8 +19,10 @@ export async function getEmployees() {
   // Employees are tracked for their first year of tenure only — past 365 days
   // they're dropped from the dashboard/reports (not deleted; the row and its
   // history stay in Turso for direct lookup, just no longer surfaced here).
+  // Newest joiners first, then increasing tenure — screens that need a
+  // different order (e.g. Worry Index score) re-sort explicitly on top of this.
   const [empRes, pipRes, feedbackRes] = await Promise.all([
-    db.execute('SELECT * FROM employees WHERE tenure_days < 365'),
+    db.execute('SELECT * FROM employees WHERE tenure_days < 365 ORDER BY tenure_days ASC'),
     db.execute('SELECT * FROM pip_status'),
     db.execute('SELECT * FROM manager_feedback'),
   ]);
