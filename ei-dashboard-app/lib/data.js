@@ -134,6 +134,19 @@ function belowSatisfactoryCount(e) {
   return (e.mgrFeedbackDetails || []).filter((f) => feedbackRating(f) === 'below').length;
 }
 
+// Every week this NJ has been tracked that isn't 'Received' — cumulative,
+// not just the current week. The current week only counts once past
+// Tuesday 12PM IST (see the signal def below); every earlier week is
+// already closed out (effectiveState in lib/queries.js already resolved
+// any lingering 'Pending' there to 'Overdue').
+function missedWeeksCount(e) {
+  const currentWeek = getIsoWeek(new Date());
+  return (e.weeks || []).filter((w) => {
+    if (w.state === 'Received') return false;
+    return w.week !== currentWeek || isPastTuesdayCheckIn(currentWeek);
+  }).length;
+}
+
 export const SIGNAL_DEFS = [
   // positive, live
   { label: 'Tech calls', teams: 'Sales', pts: 1, live: true,
@@ -216,14 +229,13 @@ export const SIGNAL_DEFS = [
     fires: (e) => e.negAudits > 0,
     count: (e) => e.negAudits },
   // negative, not yet tracked
-  // Per-week boolean state (not received vs received), not an occurrence
-  // count. Fires from Tuesday 12PM IST onward — the same cutoff the weekly
-  // response digest report uses — rather than waiting for the full week
-  // (isWeekOver/'Overdue') to close out, so a non-response starts counting
-  // against the score days before the week actually ends.
+  // Cumulative across every week this NJ has been tracked, not just the
+  // current one — 2 missed weeks scores 2 × -1, same convention as other
+  // count-backed signals (see missedWeeksCount above).
   { label: 'Weekly progress email not received', teams: 'All', pts: -1, live: true,
-    hasData: (e) => e.weeklyReportState != null,
-    fires: (e) => e.weeklyReportState !== 'Received' && isPastTuesdayCheckIn(getIsoWeek(new Date())) },
+    hasData: (e) => (e.weeks || []).length > 0,
+    fires: (e) => missedWeeksCount(e) > 0,
+    count: missedWeeksCount },
   { label: 'Manager feedback below satisfactory', teams: 'All', pts: -1, live: true,
     hasData: (e) => e.mgrFeedbackCount != null,
     fires: (e) => belowSatisfactoryCount(e) > 0,
