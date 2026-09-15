@@ -149,19 +149,19 @@ function missedWeeksCount(e) {
 
 export const SIGNAL_DEFS = [
   // positive, live
-  { label: 'Tech calls', teams: 'Sales', pts: 1, live: true,
+  { label: 'Tech calls', teams: 'Sales · PT Team', pts: 1, live: true,
     hasData: (e) => e.techCallsCount != null,
     fires: (e) => e.techCallsCount > 0,
     count: (e) => e.techCallsCount },
-  { label: 'Tech calls converted', teams: 'Trainer', pts: 5, live: true,
+  { label: 'Tech calls converted', teams: 'Trainer · PT Team', pts: 5, live: true,
     hasData: (e) => e.techCallsConverted != null,
     fires: (e) => e.techCallsConverted > 0,
     count: (e) => e.techCallsConverted },
-  { label: 'SCs raised', teams: 'Sales', pts: 5, live: true,
+  { label: 'SCs raised', teams: 'Sales · PT Team', pts: 5, live: true,
     hasData: (e) => e.scRaised != null,
     fires: (e) => e.scRaised > 0,
     count: (e) => e.scRaised },
-  { label: 'TBTs requested', teams: 'Trainer', pts: 1, live: true,
+  { label: 'TBTs requested', teams: 'Trainer · PT Team', pts: 1, live: true,
     hasData: (e) => e.tbtCount != null,
     fires: (e) => e.tbtCount > 0,
     count: (e) => e.tbtCount },
@@ -177,24 +177,25 @@ export const SIGNAL_DEFS = [
     count: (e) => e.shoddyPosCount },
   // Penalty scales with the shortfall — -0.5 for every week skillsCount
   // trails behind weeks since joining.
-  { label: 'Skills count < weeks since joining', teams: 'Trainer', pts: -0.5, live: true,
+  { label: 'Skills count < weeks since joining', teams: 'Trainer · PT Team', pts: -0.5, live: true,
     hasData: (e) => e.skillsCount != null,
     fires: (e) => { const wks = Math.floor((e.tenure ?? 0) / 7); return wks > 0 && (e.skillsCount ?? 0) < wks; },
     count: (e) => Math.floor((e.tenure ?? 0) / 7) - (e.skillsCount ?? 0) },
   // Mirror bonus — +0.5 for every week skillsCount leads weeks since
   // joining. Equal counts fire neither signal.
-  { label: 'Skills count > weeks since joining', teams: 'Trainer', pts: 0.5, live: true,
+  { label: 'Skills count > weeks since joining', teams: 'Trainer · PT Team', pts: 0.5, live: true,
     hasData: (e) => e.skillsCount != null,
     fires: (e) => { const wks = Math.floor((e.tenure ?? 0) / 7); return wks > 0 && (e.skillsCount ?? 0) > wks; },
     count: (e) => (e.skillsCount ?? 0) - Math.floor((e.tenure ?? 0) / 7) },
   // Sourced from the standalone Polls Dashboard API (lib/pollsApi.js), matched
   // by email. Null means that email has no record on the polls dashboard at
-  // all — distinct from a confirmed 0 participation count.
-  { label: 'Polls participated', teams: 'All', pts: 0.1, live: true,
+  // all — distinct from a confirmed 0 participation count. Excluded from
+  // Sales per HR request — Sales tracks engagement via SCs/tech calls instead.
+  { label: 'Polls participated', teams: 'Trainer · PT Team', pts: 0.1, live: true,
     hasData: (e) => e.pollsParticipated != null,
     fires: (e) => e.pollsParticipated > 0,
     count: (e) => e.pollsParticipated },
-  { label: 'Marking course inhouse', teams: 'Trainer', pts: 0.5, live: true,
+  { label: 'Marking course inhouse', teams: 'Trainer · PT Team', pts: 0.5, live: true,
     hasData: (e) => e.inHouseSkillsCount != null,
     fires: (e) => e.inHouseSkillsCount > 0,
     count: (e) => e.inHouseSkillsCount },
@@ -215,22 +216,22 @@ export const SIGNAL_DEFS = [
   // Boolean absence-of-any state, not a count — either they have zero
   // assignments for every week since joining (including future weeks) or
   // they don't.
-  { label: 'Zero assignments since joining, including future', teams: 'Trainer', pts: -1, live: true,
+  { label: 'Zero assignments since joining, including future', teams: 'Trainer · PT Team', pts: -1, live: true,
     hasData: (e) => e.assignmentsCount != null,
     fires: (e) => (e.tenure ?? 0) >= 14 && !e.assignmentsCount },
-  { label: 'Failure in exam', teams: 'Trainer', pts: -5, live: true,
+  { label: 'Failure in exam', teams: 'Trainer · PT Team', pts: -5, live: true,
     hasData: (e) => e.examFail != null,
     fires: (e) => e.examFail > 0,
     count: (e) => e.examFail },
-  { label: 'Passed exam', teams: 'Trainer', pts: 1, live: true,
+  { label: 'Passed exam', teams: 'Trainer · PT Team', pts: 1, live: true,
     hasData: (e) => e.examPass != null,
     fires: (e) => e.examPass > 0,
     count: (e) => e.examPass },
-  { label: 'Negative feedback on delivery', teams: 'Trainer', pts: -5, live: true,
+  { label: 'Negative feedback on delivery', teams: 'Trainer · PT Team', pts: -5, live: true,
     hasData: (e) => e.negFeedback != null,
     fires: (e) => e.negFeedback > 0,
     count: (e) => e.negFeedback },
-  { label: 'Negative enquiry audit', teams: 'Sales', pts: -5, live: true,
+  { label: 'Negative enquiry audit', teams: 'Sales · PT Team', pts: -5, live: true,
     hasData: (e) => e.negAudits != null,
     fires: (e) => e.negAudits > 0,
     count: (e) => e.negAudits },

@@ -64,9 +64,10 @@ function useEmployeeActions() {
     }
   };
 
-  // Clicking "Alert" opens a preview (below) with the fired signals as
-  // checkboxes rather than sending immediately — confirmSendAlert is what
-  // that preview's "Send" button actually calls.
+  // Clicking "Alert" opens a preview (below) where HR picks a PA or PIP, a
+  // deadline, and which tracked parameters to cite, then "Save" is what
+  // confirmSendAlert actually calls — it sends the email and flips the
+  // employee's status to match (PA Issued / PIP Issued).
   const [alertTarget, setAlertTarget] = useState(null);
   const [alertOnDone, setAlertOnDone] = useState(null);
 
@@ -76,7 +77,7 @@ function useEmployeeActions() {
     setAlertOnDone(() => onDone || null);
   };
 
-  const confirmSendAlert = async (signals) => {
+  const confirmSendAlert = async ({ signals, metric, pipType, deadline }) => {
     const emp = alertTarget;
     if (!emp || pending) return;
     setPending(`alert:${emp.id}`);
@@ -84,13 +85,14 @@ function useEmployeeActions() {
       const res = await fetch(`/api/employees/${emp.id}/alert`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: emp.name, email: emp.email, score: emp.scoreStr, bandLabel: emp.bandLabel, signals }),
+        body: JSON.stringify({ name: emp.name, email: emp.email, score: emp.scoreStr, bandLabel: emp.bandLabel, signals, metric, pipType, deadline }),
       });
       const json = await res.json();
-      window.alert(json.ok ? 'Alert email sent.' : `Failed: ${json.error}`);
+      window.alert(json.ok ? `${pipType} saved and alert email sent.` : `Failed: ${json.error}`);
       if (json.ok) {
         setAlertTarget(null);
         alertOnDone?.();
+        router.refresh();
       }
     } catch (err) {
       window.alert(`Failed: ${err.message}`);
@@ -111,18 +113,69 @@ function useEmployeeActions() {
   return { pending, closeEmployee, openAlertPreview, alertModal };
 }
 
+const PIP_TYPES = {
+  PA: { code: 'PA', label: 'Performance Appraisal (PA)' },
+  PIP: { code: 'PIP', label: 'Performance Improvement Plan (PIP)' },
+};
+// Must match PIP_SUBJECT in app/api/employees/[id]/alert/route.js.
+const PIP_SUBJECTS = {
+  PA: 'Performance Alert – Extended Interview',
+  PIP: 'Performance Improvement Plan – Extended Interview',
+};
+
 function AlertPreviewModal({ emp, pending, onClose, onSend }) {
-  const fired = emp.signalReport.filter((s) => s.status === 'fired');
-  // Negative signals are why this NJ is being alerted in the first place —
-  // pre-checked. Positive ones are available to add for balance, but off
-  // by default.
-  const [selected, setSelected] = useState(() => new Set(fired.filter((s) => s.pts < 0).map((s) => s.label)));
+  // Every actually-tracked parameter for this employee's team, not just the
+  // ones that fired — a Sales rep with zero SCs raised should still see "SCs
+  // raised" in the list (status 'clear'). Signals with no synced data at all
+  // ('no-data'/'not-tracked') are left out entirely rather than shown as a
+  // greyed-out row — there's nothing real to report on those yet.
+  const all = emp.signalReport.filter((s) => s.status === 'fired' || s.status === 'clear');
+  // Real occurrence counts, not index/points deltas — HR wants "3 negative
+  // audits" in the email, not "-15". Boolean-only signals (no count fn, e.g.
+  // "Zero assignments since joining") fall back to Yes/No since there's no
+  // number to show.
+  const displayVal = (s) => (s.isMetric ? 'Table' : s.status === 'fired' ? (s.count != null ? String(s.count) : 'Yes') : '0');
+  // Reflects the employee's actual monthly figures rather than a scored
+  // pass/fail signal — treated as just another checkbox row (pre-checked) so
+  // HR can drop it from the email like any other parameter, but rendered as
+  // its own table in the email rather than folded into the bullet list.
+  // Sales sees NR (currency), Trainer sees Utilization; PT/other teams get
+  // nothing here since neither metric applies to them.
+  const monthHeads = METRIC_HEADS[emp.team];
+  const metric = (emp.team === 'Sales' || emp.team === 'Trainer') && monthHeads
+    ? { label: emp.team === 'Sales' ? 'Month-wise NR' : 'Month-wise Utilization',
+        isCurrency: emp.team === 'Sales',
+        months: monthHeads.map((h, i) => ({ head: h, value: emp.v?.[i] ?? '—' })),
+        isMetric: true }
+    : null;
+  const items = metric ? [...all, metric] : all;
+  // Negative signals that actually fired are why this NJ is being alerted in
+  // the first place — pre-checked, same as the month-wise metric.
+  // Everything else is available to add for context, but off by default.
+  const [selected, setSelected] = useState(() => {
+    const s = new Set(all.filter((x) => x.status === 'fired' && x.pts < 0).map((x) => x.label));
+    if (metric) s.add(metric.label);
+    return s;
+  });
   const toggle = (label) => setSelected((prev) => {
     const next = new Set(prev);
     next.has(label) ? next.delete(label) : next.add(label);
     return next;
   });
-  const chosen = fired.filter((s) => selected.has(s.label));
+  const chosenItems = items.filter((s) => selected.has(s.label));
+  const chosenSignals = chosenItems.filter((s) => !s.isMetric).map((s) => ({ label: s.label, value: displayVal(s) }));
+  const chosenMetric = chosenItems.find((s) => s.isMetric) || null;
+  const fmtMonth = (v) => (metric?.isCurrency && v !== '—' && v != null ? `₹${v}` : String(v ?? '—'));
+
+  // Issuing a PA or PIP is what actually triggers this alert — HR picks one,
+  // then a deadline, before Save is enabled. Selecting either also flips the
+  // employee's dashboard status to match (see confirmSendAlert in
+  // useEmployeeActions). The PIP API call that will push this to RMS isn't
+  // available yet — Save only sends the email + updates status for now.
+  const [pipType, setPipType] = useState(null);
+  const [deadline, setDeadline] = useState('');
+  const deadlineStr = deadline ? new Date(deadline + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+  const canSave = !!pipType && !!deadline;
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 70 }}>
@@ -138,40 +191,71 @@ function AlertPreviewModal({ emp, pending, onClose, onSend }) {
           <div>
             <div className="mono" style={{ fontSize: 10, letterSpacing: '.12em', color: '#5C6178', textTransform: 'uppercase', marginBottom: 10 }}>Select parameters to include</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {fired.map((s) => (
+              {items.map((s) => (
                 <label key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 10, padding: '9px 12px' }}>
                   <input type="checkbox" checked={selected.has(s.label)} onChange={() => toggle(s.label)} style={{ width: 15, height: 15, flex: 'none' }} />
                   <span style={{ flex: 1, fontSize: 13, color: '#C7CBDA' }}>{s.label}</span>
-                  <span className="mono" style={{ fontSize: 12, fontWeight: 600, color: s.pts < 0 ? '#F87171' : '#5EEAD4' }}>{s.ptsStr}</span>
+                  <span className="mono" style={{ fontSize: 12, fontWeight: 600, color: s.isMetric ? '#8A90A8' : s.status === 'fired' ? (s.pts < 0 ? '#F87171' : '#5EEAD4') : '#8A90A8' }}>{displayVal(s)}</span>
                 </label>
               ))}
-              {!fired.length && <div style={{ fontSize: 12.5, color: '#6E7488' }}>No fired signals to report.</div>}
+              {!items.length && <div style={{ fontSize: 12.5, color: '#6E7488' }}>No tracked parameters for this team yet.</div>}
             </div>
           </div>
           <div>
+            <div className="mono" style={{ fontSize: 10, letterSpacing: '.12em', color: '#5C6178', textTransform: 'uppercase', marginBottom: 10 }}>Issue as</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {Object.values(PIP_TYPES).map((t) => (
+                <div key={t.code} onClick={() => setPipType(t.code)} style={{ flex: 1, cursor: 'pointer', textAlign: 'center', border: `1px solid ${pipType === t.code ? 'rgba(244,63,94,0.5)' : 'rgba(255,255,255,0.1)'}`, background: pipType === t.code ? 'rgba(244,63,94,0.14)' : 'rgba(255,255,255,0.02)', color: pipType === t.code ? '#F87171' : '#9BA1B8', borderRadius: 10, padding: '10px 12px', fontSize: 12.5, fontWeight: pipType === t.code ? 600 : 400 }}>
+                  {t.label}
+                </div>
+              ))}
+            </div>
+          </div>
+          {pipType && (
+            <div>
+              <div className="mono" style={{ fontSize: 10, letterSpacing: '.12em', color: '#5C6178', textTransform: 'uppercase', marginBottom: 10 }}>Deadline date</div>
+              <input
+                type="date"
+                value={deadline}
+                onChange={(ev) => setDeadline(ev.target.value)}
+                style={{ width: '100%', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#E4E6F0', outline: 'none', colorScheme: 'dark' }}
+              />
+            </div>
+          )}
+          <div>
             <div className="mono" style={{ fontSize: 10, letterSpacing: '.12em', color: '#5C6178', textTransform: 'uppercase', marginBottom: 10 }}>Email preview</div>
             <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 12, padding: 18, background: 'rgba(255,255,255,0.02)', fontSize: 13, color: '#C7CBDA', lineHeight: 1.6 }}>
+              <p style={{ margin: '0 0 12px', fontSize: 11.5, color: '#5C6178' }}>Subject: {pipType ? PIP_SUBJECTS[pipType] : '[choose PA or PIP above]'}</p>
               <p>Hi {emp.name},</p>
-              <p>Your current Worry Index stands at <b>{emp.scoreStr}</b> ({emp.bandLabel}). This has been flagged for HR review.</p>
-              {!!chosen.length && (
-                <>
-                  <p style={{ marginBottom: 4 }}>The following was noted:</p>
-                  <ul style={{ margin: '0 0 12px', paddingLeft: 18 }}>
-                    {chosen.map((s) => <li key={s.label}>{s.label} ({s.ptsStr})</li>)}
-                  </ul>
-                </>
+              <p>This is to formally bring to your attention certain performance related concerns that require immediate attention.</p>
+              <p style={{ marginBottom: 4 }}>The following concerns have been noted:</p>
+              {chosenSignals.length
+                ? <ul style={{ margin: '0 0 12px', paddingLeft: 18 }}>{chosenSignals.map((s) => <li key={s.label}>{s.label}: {s.value}</li>)}</ul>
+                : <p style={{ margin: '0 0 12px', color: '#6E7488' }}>None selected.</p>}
+              {chosenMetric && (
+                <table style={{ borderCollapse: 'collapse', margin: '0 0 12px', fontSize: 12.5 }}>
+                  <thead>
+                    <tr>{chosenMetric.months.map((m) => <th key={m.head} style={{ border: '1px solid rgba(255,255,255,0.15)', padding: '5px 9px', color: '#8A90A8', fontWeight: 600 }}>{m.head}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    <tr>{chosenMetric.months.map((m) => <td key={m.head} style={{ border: '1px solid rgba(255,255,255,0.15)', padding: '5px 9px' }}>{fmtMonth(m.value)}</td>)}</tr>
+                  </tbody>
+                </table>
               )}
-              <p>Someone from HR will be reaching out shortly to discuss your progress and any support you may need.</p>
+              <p>You are expected to demonstrate immediate and sustained improvement in the above areas.</p>
+              <p>The required improvement is expected to be demonstrated by <b>{deadlineStr || '[Deadline Date]'}</b>.</p>
+              <p>Your performance will be reviewed during this period, and further action may be taken based on the outcome of the review.</p>
+              <p style={{ marginBottom: 0 }}>Regards,<br />Team HR</p>
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <span onClick={onClose} className="hoverbtn" style={{ border: '1px solid rgba(255,255,255,0.12)', color: '#C7CBDA', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>Cancel</span>
             <span
-              onClick={() => !pending && onSend(chosen.map((s) => ({ label: s.label, ptsStr: s.ptsStr })))}
+              onClick={() => canSave && !pending && onSend({ signals: chosenSignals, metric: chosenMetric ? { label: chosenMetric.label, months: chosenMetric.months, isCurrency: chosenMetric.isCurrency } : null, pipType, deadline })}
               className="hoverbtn"
-              style={{ border: '1px solid rgba(244,63,94,0.45)', color: '#F87171', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: pending ? 'default' : 'pointer', opacity: pending ? 0.6 : 1 }}
+              style={{ border: '1px solid rgba(244,63,94,0.45)', color: '#F87171', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: (pending || !canSave) ? 'default' : 'pointer', opacity: (pending || !canSave) ? 0.5 : 1 }}
             >
-              {pending ? 'Sending…' : 'Send alert'}
+              {pending ? 'Saving…' : 'Save'}
             </span>
           </div>
         </div>
