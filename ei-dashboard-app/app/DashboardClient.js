@@ -5,6 +5,7 @@ import {
   STATUS, decorate, NAV, TITLES, PATHS, METRIC_HEADS,
   WORRY_BANDS, POS_SIGNALS, NEG_SIGNALS, NJ_QUESTIONS, appliesToTeam, feedbackRating,
 } from '../lib/data';
+import { JOB_LABELS } from '../lib/jobLabels';
 
 const card = { border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 16 };
 
@@ -289,7 +290,7 @@ function MissingFilterChips({ defs, active, onToggle }) {
   );
 }
 
-export default function DashboardClient({ employees, responses, week, newJoiners, deptCounts }) {
+export default function DashboardClient({ employees, responses, week, newJoiners, deptCounts, failedJobs }) {
   const [screen, setScreen] = useState('overview');
   const [dept, setDept] = useState('Sales');
   const [filter, setFilter] = useState(null);
@@ -302,6 +303,7 @@ export default function DashboardClient({ employees, responses, week, newJoiners
       <Sidebar screen={screen} dept={dept} go={go} njCount={newJoiners.length} deptCounts={deptCounts} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <Topbar screen={screen} dept={dept} />
+        <JobFailureBanner failedJobs={failedJobs} />
         <div style={{ padding: '26px 28px 60px', flex: 1 }}>
           {screen === 'overview' && <Overview employees={employees} newJoiners={newJoiners} deptCounts={deptCounts} go={go} setModal={setModal} />}
           {screen === 'dept' && <Dept key={dept} employees={employees} dept={dept} filter={filter} setFilter={setFilter} setModal={setModal} />}
@@ -316,6 +318,30 @@ export default function DashboardClient({ employees, responses, week, newJoiners
 }
 
 /* ---------- app chrome ---------- */
+
+// Surfaces the last-known failure for weeklyreport / weeklyresponsereport /
+// report15 (see lib/jobStatus.js) — one row per job, so at most 3 lines.
+// Dismissing only hides it for this browser tab; it reappears on the next
+// full page load until that job actually succeeds again, since the
+// underlying failure is still true.
+function JobFailureBanner({ failedJobs }) {
+  const [dismissed, setDismissed] = useState(false);
+  if (!failedJobs?.length || dismissed) return null;
+  return (
+    <div style={{ margin: '14px 28px 0', border: '1px solid rgba(244,63,94,0.35)', background: 'rgba(244,63,94,0.1)', borderRadius: 12, padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+        <div className="mono" style={{ fontSize: 10.5, letterSpacing: '.1em', color: '#F87171', textTransform: 'uppercase' }}>Email trigger failed</div>
+        <span onClick={() => setDismissed(true)} style={{ cursor: 'pointer', color: '#8A90A8', fontSize: 13, lineHeight: 1 }}>×</span>
+      </div>
+      {failedJobs.map((j) => (
+        <div key={j.job} style={{ fontSize: 12.5, color: '#F0AFAF' }}>
+          <b>{JOB_LABELS[j.job] || j.job}</b> — {j.message || 'Unknown error'}
+          {j.ran_at && <span style={{ color: '#8A90A8' }}> · {new Date(j.ran_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} IST</span>}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function Sidebar({ screen, dept, go, njCount, deptCounts }) {
   return (

@@ -1,8 +1,14 @@
 import { NextResponse } from 'next/server';
 import { SYNC_RUNNERS } from '../../../../lib/syncRunners';
+import { recordJobRun } from '../../../../lib/jobStatus';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
+
+// Only these two are surfaced on the dashboard's failure banner — the other
+// 12 data-sync feeds aren't email jobs and aren't what "did the report send"
+// is asking about.
+const TRACKED_JOBS = new Set(['weeklyreport', 'weeklyresponsereport']);
 
 // Each feed is meant to complete comfortably under Vercel Hobby's 60s
 // function limit on its own — that's why this is one route per feed instead
@@ -24,6 +30,7 @@ async function handle(request, { params }) {
     (process.env.SYNC_TRIGGER_SECRET && provided === process.env.SYNC_TRIGGER_SECRET) ||
     (process.env.CRON_SECRET && bearer === process.env.CRON_SECRET);
   if (!authorized) {
+    if (TRACKED_JOBS.has(feed)) await recordJobRun(feed, false, 'Unauthorized — SYNC_TRIGGER_SECRET/CRON_SECRET mismatch or missing.');
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -35,8 +42,10 @@ async function handle(request, { params }) {
   const startedAt = new Date().toISOString();
   try {
     const result = await runner();
+    if (TRACKED_JOBS.has(feed)) await recordJobRun(feed, true, result?.message);
     return NextResponse.json({ feed, startedAt, finishedAt: new Date().toISOString(), ok: true, ...result });
   } catch (err) {
+    if (TRACKED_JOBS.has(feed)) await recordJobRun(feed, false, err.message);
     return NextResponse.json({ feed, startedAt, finishedAt: new Date().toISOString(), ok: false, error: err.message }, { status: 500 });
   }
 }
