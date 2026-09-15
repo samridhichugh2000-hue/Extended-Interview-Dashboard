@@ -49,12 +49,12 @@ export function isWeekOver(weekStr) {
   return Date.now() > weekDateRange(weekStr).end.getTime();
 }
 
-// Tuesday 12:00 IST of the given ISO week — the same instant the weekly
+// Tuesday 18:00 IST of the given ISO week — the same instant the weekly
 // response digest report (/api/sync/weeklyresponsereport) fires. Used to
 // decide when "hasn't responded yet" starts counting against the Worry
 // Index, rather than waiting for the full week (isWeekOver) to close out.
 export function isPastTuesdayCheckIn(weekStr) {
   const { start } = weekDateRange(weekStr); // Monday 00:00 IST
-  const tuesdayNoon = start.getTime() + 36 * 60 * 60 * 1000; // + 36h = Tuesday 12:00 IST
-  return Date.now() >= tuesdayNoon;
+  const tuesdaySixPm = start.getTime() + 42 * 60 * 60 * 1000; // + 42h = Tuesday 18:00 IST
+  return Date.now() >= tuesdaySixPm;
 }

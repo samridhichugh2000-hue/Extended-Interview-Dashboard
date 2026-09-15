@@ -136,7 +136,7 @@ function belowSatisfactoryCount(e) {
 
 // Every week this NJ has been tracked that isn't 'Received' — cumulative,
 // not just the current week. The current week only counts once past
-// Tuesday 12PM IST (see the signal def below); every earlier week is
+// Tuesday 6PM IST (see the signal def below); every earlier week is
 // already closed out (effectiveState in lib/queries.js already resolved
 // any lingering 'Pending' there to 'Overdue').
 function missedWeeksCount(e) {
