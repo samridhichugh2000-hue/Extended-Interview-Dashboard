@@ -93,3 +93,14 @@ CREATE TABLE IF NOT EXISTS weekly_responses (
   ai_rating TEXT,
   token TEXT UNIQUE             -- public submission-link token
 );
+
+-- One row per scheduled/on-demand email job, overwritten on every attempt —
+-- a "last run" status, not a history log. Lets the dashboard show "Email
+-- trigger failed" for weeklyreport / weeklyresponsereport / report15
+-- without a separate monitoring system.
+CREATE TABLE IF NOT EXISTS job_runs (
+  job TEXT PRIMARY KEY,         -- weeklyreport | weeklyresponsereport | report15
+  status TEXT NOT NULL,         -- ok | error
+  message TEXT,
+  ran_at TEXT NOT NULL          -- ISO timestamp of the last attempt
+);
