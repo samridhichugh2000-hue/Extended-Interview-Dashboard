@@ -49,7 +49,11 @@ CREATE TABLE IF NOT EXISTS employees (
   kgt_count INTEGER,             -- count of KGTs (ownership-transfer requests) participated in (All teams). NULL means the polls dashboard has no record for this emp_code, not a confirmed 0.
   kgt_details TEXT,              -- JSON array of {kgt_id, topic, department, submitted_at, release_date, closure_date}
   mgr_feedback_count INTEGER,    -- count of manager feedback entries on file (All teams)
-  mgr_feedback_details TEXT      -- JSON array of {managerEmpCode, managerName, strength, improvement, other, date}
+  mgr_feedback_details TEXT,     -- JSON array of {managerEmpCode, managerName, strength, improvement, other, date}
+  meetings_count INTEGER,        -- count of Teams meetings tracked from the rep's calendar (Sales only, via Graph API Calls)
+  meetings_late_count INTEGER,   -- of those, joined later than ON_TIME_GRACE_SECONDS after scheduled start
+  meetings_missed_count INTEGER, -- of those, never joined at all (meeting already ended)
+  av_issue_count INTEGER         -- of those, a matched callRecords webhook flagged an audio/video quality problem
 );
 
 CREATE TABLE IF NOT EXISTS pip_status (
@@ -92,6 +96,64 @@ CREATE TABLE IF NOT EXISTS weekly_responses (
   q2 TEXT, a2 TEXT,
   ai_rating TEXT,
   token TEXT UNIQUE             -- public submission-link token
+);
+
+-- Graph API Calls: one row per Teams meeting instance found on a Sales rep's
+-- Outlook calendar, with their own join/leave times pulled from the
+-- meeting's attendanceReports. call_record_id/av_issue* stay NULL until a
+-- matching notification lands on the callRecords webhook (see
+-- app/api/graph/callrecords-webhook) — there is no way to fetch call quality
+-- on demand, only via that push notification.
+-- A recurring meeting keeps the same join_url across every occurrence, so
+-- the natural key is (employee, join_url, scheduled_start) rather than just
+-- (employee, join_url).
+CREATE TABLE IF NOT EXISTS graph_meetings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  employee_id TEXT NOT NULL REFERENCES employees(id),
+  subject TEXT,
+  organizer_email TEXT,
+  scheduled_start TEXT NOT NULL,  -- ISO UTC
+  scheduled_end TEXT,             -- ISO UTC
+  join_url TEXT NOT NULL,
+  online_meeting_id TEXT,         -- NULL when resolveOnlineMeeting couldn't find it (e.g. organized outside this tenant)
+  joined_at TEXT,                 -- this employee's earliest join, ISO UTC — NULL if they never joined
+  left_at TEXT,
+  attendance_seconds INTEGER,
+  delay_seconds INTEGER,          -- joined_at minus scheduled_start, negative means they joined early
+  timing_status TEXT NOT NULL,    -- On Time | Late | Did Not Join | No Data
+  call_record_id TEXT,
+  av_issue INTEGER,               -- 0/1, NULL until a call record is matched
+  av_issue_details TEXT,          -- JSON: which streams/metrics tripped the audio/video thresholds
+  synced_at TEXT NOT NULL,
+  UNIQUE(employee_id, join_url, scheduled_start)
+);
+
+-- Raw landing zone for Graph's callRecords webhook notifications. There is no
+-- list/filter API for call records, only a push notification per completed
+-- call, so every one that arrives is kept here and best-effort matched to a
+-- graph_meetings row by organizer + time proximity (matched flips to 1 once
+-- that happens, so a retried/duplicate notification doesn't re-match).
+CREATE TABLE IF NOT EXISTS graph_call_records (
+  id TEXT PRIMARY KEY,
+  organizer_email TEXT,
+  start_datetime TEXT,
+  end_datetime TEXT,
+  has_audio_issue INTEGER,
+  has_video_issue INTEGER,
+  quality_summary TEXT,           -- JSON, per-stream metrics behind the two flags above
+  matched INTEGER NOT NULL DEFAULT 0,
+  received_at TEXT NOT NULL
+);
+
+-- Lifecycle of the Graph subscription that drives the callRecords webhook —
+-- subscriptions on this resource expire (~70h max) and must be renewed
+-- before then or notifications stop arriving silently.
+CREATE TABLE IF NOT EXISTS graph_subscriptions (
+  id TEXT PRIMARY KEY,            -- Graph's subscription id
+  resource TEXT NOT NULL,
+  expiration_datetime TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  renewed_at TEXT
 );
 
 -- One row per scheduled/on-demand email job, overwritten on every attempt —

@@ -41,6 +41,7 @@ export const NAV = [
   { label: 'PT Team', screen: 'dept', dept: 'PT Team', count: '9' },
   { label: 'PA/PIP Detection', screen: 'papip', count: '6' },
   { label: 'Worry Index', screen: 'worryindex', count: '42' },
+  { label: 'Graph API Calls', screen: 'graphcalls', count: '0' },
   { label: 'Reports', screen: 'reports', count: '2' },
 ];
 
@@ -49,6 +50,7 @@ export const TITLES = {
   dept: [null, 'Department view · status filters, revenue and feedback columns'],
   papip: ['PA / PIP Detection', 'Every open case, grouped by department'],
   worryindex: ['Worry Index', 'How every signal is scored, and where every NJ lands · 2026-W30'],
+  graphcalls: ['Graph API Calls', "Sales' Teams meetings via Microsoft Graph — join timing and audio/video quality. Not yet feeding the Worry Index."],
   reports: ['Reports', 'Weekly and 15-day reporting'],
 };
 

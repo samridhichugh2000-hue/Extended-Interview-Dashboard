@@ -3,7 +3,7 @@
 // getDb()) instead of creating its own, and reads credentials from
 // process.env directly (already populated by Vercel — no dotenv needed here,
 // unlike the standalone CLI scripts these mirror).
-import { getDb } from './db';
+import { getDb } from './db.js';
 
 function displayDate(raw) {
   const d = new Date(raw);
@@ -651,6 +651,186 @@ export async function syncKgt() {
   return { message: `Synced KGT participation for ${updated} employees (${unmatched} had no record on the polls dashboard).` };
 }
 
+const GRAPH_MEETINGS_LOOKBACK_DAYS = Number(process.env.GRAPH_MEETINGS_LOOKBACK_DAYS || 7);
+
+// This employee's own attendance across every report on the meeting
+// (recurring/reconvened meetings can produce more than one) — matched by
+// email, case-insensitive since Graph's casing on attendanceRecords isn't
+// guaranteed to match what's on file.
+function findAttendance(reports, email, parseGraphDateTime) {
+  const target = email.toLowerCase();
+  let earliestJoin = null, latestLeave = null, totalSeconds = 0, found = false;
+  for (const report of reports) {
+    for (const rec of report.attendanceRecords || []) {
+      if ((rec.emailAddress || '').toLowerCase() !== target) continue;
+      found = true;
+      totalSeconds += rec.totalAttendanceInSeconds || 0;
+      for (const interval of rec.attendanceIntervals || []) {
+        const join = parseGraphDateTime(interval.joinDateTime);
+        const leave = parseGraphDateTime(interval.leaveDateTime);
+        if (!earliestJoin || join < earliestJoin) earliestJoin = join;
+        if (!latestLeave || leave > latestLeave) latestLeave = leave;
+      }
+    }
+  }
+  return found ? { joinedAt: earliestJoin, leftAt: latestLeave, attendanceSeconds: totalSeconds } : null;
+}
+
+export async function recomputeGraphAggregates(db, employeeId) {
+  const res = await db.execute({
+    sql: 'SELECT timing_status, av_issue FROM graph_meetings WHERE employee_id = ?',
+    args: [employeeId],
+  });
+  const total = res.rows.length;
+  const late = res.rows.filter((r) => r.timing_status === 'Late').length;
+  const missed = res.rows.filter((r) => r.timing_status === 'Did Not Join').length;
+  const avIssues = res.rows.filter((r) => r.av_issue === 1).length;
+  await db.execute({
+    sql: 'UPDATE employees SET meetings_count = ?, meetings_late_count = ?, meetings_missed_count = ?, av_issue_count = ? WHERE id = ?',
+    args: [total, late, missed, avIssues, employeeId],
+  });
+}
+
+// Graph API Calls — pulls each active Sales rep's Outlook calendar for Teams
+// meetings in the last GRAPH_MEETINGS_LOOKBACK_DAYS days, resolves each to
+// its online meeting + attendanceReports, and records whether they joined
+// on time. Audio/video quality isn't touched here at all — that only ever
+// arrives via the callRecords webhook (see the graph_meetings table comment
+// in lib/schema.sql), so re-running this never overwrites av_issue.
+export async function syncGraphMeetings() {
+  const db = getDb();
+  const { getCalendarTeamsMeetings, resolveUserIdByEmail, resolveOnlineMeeting, getAttendanceReports, parseGraphDateTime, ON_TIME_GRACE_SECONDS } = await import('./graphCallsApi.js');
+
+  const to = new Date();
+  const from = new Date(to.getTime() - GRAPH_MEETINGS_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
+  const employees = await db.execute("SELECT id, email FROM employees WHERE team = 'Sales' AND active = 1");
+
+  // The organizer/attendance endpoints need the organizer's AAD object id,
+  // not their email — cache the lookup since the same organizer (e.g. a
+  // sales manager running team calls) recurs across many meetings/reps.
+  const organizerIdCache = new Map();
+  async function organizerIdFor(email) {
+    if (!organizerIdCache.has(email)) organizerIdCache.set(email, resolveUserIdByEmail(email).catch(() => null));
+    return organizerIdCache.get(email);
+  }
+
+  let processed = 0, noEmail = 0, apiErrors = 0, meetingsSynced = 0;
+  for (const emp of employees.rows) {
+    if (!emp.email) { noEmail++; continue; }
+
+    let events;
+    try {
+      events = await getCalendarTeamsMeetings(emp.email, from.toISOString(), to.toISOString());
+    } catch (err) {
+      console.error(`Graph calendar fetch failed for ${emp.email}:`, err.message);
+      apiErrors++;
+      continue;
+    }
+
+    for (const event of events) {
+      const organizerEmail = event.organizer?.emailAddress?.address;
+      const joinUrl = event.onlineMeeting?.joinUrl;
+      if (!organizerEmail || !joinUrl) continue;
+
+      const scheduledStart = parseGraphDateTime(event.start.dateTime);
+      const scheduledEnd = event.end?.dateTime ? parseGraphDateTime(event.end.dateTime) : null;
+
+      let timingStatus = 'No Data', joinedAt = null, leftAt = null, attendanceSeconds = null, delaySeconds = null, onlineMeetingId = null;
+      try {
+        const organizerId = await organizerIdFor(organizerEmail);
+        const meeting = organizerId ? await resolveOnlineMeeting(organizerId, joinUrl) : null;
+        if (meeting) {
+          onlineMeetingId = meeting.id;
+          const reports = await getAttendanceReports(organizerId, meeting.id);
+          const attendance = findAttendance(reports, emp.email, parseGraphDateTime);
+          if (attendance) {
+            joinedAt = attendance.joinedAt;
+            leftAt = attendance.leftAt;
+            attendanceSeconds = attendance.attendanceSeconds;
+            delaySeconds = Math.round((joinedAt.getTime() - scheduledStart.getTime()) / 1000);
+            timingStatus = delaySeconds <= ON_TIME_GRACE_SECONDS ? 'On Time' : 'Late';
+          } else {
+            timingStatus = scheduledEnd && scheduledEnd < new Date() ? 'Did Not Join' : 'No Data';
+          }
+        }
+      } catch (err) {
+        // Meeting organized outside this app's reach (e.g. an external
+        // tenant), or attendance not published yet — leave as 'No Data'
+        // rather than failing the whole sync over one meeting.
+        if (err.status !== 404 && err.status !== 403) console.error(`Graph attendance lookup failed for ${emp.email} / ${event.subject}:`, err.message);
+      }
+
+      await db.execute({
+        sql: `INSERT INTO graph_meetings (employee_id, subject, organizer_email, scheduled_start, scheduled_end, join_url, online_meeting_id, joined_at, left_at, attendance_seconds, delay_seconds, timing_status, synced_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(employee_id, join_url, scheduled_start) DO UPDATE SET
+                subject = excluded.subject, online_meeting_id = excluded.online_meeting_id,
+                joined_at = excluded.joined_at, left_at = excluded.left_at,
+                attendance_seconds = excluded.attendance_seconds, delay_seconds = excluded.delay_seconds,
+                timing_status = excluded.timing_status, synced_at = excluded.synced_at`,
+        args: [
+          emp.id, event.subject || null, organizerEmail, scheduledStart.toISOString(), scheduledEnd ? scheduledEnd.toISOString() : null,
+          joinUrl, onlineMeetingId, joinedAt ? joinedAt.toISOString() : null, leftAt ? leftAt.toISOString() : null,
+          attendanceSeconds, delaySeconds, timingStatus, new Date().toISOString(),
+        ],
+      });
+      meetingsSynced++;
+    }
+
+    await recomputeGraphAggregates(db, emp.id);
+    processed++;
+  }
+
+  return { message: `Synced Teams meeting attendance for ${processed} Sales reps (${meetingsSynced} meetings, ${apiErrors} calendar fetch errors, ${noEmail} had no email on file).` };
+}
+
+// Keeps the callRecords webhook subscription alive — creates one if none is
+// active, renews the active one once it's within a day of expiring. Must run
+// at least daily (it's registered as a plain sync feed, triggered the same
+// way as every other non-Vercel-cron feed — see app/api/sync/[feed]/route.js)
+// since this resource's subscriptions max out at ~70 hours.
+export async function syncGraphSubscription() {
+  const db = getDb();
+  const { createCallRecordsSubscription, renewSubscription } = await import('./graphCallsApi.js');
+
+  const notificationUrl = `${process.env.APP_BASE_URL}/api/graph/callrecords-webhook`;
+  const clientState = process.env.GRAPH_WEBHOOK_CLIENT_STATE;
+  if (!clientState) throw new Error('GRAPH_WEBHOOK_CLIENT_STATE is not set — refusing to create an unauthenticated webhook subscription.');
+
+  // Renew 60 minutes shy of the 4230-minute (~70.5h) ceiling Graph enforces
+  // for the communications/callRecords resource.
+  const expirationDateTime = new Date(Date.now() + 4170 * 60 * 1000).toISOString();
+
+  const existing = await db.execute("SELECT * FROM graph_subscriptions WHERE resource = 'communications/callRecords' ORDER BY expiration_datetime DESC LIMIT 1");
+  const current = existing.rows[0];
+
+  if (current && new Date(current.expiration_datetime).getTime() - Date.now() > 24 * 60 * 60 * 1000) {
+    return { message: `Existing callRecords subscription still valid until ${current.expiration_datetime} — nothing to do.` };
+  }
+
+  if (current) {
+    try {
+      await renewSubscription(current.id, expirationDateTime);
+      await db.execute({
+        sql: 'UPDATE graph_subscriptions SET expiration_datetime = ?, renewed_at = ? WHERE id = ?',
+        args: [expirationDateTime, new Date().toISOString(), current.id],
+      });
+      return { message: `Renewed callRecords subscription ${current.id}, now valid until ${expirationDateTime}.` };
+    } catch (err) {
+      // Graph 404s a PATCH on a subscription that's already expired — fall
+      // through and create a fresh one instead of failing the sync.
+      console.error(`Renewing subscription ${current.id} failed, creating a new one:`, err.message);
+    }
+  }
+
+  const created = await createCallRecordsSubscription(notificationUrl, clientState, expirationDateTime);
+  await db.execute({
+    sql: 'INSERT INTO graph_subscriptions (id, resource, expiration_datetime, created_at) VALUES (?, ?, ?, ?)',
+    args: [created.id, 'communications/callRecords', created.expirationDateTime, new Date().toISOString()],
+  });
+  return { message: `Created callRecords subscription ${created.id}, valid until ${created.expirationDateTime}.` };
+}
+
 export const SYNC_RUNNERS = {
   koenig: syncKoenig,
   pip: syncPip,
@@ -670,6 +850,8 @@ export const SYNC_RUNNERS = {
   polls: syncPolls,
   kgt: syncKgt,
   mgrfeedback: syncMgrFeedback,
+  graphmeetings: syncGraphMeetings,
+  graphsubscription: syncGraphSubscription,
   weeklyreport: async () => {
     const { sendWeeklyReports } = await import('./weeklyReportRunner.js');
     return sendWeeklyReports();

@@ -290,7 +290,7 @@ function MissingFilterChips({ defs, active, onToggle }) {
   );
 }
 
-export default function DashboardClient({ employees, responses, week, newJoiners, deptCounts, failedJobs }) {
+export default function DashboardClient({ employees, responses, week, newJoiners, deptCounts, failedJobs, graphMeetings }) {
   const [screen, setScreen] = useState('overview');
   const [dept, setDept] = useState('Sales');
   const [filter, setFilter] = useState(null);
@@ -300,7 +300,7 @@ export default function DashboardClient({ employees, responses, week, newJoiners
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex' }}>
-      <Sidebar screen={screen} dept={dept} go={go} njCount={newJoiners.length} deptCounts={deptCounts} />
+      <Sidebar screen={screen} dept={dept} go={go} njCount={newJoiners.length} deptCounts={deptCounts} graphCallsCount={graphMeetings.length} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <Topbar screen={screen} dept={dept} />
         <JobFailureBanner failedJobs={failedJobs} />
@@ -309,6 +309,7 @@ export default function DashboardClient({ employees, responses, week, newJoiners
           {screen === 'dept' && <Dept key={dept} employees={employees} dept={dept} filter={filter} setFilter={setFilter} setModal={setModal} />}
           {screen === 'papip' && <PaPip employees={employees} filter={filter} setFilter={setFilter} setModal={setModal} />}
           {screen === 'worryindex' && <WorryIndex employees={employees} filter={filter} setFilter={setFilter} setModal={setModal} />}
+          {screen === 'graphcalls' && <GraphCalls meetings={graphMeetings} filter={filter} setFilter={setFilter} />}
           {screen === 'reports' && <Reports employees={employees} responses={responses} week={week} filter={filter} setFilter={setFilter} />}
         </div>
       </div>
@@ -343,7 +344,7 @@ function JobFailureBanner({ failedJobs }) {
   );
 }
 
-function Sidebar({ screen, dept, go, njCount, deptCounts }) {
+function Sidebar({ screen, dept, go, njCount, deptCounts, graphCallsCount }) {
   return (
     <div style={{ width: 240, flex: 'none', background: 'linear-gradient(180deg,rgba(99,102,241,0.10),rgba(168,85,247,0.04))', borderRight: '1px solid rgba(255,255,255,0.07)', padding: '22px 14px', display: 'flex', flexDirection: 'column', gap: 26, position: 'sticky', top: 0, height: '100vh' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 8px' }}>
@@ -354,7 +355,7 @@ function Sidebar({ screen, dept, go, njCount, deptCounts }) {
         <div className="mono" style={{ fontSize: 9.5, letterSpacing: '.16em', color: '#5C6178', padding: '0 10px 8px' }}>MONITOR</div>
         {NAV.map((n) => {
           const active = screen === n.screen && (!n.dept || n.dept === dept);
-          const count = n.screen === 'overview' ? njCount : n.dept && deptCounts[n.dept] !== undefined ? deptCounts[n.dept] : n.count;
+          const count = n.screen === 'overview' ? njCount : n.screen === 'graphcalls' ? graphCallsCount : n.dept && deptCounts[n.dept] !== undefined ? deptCounts[n.dept] : n.count;
           return (
             <div key={n.label} onClick={() => go(n.screen, n.dept)}
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 10px', borderRadius: 9, cursor: 'pointer', fontSize: 13.5, background: active ? 'rgba(99,102,241,0.22)' : 'transparent', color: active ? '#FFFFFF' : '#9BA1B8', fontWeight: active ? 600 : 400, borderLeft: `2px solid ${active ? '#6366F1' : 'transparent'}` }}>
@@ -1350,6 +1351,238 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
               </div>
             );
           })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function fmtIst(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) + ' IST';
+}
+function fmtDuration(seconds) {
+  if (seconds == null) return '—';
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60);
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+function fmtDelay(seconds) {
+  if (seconds == null) return '—';
+  if (seconds <= 0) return `${fmtDuration(-seconds)} early`;
+  return `${fmtDuration(seconds)} late`;
+}
+const TIMING_COLORS = {
+  'On Time': '#5EEAD4',
+  Late: '#F59E0B',
+  'Did Not Join': '#F87171',
+  'No Data': '#6E7488',
+};
+
+// Graph API Calls — Sales' Teams meetings pulled from each rep's Outlook
+// calendar (join timing) plus, once a callRecords webhook notification has
+// matched a meeting, whether audio/video quality was flagged. Purely
+// informational for now — not wired into the Worry Index yet (see the "not
+// tracked" badges still on those two signals in Worry Index) until this
+// data's been reviewed.
+function GraphCalls({ meetings, filter, setFilter }) {
+  const [search, setSearch] = useState('');
+  const [empDetail, setEmpDetail] = useState(null);
+  const [meetingDetail, setMeetingDetail] = useState(null);
+
+  const total = meetings.length;
+  const onTime = meetings.filter((m) => m.timingStatus === 'On Time').length;
+  const late = meetings.filter((m) => m.timingStatus === 'Late').length;
+  const didNotJoin = meetings.filter((m) => m.timingStatus === 'Did Not Join').length;
+  const avIssues = meetings.filter((m) => m.avIssue === true).length;
+
+  const cards = [
+    { label: 'Meetings Tracked', count: total, color: '#A5A7FA', filterVal: null },
+    { label: 'On Time', count: onTime, color: '#5EEAD4', filterVal: 'OnTime' },
+    { label: 'Late', count: late, color: '#F59E0B', filterVal: 'Late' },
+    { label: 'Did Not Join', count: didNotJoin, color: '#F87171', filterVal: 'DidNotJoin' },
+    { label: 'A/V Issues', count: avIssues, color: '#F87171', filterVal: 'AvIssue' },
+  ].map((c) => ({ ...c, active: filter === c.filterVal || (!filter && c.filterVal === null) }));
+
+  const matchesFilter = (m) => {
+    if (filter === 'OnTime') return m.timingStatus === 'On Time';
+    if (filter === 'Late') return m.timingStatus === 'Late';
+    if (filter === 'DidNotJoin') return m.timingStatus === 'Did Not Join';
+    if (filter === 'AvIssue') return m.avIssue === true;
+    return true;
+  };
+
+  // One row per employee — meeting-level detail (start time, joined time,
+  // timing, quality) lives behind "Click to see meeting details" so this
+  // list stays scannable even for reps with dozens of tracked meetings.
+  const byEmployee = new Map();
+  for (const m of meetings) {
+    if (!byEmployee.has(m.employeeId)) byEmployee.set(m.employeeId, { employeeId: m.employeeId, employeeName: m.employeeName, team: m.team, meetings: [] });
+    byEmployee.get(m.employeeId).meetings.push(m);
+  }
+  const q = search.trim().toLowerCase();
+  const employeeRows = [...byEmployee.values()]
+    .filter((e) => !q || e.employeeName.toLowerCase().includes(q))
+    .filter((e) => !filter || e.meetings.some(matchesFilter))
+    .map((e) => ({
+      ...e,
+      total: e.meetings.length,
+      onTime: e.meetings.filter((m) => m.timingStatus === 'On Time').length,
+      late: e.meetings.filter((m) => m.timingStatus === 'Late').length,
+      didNotJoin: e.meetings.filter((m) => m.timingStatus === 'Did Not Join').length,
+      avIssues: e.meetings.filter((m) => m.avIssue === true).length,
+    }))
+    .sort((a, b) => a.employeeName.localeCompare(b.employeeName));
+
+  const gridCols = '1.6fr .9fr .9fr .9fr .9fr .9fr 1.4fr';
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div style={{ border: '1px solid rgba(99,102,241,0.25)', background: 'rgba(99,102,241,0.06)', borderRadius: 12, padding: '12px 16px', fontSize: 12.5, color: '#A8AEC4', lineHeight: 1.5 }}>
+        Sourced from each Sales rep's Outlook calendar and Teams attendance reports via Microsoft Graph. Audio/video quality only appears once a callRecords webhook notification arrives for that meeting — "No Data" there just means none has landed yet, not a clean call. This screen doesn't feed the Worry Index score yet.
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10 }}>
+        {cards.map((c) => (
+          <div key={c.label} onClick={() => setFilter(c.active && c.filterVal !== null ? null : c.filterVal)}
+            style={{ cursor: 'pointer', border: `1px solid ${c.active ? c.color : 'rgba(255,255,255,0.09)'}`, background: c.active ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.025)', borderRadius: 12, padding: '13px 14px' }}>
+            <div className="disp" style={{ fontSize: 24, fontWeight: 600, color: c.color, letterSpacing: '-0.02em' }}>{c.count}</div>
+            <div style={{ fontSize: 11, color: '#A8AEC4', marginTop: 3, lineHeight: 1.3 }}>{c.label}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <input
+          value={search}
+          onChange={(ev) => setSearch(ev.target.value)}
+          placeholder="Search by employee name…"
+          style={{ flex: 1, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#E4E6F0', outline: 'none' }}
+        />
+        <div onClick={() => setFilter(null)} style={{ border: '1px solid rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.1)', color: '#A5A7FA', borderRadius: 10, padding: '10px 14px', fontSize: 13, cursor: 'pointer', flex: 'none' }}>
+          {filter ? `Filter: ${cards.find((c) => c.filterVal === filter)?.label} ×` : 'No filter applied'}
+        </div>
+      </div>
+
+      <div style={{ ...card, overflow: 'hidden' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <span>Employee</span><span style={{ textAlign: 'right' }}>Meetings</span><span style={{ textAlign: 'right' }}>On Time</span><span style={{ textAlign: 'right' }}>Late</span><span style={{ textAlign: 'right' }}>Did Not Join</span><span style={{ textAlign: 'right' }}>A/V Issues</span><span style={{ textAlign: 'right' }}>Details</span>
+        </div>
+        {employeeRows.map((e) => (
+          <div key={e.employeeId} className="hoverrow" style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '13px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <span style={{ fontWeight: 600 }}>{e.employeeName}</span>
+              <span style={{ fontSize: 11, color: '#6E7488' }}>{e.team}</span>
+            </div>
+            <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: '#C7CBDA' }}>{e.total}</span>
+            <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: '#5EEAD4' }}>{e.onTime}</span>
+            <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: e.late > 0 ? '#F59E0B' : '#6E7488' }}>{e.late}</span>
+            <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: e.didNotJoin > 0 ? '#F87171' : '#6E7488' }}>{e.didNotJoin}</span>
+            <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: e.avIssues > 0 ? '#F87171' : '#6E7488' }}>{e.avIssues}</span>
+            <span onClick={() => setEmpDetail(e)} style={{ textAlign: 'right', fontSize: 12.5, color: '#A5A7FA', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>Click to see meeting details</span>
+          </div>
+        ))}
+        {!employeeRows.length && <div style={{ padding: '18px', fontSize: 12.5, color: '#6E7488' }}>{total === 0 ? 'No Teams meetings synced yet — run the graphmeetings sync feed.' : 'No employees match this filter.'}</div>}
+      </div>
+
+      {empDetail && <EmployeeMeetingsModal emp={empDetail} onClose={() => setEmpDetail(null)} onSelectMeeting={setMeetingDetail} />}
+      {meetingDetail && <GraphMeetingModal meeting={meetingDetail} onClose={() => setMeetingDetail(null)} />}
+    </div>
+  );
+}
+
+function EmployeeMeetingsModal({ emp, onClose, onSelectMeeting }) {
+  const meetings = [...emp.meetings].sort((a, b) => new Date(b.scheduledStart) - new Date(a.scheduledStart));
+  const gridCols = '1.8fr 1.1fr 1.1fr .9fr .8fr .9fr';
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 800, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.employeeName} — meeting details</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>{meetings.length} Teams {meetings.length === 1 ? 'meeting' : 'meetings'} tracked</div>
+          </div>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+        </div>
+        <div style={{ padding: '8px 24px 24px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '10px 0', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+            <span>Meeting</span><span>Start Time</span><span>Joined Time</span><span>Timing</span><span style={{ textAlign: 'right' }}>Duration</span><span style={{ textAlign: 'right' }}>A/V Quality</span>
+          </div>
+          {meetings.map((m) => (
+            <div key={m.id} className="hoverrow" onClick={() => onSelectMeeting(m)} style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '11px 0', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 12.5, cursor: 'pointer' }}>
+              <span style={{ color: '#C7CBDA', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.subject}</span>
+              <span className="mono" style={{ fontSize: 11.5, color: '#8A90A8' }}>{fmtIst(m.scheduledStart)}</span>
+              <span className="mono" style={{ fontSize: 11.5, color: '#8A90A8' }}>{fmtIst(m.joinedAt)}</span>
+              <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: `${TIMING_COLORS[m.timingStatus]}1F`, color: TIMING_COLORS[m.timingStatus], border: `1px solid ${TIMING_COLORS[m.timingStatus]}55` }}>{m.timingStatus}</span>
+              <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: '#C7CBDA' }}>{fmtDuration(m.attendanceSeconds)}</span>
+              <span style={{ textAlign: 'right', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, justifySelf: 'end', background: m.avIssue == null ? 'rgba(255,255,255,0.05)' : m.avIssue ? 'rgba(244,63,94,0.14)' : 'rgba(20,184,166,0.14)', color: m.avIssue == null ? '#6E7488' : m.avIssue ? '#F87171' : '#5EEAD4', border: `1px solid ${m.avIssue == null ? 'rgba(255,255,255,0.12)' : m.avIssue ? 'rgba(244,63,94,0.35)' : 'rgba(20,184,166,0.35)'}` }}>
+                {m.avIssue == null ? 'No Data' : m.avIssue ? 'Issue' : 'Clean'}
+              </span>
+            </div>
+          ))}
+          {!meetings.length && <div style={{ fontSize: 12.5, color: '#6E7488', paddingTop: 12 }}>No meetings on file.</div>}
+          <div style={{ fontSize: 11.5, color: '#6E7488', marginTop: 14 }}>Click a meeting for full detail, including any audio/video quality breakdown.</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GraphMeetingModal({ meeting: m, onClose }) {
+  const rows = [
+    ['Employee', m.employeeName],
+    ['Team', m.team],
+    ['Organizer', m.organizerEmail || '—'],
+    ['Scheduled start', fmtIst(m.scheduledStart)],
+    ['Scheduled end', fmtIst(m.scheduledEnd)],
+    ['Joined at', fmtIst(m.joinedAt)],
+    ['Left at', fmtIst(m.leftAt)],
+    ['Delay vs. scheduled start', m.timingStatus === 'Did Not Join' ? '—' : fmtDelay(m.delaySeconds)],
+    ['Attendance duration', fmtDuration(m.attendanceSeconds)],
+    ['Call record matched', m.callRecordId || 'Not yet — no callRecords notification received for this meeting'],
+  ];
+  const problems = [...(m.avIssueDetails?.audioProblems || []).map((p) => ({ ...p, kind: 'Audio' })), ...(m.avIssueDetails?.videoProblems || []).map((p) => ({ ...p, kind: 'Video' }))];
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 70 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 620, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{m.subject}</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>{m.employeeName} · {m.timingStatus}</div>
+          </div>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+        </div>
+        <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {rows.map(([k, v]) => (
+              <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 12.5 }}>
+                <span style={{ color: '#8A90A8' }}>{k}</span>
+                <span style={{ color: '#C7CBDA', textAlign: 'right' }}>{v}</span>
+              </div>
+            ))}
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, color: '#8A90A8', marginBottom: 8 }}>Audio / video quality</div>
+            {m.avIssue == null && (
+              <div style={{ fontSize: 12.5, color: '#6E7488', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 10, padding: 14 }}>No callRecords data matched to this meeting yet.</div>
+            )}
+            {m.avIssue === false && (
+              <div style={{ fontSize: 12.5, color: '#5EEAD4', border: '1px solid rgba(20,184,166,0.3)', background: 'rgba(20,184,166,0.06)', borderRadius: 10, padding: 14 }}>No quality issues detected on this call.</div>
+            )}
+            {m.avIssue === true && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {problems.map((p, i) => (
+                  <div key={i} style={{ border: '1px solid rgba(244,63,94,0.25)', background: 'rgba(244,63,94,0.05)', borderRadius: 10, padding: 12, fontSize: 12 }}>
+                    <span style={{ color: '#F87171', fontWeight: 600 }}>{p.kind} issue</span>
+                    <span style={{ color: '#A8AEC4' }}> — packet loss {(p.packetLoss * 100).toFixed(1)}%, jitter {p.jitterMs}ms, RTT {p.rttMs}ms</span>
+                  </div>
+                ))}
+                {!problems.length && <div style={{ fontSize: 12.5, color: '#F87171' }}>Flagged, but no per-stream detail was recorded.</div>}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
