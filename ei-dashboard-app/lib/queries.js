@@ -97,6 +97,10 @@ export async function getEmployees() {
       kgtDetails: e.kgt_details ? JSON.parse(e.kgt_details) : [],
       mgrFeedbackCount: e.mgr_feedback_count,
       mgrFeedbackDetails: e.mgr_feedback_details ? JSON.parse(e.mgr_feedback_details) : [],
+      meetingsCount: e.meetings_count,
+      meetingsLateCount: e.meetings_late_count,
+      meetingsMissedCount: e.meetings_missed_count,
+      avIssueCount: e.av_issue_count,
       // null = no weekly_responses row yet for this week (e.g. feature hasn't
       // been run for them this week) — distinct from a confirmed Pending/Overdue.
       weeklyReportState: (weeksByEmp.get(e.id) || []).find((w) => w.week === currentWeek)?.state ?? null,
@@ -117,6 +121,40 @@ export async function getEmployees() {
       trendNote: trendNoteFor(signals),
     };
   });
+}
+
+// Graph API Calls screen: every tracked Teams meeting instance, newest
+// first, joined against the employee for name/team display. av_issue is
+// null (not 0/1) until a callRecords webhook notification has matched this
+// meeting — that's a real "no data yet" state, distinct from a confirmed
+// clean call.
+export async function getGraphMeetings() {
+  const db = getDb();
+  const res = await db.execute(`
+    SELECT gm.*, e.name AS emp_name, e.team AS emp_team
+    FROM graph_meetings gm
+    JOIN employees e ON e.id = gm.employee_id
+    ORDER BY gm.scheduled_start DESC
+  `);
+  return res.rows.map((r) => ({
+    id: r.id,
+    employeeId: r.employee_id,
+    employeeName: r.emp_name,
+    team: r.emp_team,
+    subject: r.subject || '(no subject)',
+    organizerEmail: r.organizer_email,
+    scheduledStart: r.scheduled_start,
+    scheduledEnd: r.scheduled_end,
+    joinedAt: r.joined_at,
+    leftAt: r.left_at,
+    attendanceSeconds: r.attendance_seconds,
+    delaySeconds: r.delay_seconds,
+    timingStatus: r.timing_status,
+    callRecordId: r.call_record_id,
+    avIssue: r.av_issue == null ? null : !!r.av_issue,
+    avIssueDetails: r.av_issue_details ? JSON.parse(r.av_issue_details) : null,
+    syncedAt: r.synced_at,
+  }));
 }
 
 export async function getWeeklyResponses(week) {

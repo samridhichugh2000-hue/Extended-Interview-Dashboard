@@ -80,6 +80,19 @@ for (const stmt of [
 }
 
 for (const stmt of [
+  'ALTER TABLE employees ADD COLUMN meetings_count INTEGER',
+  'ALTER TABLE employees ADD COLUMN meetings_late_count INTEGER',
+  'ALTER TABLE employees ADD COLUMN meetings_missed_count INTEGER',
+  'ALTER TABLE employees ADD COLUMN av_issue_count INTEGER',
+]) {
+  try {
+    await db.execute(stmt);
+  } catch (err) {
+    if (!String(err.message).includes('duplicate column')) throw err;
+  }
+}
+
+for (const stmt of [
   'ALTER TABLE weekly_responses ADD COLUMN token TEXT',
 ]) {
   try {

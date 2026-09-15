@@ -1,5 +1,5 @@
 import DashboardClient from './DashboardClient';
-import { getEmployees, getWeeklyResponses } from '../lib/queries';
+import { getEmployees, getWeeklyResponses, getGraphMeetings } from '../lib/queries';
 import { getNewJoiners } from '../lib/koenigApi';
 import { getIsoWeek } from '../lib/weekUtils';
 import { getFailedJobRuns } from '../lib/jobStatus';
@@ -17,7 +17,7 @@ function sixMonthsAgo() {
 export default async function Page() {
   const { from, to } = sixMonthsAgo();
   const week = getIsoWeek(new Date());
-  const [employees, responses, rawNewJoiners, failedJobs] = await Promise.all([
+  const [employees, responses, rawNewJoiners, failedJobs, graphMeetings] = await Promise.all([
     getEmployees(),
     getWeeklyResponses(week),
     // External API — degrade to an empty list rather than take down the whole
@@ -27,6 +27,7 @@ export default async function Page() {
       return [];
     }),
     getFailedJobRuns(),
+    getGraphMeetings(),
   ]);
 
   // "Blue Collared" is excluded from every section, and anyone Koenig reports
@@ -36,5 +37,5 @@ export default async function Page() {
   const deptCounts = { Sales: 0, Trainer: 0, 'PT Team': 0 };
   for (const nj of newJoiners) deptCounts[nj.section]++;
 
-  return <DashboardClient employees={employees} responses={responses} week={week} newJoiners={newJoiners} deptCounts={deptCounts} failedJobs={failedJobs} />;
+  return <DashboardClient employees={employees} responses={responses} week={week} newJoiners={newJoiners} deptCounts={deptCounts} failedJobs={failedJobs} graphMeetings={graphMeetings} />;
 }
