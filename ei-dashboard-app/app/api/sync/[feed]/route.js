@@ -7,8 +7,10 @@ export const maxDuration = 60;
 // Each feed is meant to complete comfortably under Vercel Hobby's 60s
 // function limit on its own — that's why this is one route per feed instead
 // of the single sync-all.mjs script, which took ~4.5 minutes for all 14
-// combined. Triggered by an external scheduler (cron-job.org) rather than
-// Vercel Cron, since Hobby caps Vercel's own Cron Jobs at 2 per project.
+// combined. Hobby caps Vercel's own Cron Jobs at 2 per project, so only
+// `weeklyreport` and `weeklyresponsereport` use native Vercel Cron
+// (schedules in vercel.json) — the other 12 feeds are triggered by an
+// external scheduler (cron-job.org) hitting this same secret-gated route.
 async function handle(request, { params }) {
   const { feed } = params;
 
