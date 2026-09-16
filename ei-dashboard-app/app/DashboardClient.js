@@ -1550,16 +1550,34 @@ function GraphCalls({ meetings, employees, filter, setFilter }) {
   );
 }
 
+// DD-MMM-YYYY, e.g. 19-Aug-2026.
+function fmtRosterDate(dateStr) {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-');
+}
+
+// Koenig sends times as "HH:mm:ss" — parsed manually (not via Date) since
+// a bare time string has no reliable cross-browser Date parse.
+function fmtRosterTime(timeStr) {
+  if (!timeStr) return '—';
+  const [h, m] = timeStr.split(':');
+  const hour = parseInt(h, 10);
+  if (Number.isNaN(hour)) return timeStr;
+  const period = hour >= 12 ? 'PM' : 'AM';
+  const displayHour = hour % 12 === 0 ? 12 : hour % 12;
+  return `${displayHour}:${m} ${period}`;
+}
+
 // Duty roster from the Koenig "Get CSM Roster" feed — one row per shift day
-// on file, newest first (see lib/syncRunners.js's syncCsmRoster). Dates/times
-// come through as plain strings from Koenig, so shown as-is rather than
-// reparsed into a display format that might not round-trip.
+// on file, newest first (see lib/syncRunners.js's syncCsmRoster).
 function EmployeeRosterModal({ emp, onClose }) {
   const shifts = emp.rosterDetails || [];
-  const gridCols = '1fr 1fr 1fr 1fr';
+  const gridCols = '1.1fr 1.5fr';
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 640, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 560, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
         <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.employeeName} — roster status</div>
@@ -1569,16 +1587,19 @@ function EmployeeRosterModal({ emp, onClose }) {
         </div>
         <div style={{ padding: '8px 24px 24px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '10px 0', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-            <span>Start Date</span><span>Start Time</span><span>End Date</span><span>End Time</span>
+            <span>Date</span><span>Timing</span>
           </div>
-          {shifts.map((s, i) => (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '11px 0', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 12.5 }}>
-              <span className="mono" style={{ color: '#C7CBDA' }}>{s.startDate || '—'}</span>
-              <span className="mono" style={{ color: '#8A90A8' }}>{s.startTime || '—'}</span>
-              <span className="mono" style={{ color: '#C7CBDA' }}>{s.endDate || '—'}</span>
-              <span className="mono" style={{ color: '#8A90A8' }}>{s.endTime || '—'}</span>
-            </div>
-          ))}
+          {shifts.map((s, i) => {
+            const dateLabel = s.startDate === s.endDate || !s.endDate
+              ? fmtRosterDate(s.startDate)
+              : `${fmtRosterDate(s.startDate)} → ${fmtRosterDate(s.endDate)}`;
+            return (
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '11px 0', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 12.5 }}>
+                <span className="mono" style={{ color: '#C7CBDA' }}>{dateLabel}</span>
+                <span className="mono" style={{ color: '#8A90A8' }}>{fmtRosterTime(s.startTime)} to {fmtRosterTime(s.endTime)}</span>
+              </div>
+            );
+          })}
           {!shifts.length && <div style={{ fontSize: 12.5, color: '#6E7488', paddingTop: 12 }}>No roster data on file.</div>}
         </div>
       </div>
