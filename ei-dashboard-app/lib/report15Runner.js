@@ -113,7 +113,7 @@ function buildTeamSection(list, cols, weightMap) {
   const rows = list.map((e) => {
     const calc = calcString(e.signalReport);
     return '<tr>' + [
-      cell(e.id, { mono: true }), cell(e.name), cell(e.doj), cell(e.tenure, { right: true }),
+      cell(e.id, { mono: true }), cell(e.name), cell(e.doj), cell(e.tenure != null ? `${e.tenure} days` : e.tenure, { right: true }),
       ...cols.map((c) => cell(c.get(e), { right: true })),
       scoreCell(e.score), calcCell(calc), cell(displayStatus(e.status)),
     ].join('') + '</tr>';
