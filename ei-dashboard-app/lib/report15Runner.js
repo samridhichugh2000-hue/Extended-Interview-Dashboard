@@ -97,9 +97,7 @@ function buildParamColumns(missedWeeksCount, belowSatisfactoryCount) {
   ];
 }
 
-function buildTeamSection(list, team, weightMap, appliesToTeam, paramColumns) {
-  const cols = paramColumns.filter((c) => appliesToTeam(c.teams, team));
-
+function buildTeamSection(list, cols, weightMap) {
   const head = [
     th('Emp ID'), th('Name'), th('DOJ'), th('Tenure', { right: true }),
     ...cols.map((c) => th(c.header, { right: true })),
@@ -138,9 +136,17 @@ export async function buildReport15Html(employees) {
   const ptNeg = pt.filter((e) => e.score < 0).length;
 
   const paramColumns = buildParamColumns(missedWeeksCount, belowSatisfactoryCount);
-  const salesSection = buildTeamSection(sales, 'Sales', weightMap, appliesToTeam, paramColumns);
-  const trainerSection = buildTeamSection(trainer, 'Trainer', weightMap, appliesToTeam, paramColumns);
-  const ptSection = buildTeamSection(pt, 'PT Team', weightMap, appliesToTeam, paramColumns);
+  const salesCols = paramColumns.filter((c) => appliesToTeam(c.teams, 'Sales'));
+  const trainerCols = paramColumns.filter((c) => appliesToTeam(c.teams, 'Trainer'));
+  // PT Team's own parameter set is deliberately narrower than the Sales/
+  // Trainer columns SIGNAL_DEFS' "· PT Team" tagging would otherwise pull
+  // in here — kept to just these three, per HR.
+  const PT_COLUMNS = ['Shoddy (neg)', 'Shoddy (pos)', 'Polls participated'];
+  const ptCols = paramColumns.filter((c) => PT_COLUMNS.includes(c.header));
+
+  const salesSection = buildTeamSection(sales, salesCols, weightMap);
+  const trainerSection = buildTeamSection(trainer, trainerCols, weightMap);
+  const ptSection = buildTeamSection(pt, ptCols, weightMap);
 
   function legendRow(d) {
     const color = d.pts > 0 ? '#2F6E5E' : '#B23A2E';
