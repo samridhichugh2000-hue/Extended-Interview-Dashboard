@@ -9,6 +9,13 @@ function istCalendarMidnightUtc(date) {
   return new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()));
 }
 
+// 'YYYY-MM-DD' for the IST calendar date the given instant falls on — lets
+// callers compare "same IST day" (e.g. an email sent earlier today) without
+// each doing their own offset math.
+export function istDateKey(date) {
+  return istCalendarMidnightUtc(date).toISOString().slice(0, 10);
+}
+
 // 'YYYY-Www' for the IST calendar date the given instant falls on.
 export function getIsoWeek(date) {
   const d = istCalendarMidnightUtc(date);
@@ -49,12 +56,14 @@ export function isWeekOver(weekStr) {
   return Date.now() > weekDateRange(weekStr).end.getTime();
 }
 
-// Tuesday 18:00 IST of the given ISO week — the same instant the weekly
-// response digest report (/api/sync/weeklyresponsereport) fires. Used to
-// decide when "hasn't responded yet" starts counting against the Worry
-// Index, rather than waiting for the full week (isWeekOver) to close out.
-export function isPastTuesdayCheckIn(weekStr) {
+// Wednesday 18:00 IST of the given ISO week — the same instant the weekly
+// response digest report / shoddy auto-marking (/api/sync/weeklyresponsereport)
+// fires, giving NJs the full 48-hour grace period from Monday morning's
+// check-in email before non-response counts against them. Used to decide
+// when "hasn't responded yet" starts counting against the Worry Index,
+// rather than waiting for the full week (isWeekOver) to close out.
+export function isPastWednesdayCheckIn(weekStr) {
   const { start } = weekDateRange(weekStr); // Monday 00:00 IST
-  const tuesdaySixPm = start.getTime() + 42 * 60 * 60 * 1000; // + 42h = Tuesday 18:00 IST
-  return Date.now() >= tuesdaySixPm;
+  const wednesdaySixPm = start.getTime() + 66 * 60 * 60 * 1000; // + 66h = Wednesday 18:00 IST
+  return Date.now() >= wednesdaySixPm;
 }
