@@ -1645,7 +1645,6 @@ function Reports({ employees, responses, week, filter, setFilter }) {
   const [sending, setSending] = useState(false);
   const [sending15, setSending15] = useState(false);
   const [search, setSearch] = useState('');
-  const [includeInactive, setIncludeInactive] = useState(false);
   // `filter` here doubles as the Pending/Received/Overdue state tab, set by
   // DashboardClient's go() so Overview's "Weekly progress mail pending NJs"
   // card can land here pre-filtered to Pending.
@@ -1653,8 +1652,13 @@ function Reports({ employees, responses, week, filter, setFilter }) {
   const setStateFilter = setFilter;
 
   const q = search.trim().toLowerCase();
+  // Inactive NJs no longer receive the weekly check-in email at all (see
+  // syncKoenig/weeklyReportRunner, both already active-only), so they're
+  // excluded here unconditionally — no "Include inactives" toggle, unlike
+  // every other screen — a Pending/Overdue row for someone who was never
+  // even sent an email this week would be misleading, not just noise.
   const filteredResponses = responses
-    .filter((r) => includeInactive || r.active !== false)
+    .filter((r) => r.active !== false)
     .filter((r) => !stateFilter || r.state === stateFilter)
     .filter((r) => !q || r.name.toLowerCase().includes(q));
   const stateTabs = ['Pending', 'Received', 'Overdue'];
@@ -1729,7 +1733,6 @@ function Reports({ employees, responses, week, filter, setFilter }) {
           placeholder="Search by name…"
           style={{ flex: 1, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#E4E6F0', outline: 'none' }}
         />
-        <IncludeInactiveToggle value={includeInactive} onChange={setIncludeInactive} />
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {stateTabs.map((s) => {
