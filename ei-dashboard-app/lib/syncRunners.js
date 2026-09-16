@@ -274,6 +274,40 @@ export async function syncSc() {
   return { message: `Synced SC data for ${updated} Sales employees (${unmatched} unmatched).` };
 }
 
+export async function syncCsmRoster() {
+  const db = getDb();
+  const { getCsmRoster } = await import('./koenigCsmRosterApi.js');
+
+  const rows = await getCsmRoster();
+  const byEmpCode = new Map();
+  for (const r of rows) {
+    if (!byEmpCode.has(r.empCode)) byEmpCode.set(r.empCode, []);
+    byEmpCode.get(r.empCode).push(r);
+  }
+
+  const salesEmployees = await db.execute("SELECT id FROM employees WHERE team = 'Sales'");
+
+  const statements = [];
+  let updated = 0;
+  let unmatched = 0;
+  for (const emp of salesEmployees.rows) {
+    const empCode = parseInt(emp.id.replace('EMP', ''), 10);
+    const shifts = (byEmpCode.get(empCode) || []).sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
+    if (!shifts.length) { unmatched++; continue; }
+
+    const details = shifts.map((s) => ({ startDate: s.startDate, startTime: s.startTime, endDate: s.endDate, endTime: s.endTime }));
+    statements.push({
+      sql: 'UPDATE employees SET roster_count = ?, roster_details = ? WHERE id = ?',
+      args: [shifts.length, JSON.stringify(details), emp.id],
+    });
+    updated++;
+  }
+
+  if (statements.length) await db.batch(statements, 'write');
+
+  return { message: `Synced CSM Roster data for ${updated} Sales employees (${unmatched} unmatched).` };
+}
+
 export async function syncUtil() {
   const db = getDb();
   const { getMonthlyUtilization } = await import('./koenigUtilApi.js');
@@ -905,6 +939,7 @@ export const SYNC_RUNNERS = {
   pms: syncPms,
   audit: syncAudit,
   sc: syncSc,
+  csmroster: syncCsmRoster,
   util: syncUtil,
   exam: syncExam,
   negfeedback: syncNegFeedback,

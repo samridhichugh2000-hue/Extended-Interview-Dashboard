@@ -138,4 +138,15 @@ for (const stmt of [
   }
 }
 
+for (const stmt of [
+  'ALTER TABLE employees ADD COLUMN roster_count INTEGER',
+  'ALTER TABLE employees ADD COLUMN roster_details TEXT',
+]) {
+  try {
+    await db.execute(stmt);
+  } catch (err) {
+    if (!String(err.message).includes('duplicate column')) throw err;
+  }
+}
+
 console.log('Done. Run `npm run sync:koenig` to populate employees from the live API.');

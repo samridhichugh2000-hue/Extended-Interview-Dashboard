@@ -16,6 +16,7 @@ const SCRIPTS = [
   'sync-pms.mjs',
   'sync-audit.mjs',
   'sync-sc.mjs',
+  'sync-csm-roster.mjs',
   'sync-util.mjs',
   'sync-exam.mjs',
   'sync-negfeedback.mjs',

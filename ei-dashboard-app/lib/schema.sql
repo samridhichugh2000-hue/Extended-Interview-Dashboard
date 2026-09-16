@@ -57,7 +57,9 @@ CREATE TABLE IF NOT EXISTS employees (
   external_email_count INTEGER,  -- total Outlook Sent Items emails to non-@koenig-solutions.com addresses in the lookback window (Sales only). Purely informational — not a Worry Index signal, since emailing external contacts is the normal shape of a Sales rep's job.
   external_email_details TEXT,   -- JSON array of {address, count, lastSentAt}, top 100 addresses by count
   ideas_count INTEGER,           -- count of Non-RMS tasks on file (All teams) — feeds the "Ideas for improvement" Worry Index signal
-  ideas_details TEXT             -- JSON array of {autoTaskId, taskExecutorName, raisedByEmpId, raisedByName, sourceName, taskStatus, taskDescription, createdByActualName, createdDateTime}
+  ideas_details TEXT,            -- JSON array of {autoTaskId, taskExecutorName, raisedByEmpId, raisedByName, sourceName, taskStatus, taskDescription, createdByActualName, createdDateTime}
+  roster_count INTEGER,           -- count of shift entries on file from the Get CSM Roster feed (Sales only). Purely informational, shown on the Graph API Calls screen — not a Worry Index signal.
+  roster_details TEXT             -- JSON array of {startDate, startTime, endDate, endTime}, newest first
 );
 
 CREATE TABLE IF NOT EXISTS pip_status (
