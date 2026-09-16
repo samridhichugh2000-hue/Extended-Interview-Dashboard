@@ -687,14 +687,24 @@ export async function syncKgt() {
 
 const GRAPH_MEETINGS_LOOKBACK_DAYS = Number(process.env.GRAPH_MEETINGS_LOOKBACK_DAYS || 7);
 
-// This employee's own attendance across every report on the meeting
-// (recurring/reconvened meetings can produce more than one) — matched by
-// email, case-insensitive since Graph's casing on attendanceRecords isn't
+// A recurring/reconvened meeting keeps the same onlineMeetingId across every
+// occurrence, so attendanceReports for it can span weeks/months of past
+// occurrences under one id — restrict to the report(s) whose own
+// meetingStartDateTime actually lines up with *this* calendar occurrence
+// first, so a stale report from an unrelated earlier date never gets
+// aggregated in as if the rep joined this one. Matched by email within
+// those, case-insensitive since Graph's casing on attendanceRecords isn't
 // guaranteed to match what's on file.
-function findAttendance(reports, email, parseGraphDateTime) {
+const OCCURRENCE_WINDOW_MS = 12 * 60 * 60 * 1000; // 12h either side of scheduledStart
+function findAttendance(reports, email, parseGraphDateTime, scheduledStart) {
   const target = email.toLowerCase();
+  const matchingReports = reports.filter((report) => {
+    const reportStart = report.meetingStartDateTime ? parseGraphDateTime(report.meetingStartDateTime) : null;
+    return reportStart && Math.abs(reportStart.getTime() - scheduledStart.getTime()) <= OCCURRENCE_WINDOW_MS;
+  });
+
   let earliestJoin = null, latestLeave = null, totalSeconds = 0, found = false;
-  for (const report of reports) {
+  for (const report of matchingReports) {
     for (const rec of report.attendanceRecords || []) {
       if ((rec.emailAddress || '').toLowerCase() !== target) continue;
       found = true;
@@ -776,7 +786,7 @@ export async function syncGraphMeetings() {
         if (meeting) {
           onlineMeetingId = meeting.id;
           const reports = await getAttendanceReports(organizerId, meeting.id);
-          const attendance = findAttendance(reports, emp.email, parseGraphDateTime);
+          const attendance = findAttendance(reports, emp.email, parseGraphDateTime, scheduledStart);
           if (attendance) {
             joinedAt = attendance.joinedAt;
             leftAt = attendance.leftAt;
