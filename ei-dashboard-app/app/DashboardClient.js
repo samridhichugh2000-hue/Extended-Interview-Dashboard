@@ -310,7 +310,7 @@ export default function DashboardClient({ employees, responses, week, newJoiners
           {screen === 'dept' && <Dept key={dept} employees={employees} dept={dept} filter={filter} setFilter={setFilter} setModal={setModal} />}
           {screen === 'papip' && <PaPip employees={employees} filter={filter} setFilter={setFilter} setModal={setModal} />}
           {screen === 'worryindex' && <WorryIndex employees={employees} filter={filter} setFilter={setFilter} setModal={setModal} />}
-          {screen === 'graphcalls' && <GraphCalls meetings={graphMeetings} filter={filter} setFilter={setFilter} />}
+          {screen === 'graphcalls' && <GraphCalls meetings={graphMeetings} employees={employees} filter={filter} setFilter={setFilter} />}
           {screen === 'reports' && <Reports employees={employees} responses={responses} week={week} filter={filter} setFilter={setFilter} />}
         </div>
       </div>
@@ -1433,10 +1433,13 @@ const TIMING_COLORS = {
 // informational for now — not wired into the Worry Index yet (see the "not
 // tracked" badges still on those two signals in Worry Index) until this
 // data's been reviewed.
-function GraphCalls({ meetings, filter, setFilter }) {
+function GraphCalls({ meetings, employees, filter, setFilter }) {
   const [search, setSearch] = useState('');
   const [empDetail, setEmpDetail] = useState(null);
   const [meetingDetail, setMeetingDetail] = useState(null);
+  const [rosterDetail, setRosterDetail] = useState(null);
+
+  const rosterByEmployee = new Map((employees || []).map((e) => [e.id, e]));
 
   const total = meetings.length;
   const onTime = meetings.filter((m) => m.timingStatus === 'On Time').length;
@@ -1479,15 +1482,17 @@ function GraphCalls({ meetings, filter, setFilter }) {
       late: e.meetings.filter((m) => m.timingStatus === 'Late').length,
       didNotJoin: e.meetings.filter((m) => m.timingStatus === 'Did Not Join').length,
       avIssues: e.meetings.filter((m) => m.avIssue === true).length,
+      rosterCount: rosterByEmployee.get(e.employeeId)?.rosterCount ?? null,
+      rosterDetails: rosterByEmployee.get(e.employeeId)?.rosterDetails ?? [],
     }))
     .sort((a, b) => a.employeeName.localeCompare(b.employeeName));
 
-  const gridCols = '1.6fr .9fr .9fr .9fr .9fr .9fr 1.4fr';
+  const gridCols = '1.4fr .8fr .8fr .8fr .8fr .8fr 1fr 1.3fr';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ border: '1px solid rgba(99,102,241,0.25)', background: 'rgba(99,102,241,0.06)', borderRadius: 12, padding: '12px 16px', fontSize: 12.5, color: '#A8AEC4', lineHeight: 1.5 }}>
-        Sourced from each Sales rep's Outlook calendar and Teams attendance reports via Microsoft Graph. Audio/video quality only appears once a callRecords webhook notification arrives for that meeting — "No Data" there just means none has landed yet, not a clean call. This screen doesn't feed the Worry Index score yet.
+        Sourced from each Sales rep's Outlook calendar and Teams attendance reports via Microsoft Graph. Audio/video quality only appears once a callRecords webhook notification arrives for that meeting — "No Data" there just means none has landed yet, not a clean call. Roster is a separate feed (Koenig's Get CSM Roster) — click it to see that rep's on-file shift history. This screen doesn't feed the Worry Index score yet.
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10 }}>
@@ -1514,7 +1519,7 @@ function GraphCalls({ meetings, filter, setFilter }) {
 
       <div style={{ ...card, overflow: 'hidden' }}>
         <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <span>Employee</span><span style={{ textAlign: 'right' }}>Meetings</span><span style={{ textAlign: 'right' }}>On Time</span><span style={{ textAlign: 'right' }}>Late</span><span style={{ textAlign: 'right' }}>Did Not Join</span><span style={{ textAlign: 'right' }}>A/V Issues</span><span style={{ textAlign: 'right' }}>Details</span>
+          <span>Employee</span><span style={{ textAlign: 'right' }}>Meetings</span><span style={{ textAlign: 'right' }}>On Time</span><span style={{ textAlign: 'right' }}>Late</span><span style={{ textAlign: 'right' }}>Did Not Join</span><span style={{ textAlign: 'right' }}>A/V Issues</span><span style={{ textAlign: 'right' }}>Roster</span><span style={{ textAlign: 'right' }}>Details</span>
         </div>
         {employeeRows.map((e) => (
           <div key={e.employeeId} className="hoverrow" style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '13px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
@@ -1527,6 +1532,11 @@ function GraphCalls({ meetings, filter, setFilter }) {
             <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: e.late > 0 ? '#F59E0B' : '#6E7488' }}>{e.late}</span>
             <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: e.didNotJoin > 0 ? '#F87171' : '#6E7488' }}>{e.didNotJoin}</span>
             <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: e.avIssues > 0 ? '#F87171' : '#6E7488' }}>{e.avIssues}</span>
+            {e.rosterCount ? (
+              <span onClick={() => setRosterDetail(e)} style={{ textAlign: 'right', fontSize: 12.5, color: '#A5A7FA', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>{e.rosterCount} shift{e.rosterCount === 1 ? '' : 's'}</span>
+            ) : (
+              <span style={{ textAlign: 'right', fontSize: 12, color: '#6E7488' }}>No data</span>
+            )}
             <span onClick={() => setEmpDetail(e)} style={{ textAlign: 'right', fontSize: 12.5, color: '#A5A7FA', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>Click to see meeting details</span>
           </div>
         ))}
@@ -1535,6 +1545,43 @@ function GraphCalls({ meetings, filter, setFilter }) {
 
       {empDetail && <EmployeeMeetingsModal emp={empDetail} onClose={() => setEmpDetail(null)} onSelectMeeting={setMeetingDetail} />}
       {meetingDetail && <GraphMeetingModal meeting={meetingDetail} onClose={() => setMeetingDetail(null)} />}
+      {rosterDetail && <EmployeeRosterModal emp={rosterDetail} onClose={() => setRosterDetail(null)} />}
+    </div>
+  );
+}
+
+// Duty roster from the Koenig "Get CSM Roster" feed — one row per shift day
+// on file, newest first (see lib/syncRunners.js's syncCsmRoster). Dates/times
+// come through as plain strings from Koenig, so shown as-is rather than
+// reparsed into a display format that might not round-trip.
+function EmployeeRosterModal({ emp, onClose }) {
+  const shifts = emp.rosterDetails || [];
+  const gridCols = '1fr 1fr 1fr 1fr';
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 640, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.employeeName} — roster status</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>{shifts.length} shift{shifts.length === 1 ? '' : 's'} on file</div>
+          </div>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+        </div>
+        <div style={{ padding: '8px 24px 24px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '10px 0', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+            <span>Start Date</span><span>Start Time</span><span>End Date</span><span>End Time</span>
+          </div>
+          {shifts.map((s, i) => (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '11px 0', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 12.5 }}>
+              <span className="mono" style={{ color: '#C7CBDA' }}>{s.startDate || '—'}</span>
+              <span className="mono" style={{ color: '#8A90A8' }}>{s.startTime || '—'}</span>
+              <span className="mono" style={{ color: '#C7CBDA' }}>{s.endDate || '—'}</span>
+              <span className="mono" style={{ color: '#8A90A8' }}>{s.endTime || '—'}</span>
+            </div>
+          ))}
+          {!shifts.length && <div style={{ fontSize: 12.5, color: '#6E7488', paddingTop: 12 }}>No roster data on file.</div>}
+        </div>
+      </div>
     </div>
   );
 }

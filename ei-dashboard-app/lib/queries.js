@@ -105,6 +105,8 @@ export async function getEmployees() {
       externalEmailDetails: e.external_email_details ? JSON.parse(e.external_email_details) : [],
       ideasCount: e.ideas_count,
       ideasDetails: e.ideas_details ? JSON.parse(e.ideas_details) : [],
+      rosterCount: e.roster_count,
+      rosterDetails: e.roster_details ? JSON.parse(e.roster_details) : [],
       // null = no weekly_responses row yet for this week (e.g. feature hasn't
       // been run for them this week) — distinct from a confirmed Pending/Overdue.
       weeklyReportState: (weeksByEmp.get(e.id) || []).find((w) => w.week === currentWeek)?.state ?? null,
