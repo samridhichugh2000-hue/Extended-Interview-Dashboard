@@ -1,4 +1,4 @@
-import { getIsoWeek, isPastTuesdayCheckIn } from './weekUtils';
+import { getIsoWeek, isPastWednesdayCheckIn } from './weekUtils';
 
 export const C = { rose: '#F43F5E', amber: '#F59E0B', indigo: '#8B8CF6', teal: '#14B8A6', purple: '#A855F7' };
 
@@ -138,14 +138,14 @@ function belowSatisfactoryCount(e) {
 
 // Every week this NJ has been tracked that isn't 'Received' — cumulative,
 // not just the current week. The current week only counts once past
-// Tuesday 6PM IST (see the signal def below); every earlier week is
+// Wednesday 6PM IST (see the signal def below); every earlier week is
 // already closed out (effectiveState in lib/queries.js already resolved
 // any lingering 'Pending' there to 'Overdue').
 function missedWeeksCount(e) {
   const currentWeek = getIsoWeek(new Date());
   return (e.weeks || []).filter((w) => {
     if (w.state === 'Received') return false;
-    return w.week !== currentWeek || isPastTuesdayCheckIn(currentWeek);
+    return w.week !== currentWeek || isPastWednesdayCheckIn(currentWeek);
   }).length;
 }
 

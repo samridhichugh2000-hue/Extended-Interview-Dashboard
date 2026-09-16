@@ -94,6 +94,8 @@ for (const stmt of [
 
 for (const stmt of [
   'ALTER TABLE weekly_responses ADD COLUMN token TEXT',
+  'ALTER TABLE weekly_responses ADD COLUMN shoddy_marked_at TEXT',
+  'ALTER TABLE weekly_responses ADD COLUMN shoddy_incident_id TEXT',
 ]) {
   try {
     await db.execute(stmt);
