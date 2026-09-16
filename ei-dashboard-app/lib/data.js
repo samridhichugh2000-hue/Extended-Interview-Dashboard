@@ -132,7 +132,7 @@ export function feedbackRating(entry) {
 // (thresholds like "skills ≥ weeks since joining", or single per-week
 // booleans like "zero assignments" / "email overdue") stay flat — there's
 // no meaningful "how many times" for those.
-function belowSatisfactoryCount(e) {
+export function belowSatisfactoryCount(e) {
   return (e.mgrFeedbackDetails || []).filter((f) => feedbackRating(f) === 'below').length;
 }
 
@@ -141,7 +141,7 @@ function belowSatisfactoryCount(e) {
 // Wednesday 6PM IST (see the signal def below); every earlier week is
 // already closed out (effectiveState in lib/queries.js already resolved
 // any lingering 'Pending' there to 'Overdue').
-function missedWeeksCount(e) {
+export function missedWeeksCount(e) {
   const currentWeek = getIsoWeek(new Date());
   return (e.weeks || []).filter((w) => {
     if (w.state === 'Received') return false;

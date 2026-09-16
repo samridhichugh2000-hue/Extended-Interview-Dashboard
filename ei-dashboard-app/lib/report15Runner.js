@@ -55,39 +55,70 @@ function weightCell(weightMap, label, label2) {
   return `<td style="padding:5px 8px;background:${WORRY_BG};border-bottom:2px solid #22221E;font-weight:700;font-size:11.5px;color:${color};text-align:right;">${fmtPts(pts)}</td>`;
 }
 
-function rowSales(e) {
-  const calc = calcString(e.signalReport);
-  return '<tr>' + [
-    cell(e.id, { mono: true }), cell(e.name), cell(e.doj), cell(e.tenure, { right: true }),
-    cell(e.techCallsCount, { right: true }), cell(e.scRaised, { right: true }),
-    cell(e.negAudits, { right: true }), cell(e.shoddyNegCount, { right: true }), cell(e.shoddyPosCount, { right: true }),
-    cell(e.pollsParticipated, { right: true }), scoreCell(e.score), calcCell(calc), cell(e.status),
-  ].join('') + '</tr>';
+// One entry per live Worry Index parameter that has a natural raw metric to
+// show (the 4 not-live signals have no data source at all, so they only
+// ever appear in the scoring-reference legend below, not as a data column).
+// `teams` drives which of Sales/Trainer/PT Team's tables get this column —
+// deliberately not just re-reading SIGNAL_DEFS.teams, since Polls
+// participated is shown across all three here for visibility even though
+// it's excluded from Sales' actual score (see lib/data.js). weightLabels
+// keys into SIGNAL_DEFS by label for the weight-reference row; two labels
+// render as "neg/pos" (see weightCell) for the paired skills-count signal.
+// A factory (not a plain module-level array) because two columns need to
+// call back into lib/data.js's missedWeeksCount/belowSatisfactoryCount,
+// which are only available once buildReport15Html has imported them.
+function buildParamColumns(missedWeeksCount, belowSatisfactoryCount) {
+  return [
+    { header: 'Tech calls', teams: 'Sales · PT Team', get: (e) => e.techCallsCount, weightLabels: ['Tech calls'] },
+    { header: 'SCs raised', teams: 'Sales · PT Team', get: (e) => e.scRaised, weightLabels: ['SCs raised'] },
+    { header: 'Neg audits', teams: 'Sales · PT Team', get: (e) => e.negAudits, weightLabels: ['Negative enquiry audit'] },
+    { header: 'Tech Calls converted', teams: 'Trainer · PT Team', get: (e) => e.techCallsConverted, weightLabels: ['Tech calls converted'] },
+    { header: 'Exams failed', teams: 'Trainer · PT Team', get: (e) => e.examFail, weightLabels: ['Failure in exam'] },
+    { header: 'Exams passed', teams: 'Trainer · PT Team', get: (e) => e.examPass, weightLabels: ['Passed exam'] },
+    { header: 'Negative Feedback', teams: 'Trainer · PT Team', get: (e) => e.negFeedback, weightLabels: ['Negative feedback on delivery'] },
+    { header: 'Assignments (for every week since joining and without assignments, including future)', teams: 'Trainer · PT Team', get: (e) => e.assignmentsCount, weightLabels: ['Zero assignments since joining, including future'] },
+    { header: 'Skills Marked', teams: 'Trainer · PT Team', get: (e) => e.skillsCount, weightLabels: ['Skills count < weeks since joining', 'Skills count > weeks since joining'] },
+    { header: 'Course marked inhouse', teams: 'Trainer · PT Team', get: (e) => e.inHouseSkillsCount, weightLabels: ['Marking course inhouse'] },
+    { header: 'TBTs requested', teams: 'Trainer · PT Team', get: (e) => e.tbtCount, weightLabels: ['TBTs requested'] },
+    { header: 'Applied for KGT', teams: 'All', get: (e) => e.kgtCount, weightLabels: ['Applied for KGT'] },
+    { header: 'Ideas for improvement', teams: 'All', get: (e) => e.ideasCount, weightLabels: ['Ideas for improvement'] },
+    { header: 'Weekly email not received', teams: 'All', get: (e) => missedWeeksCount(e), weightLabels: ['Weekly progress email not received'] },
+    { header: 'Manager feedback below satisfactory', teams: 'All', get: (e) => belowSatisfactoryCount(e), weightLabels: ['Manager feedback below satisfactory'] },
+    { header: 'Shoddy (neg)', teams: 'All', get: (e) => e.shoddyNegCount, weightLabels: ['Shoddy marked against NJ'] },
+    { header: 'Shoddy (pos)', teams: 'All', get: (e) => e.shoddyPosCount, weightLabels: ['HR incidents (positive)'] },
+    { header: 'Polls participated', teams: 'All', get: (e) => e.pollsParticipated, weightLabels: ['Polls participated'] },
+  ];
 }
 
-function rowTrainer(e) {
-  const calc = calcString(e.signalReport);
-  return '<tr>' + [
-    cell(e.id, { mono: true }), cell(e.name), cell(e.doj), cell(e.tenure, { right: true }),
-    cell(e.examFail, { right: true }), cell(e.negFeedback, { right: true }),
-    cell(e.assignmentsCount, { right: true }), cell(e.skillsCount, { right: true }),
-    cell(e.inHouseSkillsCount, { right: true }), cell(e.techCallsConverted, { right: true }),
-    cell(e.tbtCount, { right: true }), cell(e.shoddyNegCount, { right: true }), cell(e.shoddyPosCount, { right: true }),
-    cell(e.pollsParticipated, { right: true }), scoreCell(e.score), calcCell(calc), cell(e.status),
-  ].join('') + '</tr>';
-}
+function buildTeamSection(list, team, weightMap, appliesToTeam, paramColumns) {
+  const cols = paramColumns.filter((c) => appliesToTeam(c.teams, team));
 
-function rowPt(e) {
-  const calc = calcString(e.signalReport);
-  return '<tr>' + [
-    cell(e.id, { mono: true }), cell(e.name), cell(e.doj), cell(e.tenure, { right: true }),
-    cell(e.shoddyNegCount, { right: true }), cell(e.shoddyPosCount, { right: true }),
-    cell(e.pollsParticipated, { right: true }), scoreCell(e.score), calcCell(calc), cell(e.status),
-  ].join('') + '</tr>';
+  const head = [
+    th('Emp ID'), th('Name'), th('DOJ'), th('Tenure', { right: true }),
+    ...cols.map((c) => th(c.header, { right: true })),
+    th('Worry Index', { right: true }), th('Calculation'), th('Status'),
+  ].join('');
+
+  const weights = [
+    weightCell(weightMap), weightCell(weightMap), weightCell(weightMap), weightCell(weightMap),
+    ...cols.map((c) => c.weightLabels.length === 2 ? weightCell(weightMap, c.weightLabels[0], c.weightLabels[1]) : weightCell(weightMap, c.weightLabels[0])),
+    weightCell(weightMap), weightCell(weightMap), weightCell(weightMap),
+  ].join('');
+
+  const rows = list.map((e) => {
+    const calc = calcString(e.signalReport);
+    return '<tr>' + [
+      cell(e.id, { mono: true }), cell(e.name), cell(e.doj), cell(e.tenure, { right: true }),
+      ...cols.map((c) => cell(c.get(e), { right: true })),
+      scoreCell(e.score), calcCell(calc), cell(e.status),
+    ].join('') + '</tr>';
+  }).join('\n');
+
+  return { head, weights, rows };
 }
 
 export async function buildReport15Html(employees) {
-  const { SIGNAL_DEFS } = await import('./data.js');
+  const { SIGNAL_DEFS, appliesToTeam, missedWeeksCount, belowSatisfactoryCount } = await import('./data.js');
   const weightMap = new Map(SIGNAL_DEFS.map((d) => [d.label, d.pts]));
 
   const active = employees.filter((e) => e.active !== false);
@@ -99,44 +130,10 @@ export async function buildReport15Html(employees) {
   const trainerNeg = trainer.filter((e) => e.score < 0).length;
   const ptNeg = pt.filter((e) => e.score < 0).length;
 
-  const salesHead = [
-    th('Emp ID'), th('Name'), th('DOJ'), th('Tenure', { right: true }),
-    th('Tech calls', { right: true }), th('SCs raised', { right: true }), th('Neg audits', { right: true }),
-    th('Shoddy (neg)', { right: true }), th('Shoddy (pos)', { right: true }), th('Polls participated', { right: true }),
-    th('Worry Index', { right: true }), th('Calculation'), th('Status'),
-  ].join('');
-  const salesWeights = [
-    weightCell(weightMap), weightCell(weightMap), weightCell(weightMap), weightCell(weightMap),
-    weightCell(weightMap, 'Tech calls'), weightCell(weightMap, 'SCs raised'), weightCell(weightMap, 'Negative enquiry audit'),
-    weightCell(weightMap, 'Shoddy marked against NJ'), weightCell(weightMap, 'HR incidents (positive)'), weightCell(weightMap, 'Polls participated'),
-    weightCell(weightMap), weightCell(weightMap), weightCell(weightMap),
-  ].join('');
-
-  const trainerHead = [
-    th('Emp ID'), th('Name'), th('DOJ'), th('Tenure', { right: true }),
-    th('Exams failed', { right: true }), th('Negative Feedback', { right: true }), th('Assignments (for every week since joining and without assignments, including future)', { right: true }), th('Skills Marked', { right: true }),
-    th('Course marked inhouse', { right: true }), th('Tech Calls converted', { right: true }), th('TBTs requested', { right: true }), th('Shoddy (neg)', { right: true }),
-    th('Shoddy (pos)', { right: true }), th('Polls participated', { right: true }), th('Worry Index', { right: true }), th('Calculation'), th('Status'),
-  ].join('');
-  const trainerWeights = [
-    weightCell(weightMap), weightCell(weightMap), weightCell(weightMap), weightCell(weightMap),
-    weightCell(weightMap, 'Failure in exam'), weightCell(weightMap, 'Negative feedback on delivery'),
-    weightCell(weightMap, 'Zero assignments since joining, including future'), weightCell(weightMap, 'Skills count < weeks since joining', 'Skills count > weeks since joining'),
-    weightCell(weightMap, 'Marking course inhouse'), weightCell(weightMap, 'Tech calls converted'), weightCell(weightMap, 'TBTs requested'),
-    weightCell(weightMap, 'Shoddy marked against NJ'), weightCell(weightMap, 'HR incidents (positive)'), weightCell(weightMap, 'Polls participated'),
-    weightCell(weightMap), weightCell(weightMap), weightCell(weightMap),
-  ].join('');
-
-  const ptHead = [
-    th('Emp ID'), th('Name'), th('DOJ'), th('Tenure', { right: true }),
-    th('Shoddy (neg)', { right: true }), th('Shoddy (pos)', { right: true }), th('Polls participated', { right: true }),
-    th('Worry Index', { right: true }), th('Calculation'), th('Status'),
-  ].join('');
-  const ptWeights = [
-    weightCell(weightMap), weightCell(weightMap), weightCell(weightMap), weightCell(weightMap),
-    weightCell(weightMap, 'Shoddy marked against NJ'), weightCell(weightMap, 'HR incidents (positive)'), weightCell(weightMap, 'Polls participated'),
-    weightCell(weightMap), weightCell(weightMap), weightCell(weightMap),
-  ].join('');
+  const paramColumns = buildParamColumns(missedWeeksCount, belowSatisfactoryCount);
+  const salesSection = buildTeamSection(sales, 'Sales', weightMap, appliesToTeam, paramColumns);
+  const trainerSection = buildTeamSection(trainer, 'Trainer', weightMap, appliesToTeam, paramColumns);
+  const ptSection = buildTeamSection(pt, 'PT Team', weightMap, appliesToTeam, paramColumns);
 
   function legendRow(d) {
     const color = d.pts > 0 ? '#2F6E5E' : '#B23A2E';
@@ -171,10 +168,10 @@ Sales: ${salesNeg} of ${sales.length} negative - Trainer: ${trainerNeg} of ${tra
 <div style="font-family:Georgia,serif;font-size:18px;font-weight:700;color:#22221E;border-left:6px solid #B23A2E;padding-left:12px;">Sales - ${sales.length} active NJs, ${salesNeg} negative</div>
 </td></tr>
 <tr><td style="padding:0 32px 24px;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:12px;">
-<tr style="background:#22221E;">${salesHead}</tr>
-<tr>${salesWeights}</tr>
-${sales.map(rowSales).join('\n')}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:11px;">
+<tr style="background:#22221E;">${salesSection.head}</tr>
+<tr>${salesSection.weights}</tr>
+${salesSection.rows}
 </table>
 </td></tr>
 
@@ -182,10 +179,10 @@ ${sales.map(rowSales).join('\n')}
 <div style="font-family:Georgia,serif;font-size:18px;font-weight:700;color:#22221E;border-left:6px solid #B5793A;padding-left:12px;">Trainer - ${trainer.length} active NJs, ${trainerNeg} negative</div>
 </td></tr>
 <tr><td style="padding:0 32px 24px;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:11.5px;">
-<tr style="background:#22221E;">${trainerHead}</tr>
-<tr>${trainerWeights}</tr>
-${trainer.map(rowTrainer).join('\n')}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:11px;">
+<tr style="background:#22221E;">${trainerSection.head}</tr>
+<tr>${trainerSection.weights}</tr>
+${trainerSection.rows}
 </table>
 </td></tr>
 
@@ -193,10 +190,10 @@ ${trainer.map(rowTrainer).join('\n')}
 <div style="font-family:Georgia,serif;font-size:18px;font-weight:700;color:#22221E;border-left:6px solid #2F6E5E;padding-left:12px;">PT Team - ${pt.length} active NJs, ${ptNeg} negative</div>
 </td></tr>
 <tr><td style="padding:0 32px 24px;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:12px;">
-<tr style="background:#22221E;">${ptHead}</tr>
-<tr>${ptWeights}</tr>
-${pt.map(rowPt).join('\n')}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:11px;">
+<tr style="background:#22221E;">${ptSection.head}</tr>
+<tr>${ptSection.weights}</tr>
+${ptSection.rows}
 </table>
 </td></tr>
 
