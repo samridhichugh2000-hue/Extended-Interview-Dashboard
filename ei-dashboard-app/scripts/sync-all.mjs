@@ -29,6 +29,7 @@ const SCRIPTS = [
   'sync-polls.mjs',
   'sync-kgt.mjs',
   'sync-mgrfeedback.mjs',
+  'sync-ideas.mjs',
 ];
 
 function run(script) {

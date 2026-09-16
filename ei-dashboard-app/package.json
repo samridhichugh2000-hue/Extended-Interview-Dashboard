@@ -25,8 +25,10 @@
     "sync:shoddy": "node scripts/sync-shoddy.mjs",
     "sync:polls": "node scripts/sync-polls.mjs",
     "sync:mgrfeedback": "node scripts/sync-mgrfeedback.mjs",
+    "sync:ideas": "node scripts/sync-ideas.mjs",
     "sync:graph-meetings": "node scripts/sync-graph-meetings.mjs",
     "sync:graph-subscription": "node scripts/sync-graph-subscription.mjs",
+    "sync:external-emails": "node scripts/sync-external-emails.mjs",
     "sync:all": "node scripts/sync-all.mjs"
   },
   "dependencies": {

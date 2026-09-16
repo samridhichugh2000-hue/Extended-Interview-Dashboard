@@ -789,6 +789,74 @@ export async function syncGraphMeetings() {
 // at least daily (it's registered as a plain sync feed, triggered the same
 // way as every other non-Vercel-cron feed — see app/api/sync/[feed]/route.js)
 // since this resource's subscriptions max out at ~70 hours.
+const EXTERNAL_EMAIL_LOOKBACK_DAYS = Number(process.env.EXTERNAL_EMAIL_LOOKBACK_DAYS || 30);
+
+// Outlook Sent Items — External Email Count: for each active Sales rep,
+// tallies every email sent to a non-@koenig-solutions.com address in the
+// lookback window, via Graph. Purely informational (shown in the employee
+// detail modal) — deliberately NOT a Worry Index signal, since emailing
+// external contacts is the normal, expected shape of a Sales rep's job
+// (client/vendor correspondence), not a red flag on its own.
+// details is capped to the top 100 addresses by count for storage/display —
+// externalEmailCount itself is always the true total across every address.
+export async function syncExternalEmails() {
+  const db = getDb();
+  const { getSentExternalSummary } = await import('./graphMailer.js');
+
+  const to = new Date();
+  const from = new Date(to.getTime() - EXTERNAL_EMAIL_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
+  const employees = await db.execute("SELECT id, email FROM employees WHERE team = 'Sales' AND active = 1");
+
+  let processed = 0, noEmail = 0, apiErrors = 0;
+  for (const emp of employees.rows) {
+    if (!emp.email) { noEmail++; continue; }
+    try {
+      const recipients = await getSentExternalSummary(emp.email, from.toISOString(), to.toISOString());
+      const totalCount = recipients.reduce((sum, r) => sum + r.count, 0);
+      await db.execute({
+        sql: 'UPDATE employees SET external_email_count = ?, external_email_details = ? WHERE id = ?',
+        args: [totalCount, JSON.stringify(recipients.slice(0, 100)), emp.id],
+      });
+      processed++;
+    } catch (err) {
+      console.error(`External email sync failed for ${emp.email}:`, err.message);
+      apiErrors++;
+    }
+  }
+
+  return { message: `Synced external email counts for ${processed} Sales reps (${apiErrors} API errors, ${noEmail} had no email on file).` };
+}
+
+// Non-RMS Tasks By EmpID — feeds the "Ideas for improvement" Worry Index
+// signal (lib/data.js), across all three teams. Per-employee API, one call
+// per employee, matched directly by EmpId.
+export async function syncIdeas() {
+  const db = getDb();
+  const { getNonRmsTasks } = await import('./koenigIdeasApi.js');
+
+  const allEmployees = await db.execute("SELECT id FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team') AND active = 1");
+
+  let updated = 0;
+  let confirmedZero = 0;
+  let apiErrors = 0;
+  for (const emp of allEmployees.rows) {
+    const empCode = emp.id.replace('EMP', '');
+    try {
+      const tasks = await getNonRmsTasks(empCode);
+      await db.execute({
+        sql: 'UPDATE employees SET ideas_count = ?, ideas_details = ? WHERE id = ?',
+        args: [tasks.length, JSON.stringify(tasks), emp.id],
+      });
+      if (tasks.length) updated++; else confirmedZero++;
+    } catch (err) {
+      console.error(`Ideas sync failed for ${emp.id}:`, err.message);
+      apiErrors++;
+    }
+  }
+
+  return { message: `Synced ideas-for-improvement tasks — ${updated} employees have at least one (${confirmedZero} confirmed at 0, ${apiErrors} API errors).` };
+}
+
 export async function syncGraphSubscription() {
   const db = getDb();
   const { createCallRecordsSubscription, renewSubscription } = await import('./graphCallsApi.js');
@@ -850,8 +918,10 @@ export const SYNC_RUNNERS = {
   polls: syncPolls,
   kgt: syncKgt,
   mgrfeedback: syncMgrFeedback,
+  ideas: syncIdeas,
   graphmeetings: syncGraphMeetings,
   graphsubscription: syncGraphSubscription,
+  externalemails: syncExternalEmails,
   weeklyreport: async () => {
     const { sendWeeklyReports } = await import('./weeklyReportRunner.js');
     return sendWeeklyReports();
