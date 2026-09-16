@@ -140,8 +140,8 @@ export async function buildReport15Html(employees) {
   const trainerCols = paramColumns.filter((c) => appliesToTeam(c.teams, 'Trainer'));
   // PT Team's own parameter set is deliberately narrower than the Sales/
   // Trainer columns SIGNAL_DEFS' "· PT Team" tagging would otherwise pull
-  // in here — kept to just these three, per HR.
-  const PT_COLUMNS = ['Shoddy (neg)', 'Shoddy (pos)', 'Polls participated'];
+  // in here — kept to just these five, per HR.
+  const PT_COLUMNS = ['Applied for KGT', 'Ideas for improvement', 'Shoddy (neg)', 'Shoddy (pos)', 'Polls participated'];
   const ptCols = paramColumns.filter((c) => PT_COLUMNS.includes(c.header));
 
   const salesSection = buildTeamSection(sales, salesCols, weightMap);
