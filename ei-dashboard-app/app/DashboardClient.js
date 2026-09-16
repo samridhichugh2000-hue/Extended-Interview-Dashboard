@@ -18,6 +18,7 @@ const COMMON_MISSING_FILTERS = [
   { key: 'mgrFeedback', label: 'Without Mgr Feedback', test: (e) => !(e.mgrFeedbackCount > 0) },
   { key: 'polls', label: 'Without Polls', test: (e) => !(e.pollsParticipated > 0) },
   { key: 'kgt', label: 'Without KGT', test: (e) => !(e.kgtCount > 0) },
+  { key: 'ideas', label: 'Without Ideas for Improvement', test: (e) => !(e.ideasCount > 0) },
   { key: 'withShoddy', label: 'With Shoddy Log', test: (e) => (e.shoddyNegCount > 0 || e.shoddyPosCount > 0) },
 ];
 const DEPT_MISSING_FILTERS = {
@@ -501,6 +502,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
   const [mgrFeedbackModal, setMgrFeedbackModal] = useState(null);
   const [pollsModal, setPollsModal] = useState(null);
   const [kgtModal, setKgtModal] = useState(null);
+  const [ideasModal, setIdeasModal] = useState(null);
   const deptEmp = employees.filter((e) => e.team === dept);
   const pool = deptEmp.length ? deptEmp : employees;
   // Not to be Monitored / Under Watch is a status call, not a score call —
@@ -528,9 +530,9 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
     { label: 'Under Watch', count: activeDeptEmp.filter((e) => e.status !== 'Confirmed').length, color: '#8B8CF6', filterVal: 'UnderWatch' },
   ].map((s) => ({ ...s, active: s.isTotal ? !filter : filter === s.filterVal }));
   const baseHeads = METRIC_HEADS[dept] || METRIC_HEADS.Sales;
-  const mh = dept === 'Sales' ? [...baseHeads, 'Neg. Audits', 'SCs Raised', 'Tech Calls', 'Shoddy Log', 'Mgr Feedback', 'Polls', 'KGT']
-    : dept === 'Trainer' ? [...baseHeads, 'Exams', 'Neg. Feedback', 'Assignments', 'Skills', 'In-House Skills', 'Tech Calls', 'TBTs', 'Shoddy Log', 'Mgr Feedback', 'Polls', 'KGT']
-    : [...baseHeads, 'Shoddy Log', 'Mgr Feedback', 'Polls', 'KGT'];
+  const mh = dept === 'Sales' ? [...baseHeads, 'Neg. Audits', 'SCs Raised', 'Tech Calls', 'Shoddy Log', 'Mgr Feedback', 'Polls', 'KGT', 'Ideas']
+    : dept === 'Trainer' ? [...baseHeads, 'Exams', 'Neg. Feedback', 'Assignments', 'Skills', 'In-House Skills', 'Tech Calls', 'TBTs', 'Shoddy Log', 'Mgr Feedback', 'Polls', 'KGT', 'Ideas']
+    : [...baseHeads, 'Shoddy Log', 'Mgr Feedback', 'Polls', 'KGT', 'Ideas'];
   const rows = filtered.map((e) => {
     const d = decorate(e);
     const cells = baseHeads.map((_, i) => ({
@@ -625,6 +627,11 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
       color: e.active === false ? '#6E7488' : (e.kgtCount > 0 ? '#5EEAD4' : '#6E7488'),
       onClick: e.active !== false && e.kgtCount > 0 ? () => setKgtModal(e) : null,
     });
+    cells.push({
+      value: e.active === false ? '—' : (e.ideasCount ?? '—'),
+      color: e.active === false ? '#6E7488' : (e.ideasCount > 0 ? '#5EEAD4' : '#6E7488'),
+      onClick: e.active !== false && e.ideasCount > 0 ? () => setIdeasModal(e) : null,
+    });
     return { ...d, cells };
   });
   const gridCols = `1.5fr .75fr 1fr .55fr repeat(${mh.length},.7fr) .9fr 1fr`;
@@ -702,6 +709,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
       {mgrFeedbackModal && <MgrFeedbackModal emp={mgrFeedbackModal} onClose={() => setMgrFeedbackModal(null)} />}
       {pollsModal && <PollsModal emp={pollsModal} onClose={() => setPollsModal(null)} />}
       {kgtModal && <KgtModal emp={kgtModal} onClose={() => setKgtModal(null)} />}
+      {ideasModal && <IdeasModal emp={ideasModal} onClose={() => setIdeasModal(null)} />}
       {examModal && <ExamSummaryModal emp={examModal} onClose={() => setExamModal(null)} />}
       {negFbModal && <NegFeedbackModal emp={negFbModal} onClose={() => setNegFbModal(null)} />}
       {assignmentsModal && <AssignmentsModal emp={assignmentsModal} onClose={() => setAssignmentsModal(null)} />}
@@ -877,6 +885,46 @@ function KgtModal({ emp, onClose }) {
             </div>
           ))}
           {!emp.kgtDetails.length && <div style={{ fontSize: 12.5, color: '#6E7488' }}>No KGT records on file.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Non-RMS Tasks By EmpID — "Ideas for improvement" signal. Each task is a
+// full record (executor, raiser, source, status, description, timestamps),
+// so this shows a list like TechCallsModal rather than just a total count.
+function IdeasModal({ emp, onClose }) {
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 560, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — ideas for improvement</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>{emp.ideasCount} {emp.ideasCount === 1 ? 'task' : 'tasks'} on file</div>
+          </div>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+        </div>
+        <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {emp.ideasDetails.map((task, i) => {
+            // Koenig's own feed leaves TaskStatus blank rather than sending
+            // an explicit "Pending" — anything not (yet) marked Complete
+            // reads as Pending here so every task gets an unambiguous state.
+            const statusLabel = task.taskStatus && task.taskStatus.trim() ? task.taskStatus.trim() : 'Pending';
+            const isComplete = /complete|closed|done|resolved/i.test(statusLabel);
+            const statusColor = isComplete ? '#5EEAD4' : '#F59E0B';
+            return (
+              <div key={task.autoTaskId ?? i} style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 12.5 }}>
+                  <span className="mono" style={{ color: '#8A90A8' }}>{task.createdDateTime ? String(task.createdDateTime).slice(0, 10) : '—'}{task.sourceName ? ` · ${task.sourceName}` : ''}</span>
+                  <span style={{ fontSize: 10.5, letterSpacing: '.04em', textTransform: 'uppercase', color: statusColor, border: `1px solid ${statusColor}55`, background: `${statusColor}1F`, borderRadius: 999, padding: '2px 9px', flex: 'none' }}>{statusLabel}</span>
+                </div>
+                <div style={{ fontSize: 13, color: '#C7CBDA', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{task.taskDescription || '—'}</div>
+                <div style={{ fontSize: 11.5, color: '#6E7488' }}>Raised by {task.raisedByName || '—'}</div>
+              </div>
+            );
+          })}
+          {!emp.ideasDetails.length && <div style={{ fontSize: 12.5, color: '#6E7488' }}>No Non-RMS tasks on file.</div>}
         </div>
       </div>
     </div>
@@ -1874,6 +1922,26 @@ function EmployeeModal({ emp, onClose }) {
               {!(emp.mgrFeedbackDetails || []).length && <div style={{ fontSize: 12.5, color: '#6E7488' }}>No manager feedback on file.</div>}
             </div>
           </div>
+          {d.team === 'Sales' && (
+            <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, padding: 18, background: 'rgba(255,255,255,0.02)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
+                <div className="disp" style={{ fontSize: 14, fontWeight: 600 }}>Emails sent outside Koenig domain</div>
+                <span className="mono" style={{ fontSize: 20, fontWeight: 600, color: '#A5A7FA' }}>{emp.externalEmailCount ?? '—'}</span>
+              </div>
+              {(emp.externalEmailDetails || []).length ? (
+                <div style={{ maxHeight: 220, overflow: 'auto' }}>
+                  {emp.externalEmailDetails.map((r) => (
+                    <div key={r.address} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 12.5 }}>
+                      <span style={{ color: '#A8AEC4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.address}</span>
+                      <span className="mono" style={{ color: '#6E7488', flex: 'none' }}>{r.count}× · last {new Date(r.lastSentAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: 12.5, color: '#6E7488' }}>{emp.externalEmailCount == null ? 'Not synced yet.' : 'No external emails in this window.'}</div>
+              )}
+            </div>
+          )}
           <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, padding: 18, background: 'rgba(255,255,255,0.02)' }}>
             <div className="disp" style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>HR notes</div>
             <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '12px 14px', fontSize: 13, color: '#A8AEC4', lineHeight: 1.55, background: 'rgba(0,0,0,0.2)' }}>{emp.hrNote}</div>

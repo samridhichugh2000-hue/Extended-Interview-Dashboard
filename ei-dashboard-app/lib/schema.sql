@@ -53,7 +53,11 @@ CREATE TABLE IF NOT EXISTS employees (
   meetings_count INTEGER,        -- count of Teams meetings tracked from the rep's calendar (Sales only, via Graph API Calls)
   meetings_late_count INTEGER,   -- of those, joined later than ON_TIME_GRACE_SECONDS after scheduled start
   meetings_missed_count INTEGER, -- of those, never joined at all (meeting already ended)
-  av_issue_count INTEGER         -- of those, a matched callRecords webhook flagged an audio/video quality problem
+  av_issue_count INTEGER,        -- of those, a matched callRecords webhook flagged an audio/video quality problem
+  external_email_count INTEGER,  -- total Outlook Sent Items emails to non-@koenig-solutions.com addresses in the lookback window (Sales only). Purely informational — not a Worry Index signal, since emailing external contacts is the normal shape of a Sales rep's job.
+  external_email_details TEXT,   -- JSON array of {address, count, lastSentAt}, top 100 addresses by count
+  ideas_count INTEGER,           -- count of Non-RMS tasks on file (All teams) — feeds the "Ideas for improvement" Worry Index signal
+  ideas_details TEXT             -- JSON array of {autoTaskId, taskExecutorName, raisedByEmpId, raisedByName, sourceName, taskStatus, taskDescription, createdByActualName, createdDateTime}
 );
 
 CREATE TABLE IF NOT EXISTS pip_status (
