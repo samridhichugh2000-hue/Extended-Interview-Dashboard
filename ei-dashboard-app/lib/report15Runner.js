@@ -23,6 +23,13 @@ function scoreColor(score) {
   return score < 0 ? '#B23A2E' : '#22221E';
 }
 
+// "In Progress" just means "no PA/PIP/Confirmed milestone yet" — the
+// default state for most active NJs — so it reads as noise on this report;
+// shown as a dash instead of repeating the same status on every other row.
+function displayStatus(status) {
+  return status === 'In Progress' ? '-' : status;
+}
+
 function cell(v, { right, mono } = {}) {
   let style = 'padding:7px 8px;border-bottom:1px solid #ECEAE1;';
   if (right) style += 'text-align:right;';
@@ -110,7 +117,7 @@ function buildTeamSection(list, team, weightMap, appliesToTeam, paramColumns) {
     return '<tr>' + [
       cell(e.id, { mono: true }), cell(e.name), cell(e.doj), cell(e.tenure, { right: true }),
       ...cols.map((c) => cell(c.get(e), { right: true })),
-      scoreCell(e.score), calcCell(calc), cell(e.status),
+      scoreCell(e.score), calcCell(calc), cell(displayStatus(e.status)),
     ].join('') + '</tr>';
   }).join('\n');
 
