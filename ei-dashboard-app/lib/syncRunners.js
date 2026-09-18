@@ -968,8 +968,10 @@ export const SYNC_RUNNERS = {
   graphsubscription: syncGraphSubscription,
   externalemails: syncExternalEmails,
   weeklyreport: async () => {
-    const { sendWeeklyReports } = await import('./weeklyReportRunner.js');
-    return sendWeeklyReports();
+    const { sendWeeklyReports, sendPaPipWeeklyCheckIns } = await import('./weeklyReportRunner.js');
+    const nj = await sendWeeklyReports();
+    const paPip = await sendPaPipWeeklyCheckIns();
+    return { message: `${nj.message} | ${paPip.message}` };
   },
   weeklyresponsereport: async () => {
     const { sendWeeklyResponseReport } = await import('./weeklyResponseReportRunner.js');
