@@ -26,6 +26,9 @@ export async function classifyFeedback({ strength, improvement, other }) {
   const text = [strength, improvement, other].filter(Boolean).join(' ').trim();
   if (!text) return { rating: 'not-applicable', reason: 'blank entry' };
 
+  // A hung request here (seen in practice: one call never resolved and
+  // never rejected, stalling the whole sync for hours with zero progress)
+  // needs an explicit timeout, since fetch has none by default.
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
@@ -35,6 +38,7 @@ export async function classifyFeedback({ strength, improvement, other }) {
       max_tokens: 80,
       temperature: 0,
     }),
+    signal: AbortSignal.timeout(30000),
   });
   if (!res.ok) throw new Error(`OpenAI classify request failed: ${res.status} ${await res.text().catch(() => '')}`);
   const json = await res.json();

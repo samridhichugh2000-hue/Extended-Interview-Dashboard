@@ -63,12 +63,25 @@ const allEmployees = await db.execute("SELECT id, tenure_days FROM employees WHE
 // Emp codes get recycled, same as SC/assignments — reconstruct each
 // employee's join date from tenure_days and only count feedback dated
 // on/after it, so a reused code's prior occupant doesn't attach here.
-const statements = [];
+//
+// Flushed to the DB every FLUSH_EVERY employees rather than once at the
+// very end — a single stalled/failed classification call used to mean
+// losing every employee's progress if the run never reached the final
+// batch (seen in practice: one hung OpenAI call stalled the whole script
+// for hours with nothing ever written). Also logs progress periodically
+// so a long run isn't silent the whole time.
+const FLUSH_EVERY = 25;
+let pending = [];
 let updated = 0;
 let confirmedZero = 0;
 let excludedPreJoin = 0;
 let classified = 0;
 let classifyFailed = 0;
+let processed = 0;
+async function flush() {
+  if (pending.length) await db.batch(pending, 'write');
+  pending = [];
+}
 for (const emp of allEmployees.rows) {
   const empCode = parseInt(emp.id.replace('EMP', ''), 10);
   const since = sinceDate(emp.tenure_days);
@@ -94,14 +107,19 @@ for (const emp of allEmployees.rows) {
     }
     details.push({ ...base, aiRating, aiReason });
   }
-  statements.push({
+  pending.push({
     sql: 'UPDATE employees SET mgr_feedback_count = ?, mgr_feedback_details = ? WHERE id = ?',
     args: [feedback.length, JSON.stringify(details), emp.id],
   });
   if (feedback.length) updated++; else confirmedZero++;
-}
 
-if (statements.length) await db.batch(statements, 'write');
+  processed++;
+  if (processed % FLUSH_EVERY === 0) {
+    await flush();
+    console.log(`...${processed}/${allEmployees.rows.length} employees processed, ${classified} classified so far`);
+  }
+}
+await flush();
 
 console.log(`Synced manager feedback for ${updated} employees with matched records (${confirmedZero} confirmed at 0 since join; ${excludedPreJoin} pre-join rows excluded as recycled-emp-code noise). Classified ${classified} new entries via OpenAI${classifyFailed ? `, ${classifyFailed} classification(s) failed (left unrated, keyword fallback applies)` : ''}.`);
 const check = await db.execute("SELECT id, name, team, mgr_feedback_count FROM employees WHERE mgr_feedback_count > 0 ORDER BY mgr_feedback_count DESC");
