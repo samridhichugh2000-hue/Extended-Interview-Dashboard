@@ -30,13 +30,19 @@ const trainerEmployees = await db.execute("SELECT id, tenure_days FROM employees
 
 // Emp codes get recycled — a code's prior occupant can have assignment rows
 // dating years before the current NJ joined. Reconstruct the join date from
-// tenure_days and only count assignments starting on/after it (same fix
-// applied to sync-sc.mjs for the same reason).
-function joinDate(tenureDays) {
-  const d = new Date();
-  d.setDate(d.getDate() - tenureDays);
-  d.setHours(0, 0, 0, 0);
-  return d;
+// tenure_days and only count assignments starting on/after it, capped to at
+// most the last 2 years regardless of actual tenure (same fix applied to
+// sync-sc.mjs for the same reason — a multi-year veteran's assignment count
+// should reflect recent activity, not their full career total).
+const ASSIGNMENTS_LOOKBACK_DAYS = 730;
+function sinceDate(tenureDays) {
+  const joined = new Date();
+  joined.setDate(joined.getDate() - tenureDays);
+  joined.setHours(0, 0, 0, 0);
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - ASSIGNMENTS_LOOKBACK_DAYS);
+  cutoff.setHours(0, 0, 0, 0);
+  return joined > cutoff ? joined : cutoff;
 }
 
 const statements = [];
@@ -45,7 +51,7 @@ let unmatched = 0;
 let excludedPreJoin = 0;
 for (const emp of trainerEmployees.rows) {
   const empCode = parseInt(emp.id.replace('EMP', ''), 10);
-  const since = joinDate(emp.tenure_days);
+  const since = sinceDate(emp.tenure_days);
   const all = byEmpCode.get(empCode) || [];
   const assignments = all
     .filter((a) => new Date(a.startDate) >= since)

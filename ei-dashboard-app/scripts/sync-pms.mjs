@@ -1,7 +1,7 @@
 // Syncs Sales net-revenue (NR) data from the Koenig PMS API into
-// employees.metric1..metric6 — the first six calendar months of NR since
-// each Sales employee's DOJ. Only touches employees already present (synced
-// from New Joiners) with team = 'Sales'.
+// employees.metric1..metric6 — the trailing six calendar months of NR
+// ending with the current month. Only touches employees already present
+// (synced from New Joiners) with team = 'Sales'.
 import { createClient } from '@libsql/client';
 import { fileURLToPath } from 'url';
 import path from 'path';
@@ -22,14 +22,18 @@ function monthKey(date) {
   return `${mon}-${date.getFullYear()}`;
 }
 
-// First six calendar months of NR counting from the employee's own DOJ
-// (M1 = joining month), matching the six metric columns the Sales table
-// renders.
-function firstSixMonths(dojIso, monthlyRevenue) {
-  const doj = new Date(dojIso);
+// Trailing 6 calendar months ending with the current one — was "first 6
+// months since DOJ", which left this permanently blank for anyone whose
+// first 6 months predates the ~8-month window this even fetches (i.e.
+// every veteran since the full roster import). M1 is still the oldest of
+// the 6, M6 the most recent, matching the six metric columns the Sales
+// table renders; genuine NJs barely notice the change since their trailing
+// 6 months already mostly overlaps their actual tenure.
+function lastSixMonths(monthlyRevenue) {
+  const now = new Date();
   const out = [];
-  for (let i = 0; i < 6; i++) {
-    const d = new Date(doj.getFullYear(), doj.getMonth() + i, 1);
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const raw = monthlyRevenue[monthKey(d)];
     out.push(raw !== undefined ? formatLakhs(raw) : '—');
   }
@@ -42,8 +46,8 @@ function formatLakhs(raw) {
   return '₹' + (n / 100000).toFixed(1) + 'L';
 }
 
-// 8 months back covers a NJ's DOJ (up to 6 months old) plus their first
-// 2 following months.
+// 8 months back gives a little buffer beyond the trailing 6-month window
+// lastSixMonths actually needs.
 function eightMonthsAgo() {
   const d = new Date();
   d.setMonth(d.getMonth() - 8);
@@ -65,7 +69,7 @@ for (const row of salesEmployees.rows) {
   const nr = nrByEmpId.get(empId);
   if (!nr) { unmatched++; continue; }
 
-  const months = firstSixMonths(nr.doj, nr.monthlyRevenue);
+  const months = lastSixMonths(nr.monthlyRevenue);
   await db.execute({
     sql: 'UPDATE employees SET metric1 = ?, metric2 = ?, metric3 = ?, metric4 = ?, metric5 = ?, metric6 = ? WHERE id = ?',
     args: [...months, row.id],

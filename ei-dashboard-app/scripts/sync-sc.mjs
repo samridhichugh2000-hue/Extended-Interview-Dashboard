@@ -32,12 +32,19 @@ const salesEmployees = await db.execute("SELECT id, tenure_days FROM employees W
 // Emp codes get recycled — e.g. one current NJ's code has SC rows dating back
 // to 2021, years before they joined. Reconstruct each employee's join date
 // from tenure_days and only count SCs raised on/after it, so a reused code's
-// prior occupant doesn't inflate this NJ's count.
-function joinDate(tenureDays) {
-  const d = new Date();
-  d.setDate(d.getDate() - tenureDays);
-  d.setHours(0, 0, 0, 0);
-  return d;
+// prior occupant doesn't inflate this NJ's count. Capped to at most the last
+// 2 years regardless of actual tenure — a multi-year veteran's SC count
+// should reflect recent activity, not their full career total (e.g. 1074
+// SCs raised over 18 years isn't a meaningful "SCs Raised" figure to show).
+const SC_LOOKBACK_DAYS = 730;
+function sinceDate(tenureDays) {
+  const joined = new Date();
+  joined.setDate(joined.getDate() - tenureDays);
+  joined.setHours(0, 0, 0, 0);
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - SC_LOOKBACK_DAYS);
+  cutoff.setHours(0, 0, 0, 0);
+  return joined > cutoff ? joined : cutoff;
 }
 
 const statements = [];
@@ -46,7 +53,7 @@ let unmatched = 0;
 let excludedPreJoin = 0;
 for (const emp of salesEmployees.rows) {
   const empCode = parseInt(emp.id.replace('EMP', ''), 10);
-  const since = joinDate(emp.tenure_days);
+  const since = sinceDate(emp.tenure_days);
   const all = byEmpCode.get(empCode) || [];
   const scs = all.filter((s) => new Date(s.createdOn) >= since).sort((a, b) => new Date(b.createdOn) - new Date(a.createdOn));
   excludedPreJoin += all.length - scs.length;

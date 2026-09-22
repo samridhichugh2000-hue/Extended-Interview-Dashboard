@@ -5,6 +5,22 @@
 // unlike the standalone CLI scripts these mirror).
 import { getDb } from './db.js';
 
+// Shared by syncSc/syncAssignments/syncMgrFeedback — reconstructs an
+// employee's join date from tenure_days (for recycled-emp-code exclusion),
+// capped to at most the last 2 years regardless of actual tenure, so a
+// multi-year veteran's count reflects recent activity, not a full-career
+// total (e.g. 1074 SCs raised over 18 years isn't a meaningful figure).
+const SINCE_LOOKBACK_DAYS = 730;
+function sinceDate(tenureDays) {
+  const joined = new Date();
+  joined.setDate(joined.getDate() - tenureDays);
+  joined.setHours(0, 0, 0, 0);
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - SINCE_LOOKBACK_DAYS);
+  cutoff.setHours(0, 0, 0, 0);
+  return joined > cutoff ? joined : cutoff;
+}
+
 function displayDate(raw) {
   const d = new Date(raw);
   if (Number.isNaN(d.getTime())) return raw || '—';
@@ -139,11 +155,18 @@ export async function syncPms() {
     if (!Number.isFinite(n)) return null;
     return '₹' + (n / 100000).toFixed(1) + 'L';
   }
-  function firstSixMonths(dojIso, monthlyRevenue) {
-    const doj = new Date(dojIso);
+  // Trailing 6 calendar months ending with the current one — was "first 6
+  // months since joining" (relative to DOJ), which left this permanently
+  // blank for anyone whose first 6 months predates the ~8-month window this
+  // even fetches (i.e. every veteran since the full roster import). M1 is
+  // still the oldest of the 6, M6 the most recent, same left-to-right
+  // convention as before; genuine NJs barely notice the change since their
+  // trailing 6 months already mostly overlaps their actual tenure.
+  function lastSixMonths(monthlyRevenue) {
+    const now = new Date();
     const out = [];
-    for (let i = 0; i < 6; i++) {
-      const d = new Date(doj.getFullYear(), doj.getMonth() + i, 1);
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const raw = monthlyRevenue[monthKey(d)];
       out.push(raw !== undefined ? formatLakhs(raw) : '—');
     }
@@ -169,7 +192,7 @@ export async function syncPms() {
     const nr = nrByEmpId.get(empId);
     if (!nr) { unmatched++; continue; }
 
-    const months = firstSixMonths(nr.doj, nr.monthlyRevenue);
+    const months = lastSixMonths(nr.monthlyRevenue);
     await db.execute({
       sql: 'UPDATE employees SET metric1 = ?, metric2 = ?, metric3 = ?, metric4 = ?, metric5 = ?, metric6 = ? WHERE id = ?',
       args: [...months, row.id],
@@ -232,13 +255,6 @@ export async function syncSc() {
   const db = getDb();
   const { getScList } = await import('./koenigScListApi.js');
 
-  function joinDate(tenureDays) {
-    const d = new Date();
-    d.setDate(d.getDate() - tenureDays);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }
-
   const rows = await getScList('2020-01-01', '2030-01-01');
   const byEmpCode = new Map();
   for (const r of rows) {
@@ -253,7 +269,7 @@ export async function syncSc() {
   let unmatched = 0;
   for (const emp of salesEmployees.rows) {
     const empCode = parseInt(emp.id.replace('EMP', ''), 10);
-    const since = joinDate(emp.tenure_days);
+    const since = sinceDate(emp.tenure_days);
     const all = byEmpCode.get(empCode) || [];
     const scs = all.filter((s) => new Date(s.createdOn) >= since).sort((a, b) => new Date(b.createdOn) - new Date(a.createdOn));
     if (!scs.length) { unmatched++; continue; }
@@ -397,13 +413,6 @@ export async function syncAssignments() {
   const db = getDb();
   const { getTrainerAssignments } = await import('./koenigAssignmentApi.js');
 
-  function joinDate(tenureDays) {
-    const d = new Date();
-    d.setDate(d.getDate() - tenureDays);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }
-
   const rows = await getTrainerAssignments('2020-01-01', '2030-01-01');
   const byEmpCode = new Map();
   for (const r of rows) {
@@ -418,7 +427,7 @@ export async function syncAssignments() {
   let unmatched = 0;
   for (const emp of trainerEmployees.rows) {
     const empCode = parseInt(emp.id.replace('EMP', ''), 10);
-    const since = joinDate(emp.tenure_days);
+    const since = sinceDate(emp.tenure_days);
     const all = byEmpCode.get(empCode) || [];
     const assignments = all
       .filter((a) => new Date(a.startDate) >= since)
@@ -582,13 +591,6 @@ export async function syncMgrFeedback() {
   const db = getDb();
   const { getManagerFeedback } = await import('./koenigManagerFeedbackApi.js');
 
-  function joinDate(tenureDays) {
-    const d = new Date();
-    d.setDate(d.getDate() - tenureDays);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }
-
   const rows = await getManagerFeedback('01-Jan-2020', '01-Jan-2030');
   const byEmpCode = new Map();
   for (const r of rows) {
@@ -611,7 +613,7 @@ export async function syncMgrFeedback() {
   let confirmedZero = 0;
   for (const emp of allEmployees.rows) {
     const empCode = parseInt(emp.id.replace('EMP', ''), 10);
-    const since = joinDate(emp.tenure_days);
+    const since = sinceDate(emp.tenure_days);
     const all = byEmpCode.get(empCode) || [];
     const feedback = all.filter((f) => new Date(f.date) >= since).sort((a, b) => new Date(b.date) - new Date(a.date));
 

@@ -33,11 +33,19 @@ for (const row of existing.rows) {
   }
 }
 
-function joinDate(tenureDays) {
-  const d = new Date();
-  d.setDate(d.getDate() - tenureDays);
-  d.setHours(0, 0, 0, 0);
-  return d;
+// Capped to at most the last 2 years regardless of actual tenure — same fix
+// as sync-sc.mjs/sync-assignments.mjs, for the same reason (a multi-year
+// veteran's feedback count should reflect recent history, not their full
+// career total).
+const MGR_FEEDBACK_LOOKBACK_DAYS = 730;
+function sinceDate(tenureDays) {
+  const joined = new Date();
+  joined.setDate(joined.getDate() - tenureDays);
+  joined.setHours(0, 0, 0, 0);
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - MGR_FEEDBACK_LOOKBACK_DAYS);
+  cutoff.setHours(0, 0, 0, 0);
+  return joined > cutoff ? joined : cutoff;
 }
 
 // Go wide — feedback can span an employee's whole tenure, and the feed is
@@ -63,7 +71,7 @@ let classified = 0;
 let classifyFailed = 0;
 for (const emp of allEmployees.rows) {
   const empCode = parseInt(emp.id.replace('EMP', ''), 10);
-  const since = joinDate(emp.tenure_days);
+  const since = sinceDate(emp.tenure_days);
   const all = byEmpCode.get(empCode) || [];
   const feedback = all.filter((f) => new Date(f.date) >= since).sort((a, b) => new Date(b.date) - new Date(a.date));
   excludedPreJoin += all.length - feedback.length;
