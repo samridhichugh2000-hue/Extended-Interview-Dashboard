@@ -962,9 +962,26 @@ export async function syncNetPayable() {
   return { message: `Synced net payable details for ${updated} employees (${unmatched} had no payroll record for this or last month, ${apiErrors} API errors).` };
 }
 
-// Common Index — All teams. Per-employee lookup only (no bulk mode), so
-// this loops every active employee same as Net Payable. Shown plainly in
-// every dept table — not a Worry Index signal.
+// Common Index — All teams. Per-employee lookup only (no bulk mode), and at
+// ~300ms/call a plain sequential loop over ~500 active employees takes
+// ~2.5 minutes — comfortably past Vercel's 60s function limit (confirmed:
+// the cron route 504'd). Fetched with bounded concurrency instead so the
+// whole run finishes in a few seconds; the shared token is safe to reuse
+// across concurrent calls (only fetching a *new* token concurrently is the
+// unsafe part — see getToken's comment in koenigCommonIndexApi.js).
+const COMMON_INDEX_CONCURRENCY = 20;
+
+async function mapWithConcurrency(items, limit, fn) {
+  let i = 0;
+  async function worker() {
+    while (i < items.length) {
+      const idx = i++;
+      await fn(items[idx]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+}
+
 export async function syncCommonIndex() {
   const db = getDb();
   const { getCommonIndexPoints } = await import('./koenigCommonIndexApi.js');
@@ -974,11 +991,11 @@ export async function syncCommonIndex() {
   const statements = [];
   let updated = 0;
   let apiErrors = 0;
-  for (const emp of allEmployees.rows) {
+  await mapWithConcurrency(allEmployees.rows, COMMON_INDEX_CONCURRENCY, async (emp) => {
     const empCode = emp.id.replace('EMP', '');
     try {
       const points = await getCommonIndexPoints(empCode);
-      if (points == null) continue;
+      if (points == null) return;
       statements.push({
         sql: 'UPDATE employees SET common_index_points = ? WHERE id = ?',
         args: [points, emp.id],
@@ -988,7 +1005,7 @@ export async function syncCommonIndex() {
       console.error(`Common Index sync failed for ${emp.id}:`, err.message);
       apiErrors++;
     }
-  }
+  });
 
   if (statements.length) await db.batch(statements, 'write');
 

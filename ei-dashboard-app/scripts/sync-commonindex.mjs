@@ -18,13 +18,27 @@ const db = createClient({
 
 const allEmployees = await db.execute("SELECT id FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team') AND active = 1");
 
+// Bounded concurrency — a plain sequential loop over ~500 employees at
+// ~300ms/call takes minutes; this mirrors lib/syncRunners.js's syncCommonIndex.
+const CONCURRENCY = 20;
+async function mapWithConcurrency(items, limit, fn) {
+  let i = 0;
+  async function worker() {
+    while (i < items.length) {
+      const idx = i++;
+      await fn(items[idx]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+}
+
 let updated = 0;
 let apiErrors = 0;
-for (const emp of allEmployees.rows) {
+await mapWithConcurrency(allEmployees.rows, CONCURRENCY, async (emp) => {
   const empCode = emp.id.replace('EMP', '');
   try {
     const points = await getCommonIndexPoints(empCode);
-    if (points == null) continue;
+    if (points == null) return;
     await db.execute({
       sql: 'UPDATE employees SET common_index_points = ? WHERE id = ?',
       args: [points, emp.id],
@@ -34,6 +48,6 @@ for (const emp of allEmployees.rows) {
     console.error(`Common Index sync failed for ${emp.id}:`, err.message);
     apiErrors++;
   }
-}
+});
 
 console.log(`Synced Common Index points for ${updated} employees (${apiErrors} API errors).`);
