@@ -333,12 +333,16 @@ export async function syncUtil() {
     const mon = date.toLocaleString('en-US', { month: 'short' });
     return `${mon} ${date.getFullYear()}`;
   }
-  function firstSixMonths(tenureDays, months) {
-    const doj = new Date();
-    doj.setDate(doj.getDate() - tenureDays);
+  // Trailing 6 calendar months ending with the current one — was "first 6
+  // months since joining" (relative to tenure_days), which left this
+  // permanently blank for veterans (the API's own ~14-month history window
+  // rarely reaches back to a multi-year employee's actual joining month).
+  // M1 is still the oldest of the 6, M6 the most recent.
+  function lastSixMonths(months) {
+    const now = new Date();
     const out = [];
-    for (let i = 0; i < 6; i++) {
-      const d = new Date(doj.getFullYear(), doj.getMonth() + i, 1);
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const rec = months[monthKey(d)];
       out.push(rec && rec.util !== null ? `${rec.util}%` : '—');
     }
@@ -354,7 +358,7 @@ export async function syncUtil() {
     const data = await getMonthlyUtilization(empCode);
     if (!data) { unmatched++; continue; }
 
-    const values = firstSixMonths(emp.tenure_days, data.months);
+    const values = lastSixMonths(data.months);
     await db.execute({
       sql: 'UPDATE employees SET metric1 = ?, metric2 = ?, metric3 = ?, metric4 = ?, metric5 = ?, metric6 = ? WHERE id = ?',
       args: [...values, emp.id],

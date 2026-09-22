@@ -1,6 +1,6 @@
 // Syncs Trainer month-wise utilization from the Koenig API into
-// employees.metric1..metric6 — the first six calendar months of
-// utilization % since each Trainer's own DOJ. Unlike the Sales NR feed,
+// employees.metric1..metric6 — the trailing six calendar months of
+// utilization % ending with the current month. Unlike the Sales NR feed,
 // this API is per-employee (no bulk endpoint), so it's one call per Trainer.
 import { createClient } from '@libsql/client';
 import { fileURLToPath } from 'url';
@@ -22,15 +22,16 @@ function monthKey(date) {
   return `${mon} ${date.getFullYear()}`;
 }
 
-// First six calendar months of utilization counting from the employee's own
-// DOJ (M1 = joining month), matching the six metric columns Sales already
-// uses — reconstructed from tenure_days since we don't store a raw ISO DOJ.
-function firstSixMonths(tenureDays, months) {
-  const doj = new Date();
-  doj.setDate(doj.getDate() - tenureDays);
+// Trailing 6 calendar months ending with the current one — was "first 6
+// months since DOJ", which left this permanently blank for veterans (the
+// API's own ~14-month history window rarely reaches back to a multi-year
+// employee's actual joining month). M1 is still the oldest of the 6, M6
+// the most recent, matching the six metric columns Sales already uses.
+function lastSixMonths(months) {
+  const now = new Date();
   const out = [];
-  for (let i = 0; i < 6; i++) {
-    const d = new Date(doj.getFullYear(), doj.getMonth() + i, 1);
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const rec = months[monthKey(d)];
     out.push(rec && rec.util !== null ? `${rec.util}%` : '—');
   }
@@ -46,7 +47,7 @@ for (const emp of trainerEmployees.rows) {
   const data = await getMonthlyUtilization(empCode);
   if (!data) { unmatched++; continue; }
 
-  const values = firstSixMonths(emp.tenure_days, data.months);
+  const values = lastSixMonths(data.months);
   await db.execute({
     sql: 'UPDATE employees SET metric1 = ?, metric2 = ?, metric3 = ?, metric4 = ?, metric5 = ?, metric6 = ? WHERE id = ?',
     args: [...values, emp.id],
