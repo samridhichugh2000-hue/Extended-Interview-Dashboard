@@ -507,6 +507,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
   const [njOnly, setNjOnly] = useState(true);
   const [missing, setMissing] = useState([]);
   const toggleMissing = (key) => setMissing((m) => (m.includes(key) ? m.filter((k) => k !== key) : [...m, key]));
+  const { openAlertPreview, alertModal } = useEmployeeActions();
   const [auditModal, setAuditModal] = useState(null);
   const [scModal, setScModal] = useState(null);
   const [examModal, setExamModal] = useState(null);
@@ -676,7 +677,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
   // (not a shared table), so a track will otherwise grow past its fr share
   // to fit a long name/value in that one row, throwing every column after
   // it out of alignment with the header and every other row.
-  const gridCols = `minmax(0,1.5fr) minmax(0,.75fr) minmax(0,1fr) minmax(0,.55fr) repeat(${mh.length},minmax(0,.7fr)) minmax(0,.9fr)`;
+  const gridCols = `minmax(0,1.5fr) minmax(0,.75fr) minmax(0,1fr) minmax(0,.55fr) repeat(${mh.length},minmax(0,.7fr)) minmax(0,.9fr) minmax(0,.7fr)`;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -716,7 +717,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
         <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           <span>Employee</span><span>DOJ</span><span>Manager</span><span>Day</span>
           {mh.map((h) => <span key={h} style={{ textAlign: 'right' }}>{h}</span>)}
-          <span>Status</span>
+          <span>Status</span><span></span>
         </div>
         {rows.map((e) => (
           <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '13px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
@@ -732,10 +733,18 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
               >{c.value}</span>
             ))}
             {e.statusLabel && <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` }}>{e.statusLabel}</span>}
+            <div style={{ justifySelf: 'end' }} onClick={(ev) => ev.stopPropagation()}>
+              {!e.inactive && e.bandLabel === 'Critical' && (
+                <span onClick={() => openAlertPreview(e)} style={{ fontSize: 10.5, color: '#F87171', border: '1px solid rgba(244,63,94,0.4)', borderRadius: 7, padding: '4px 8px', cursor: 'pointer' }}>
+                  Alert
+                </span>
+              )}
+            </div>
           </div>
         ))}
         {!rows.length && <div style={{ padding: '18px', fontSize: 12.5, color: '#6E7488' }}>No employees match this filter.</div>}
       </div>
+      {alertModal}
       {auditModal && <AuditRemarksModal emp={auditModal} onClose={() => setAuditModal(null)} />}
       {scModal && <ScListModal emp={scModal} onClose={() => setScModal(null)} />}
       {techCallsModal && <TechCallsModal emp={techCallsModal} onClose={() => setTechCallsModal(null)} />}
@@ -1952,6 +1961,62 @@ function Report15PreviewModal({ onClose }) {
   );
 }
 
+// Line + filled-area trend chart, e.g. for the last-14-days external email
+// series — gridlines/value labels on the left, hover any point (a wide
+// invisible strip, not just the dot, so it's easy to hit) for its exact
+// date + count.
+function DailyTrendChart({ data }) {
+  const [hover, setHover] = useState(null);
+  const width = 600, height = 130, padLeft = 26, padRight = 6, padTop = 10, padBottom = 6;
+  const plotW = width - padLeft - padRight;
+  const plotH = height - padTop - padBottom;
+  const rawMax = Math.max(1, ...data.map((d) => d.count));
+  const topVal = rawMax <= 4 ? 4 : Math.ceil(rawMax / 5) * 5;
+  const xAt = (i) => padLeft + (data.length > 1 ? (i / (data.length - 1)) * plotW : plotW / 2);
+  const yAt = (v) => padTop + plotH - (v / topVal) * plotH;
+  const points = data.map((d, i) => ({ x: xAt(i), y: yAt(d.count), ...d }));
+  const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
+  const areaPath = `${linePath} L ${points[points.length - 1].x.toFixed(1)} ${yAt(0)} L ${points[0].x.toFixed(1)} ${yAt(0)} Z`;
+  const sliceW = plotW / data.length;
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: 130, display: 'block', overflow: 'visible' }}>
+        {[0, 0.5, 1].map((f) => (
+          <g key={f}>
+            <line x1={padLeft} x2={width - padRight} y1={yAt(topVal * f)} y2={yAt(topVal * f)} stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
+            <text x={padLeft - 6} y={yAt(topVal * f) + 3} fontSize="9" textAnchor="end" fill="#6E7488">{Math.round(topVal * f)}</text>
+          </g>
+        ))}
+        <path d={areaPath} fill="rgba(165,167,250,0.14)" stroke="none" />
+        <path d={linePath} fill="none" stroke="#A5A7FA" strokeWidth="2" />
+        {points.map((p, i) => (
+          <circle key={p.date} cx={p.x} cy={p.y} r={hover === i ? 4 : 2.5} fill={hover === i ? '#FFFFFF' : '#A5A7FA'} stroke="#A5A7FA" strokeWidth={hover === i ? 1.5 : 0} />
+        ))}
+        {hover != null && <line x1={points[hover].x} x2={points[hover].x} y1={padTop} y2={yAt(0)} stroke="rgba(165,167,250,0.35)" strokeWidth="1" />}
+        {points.map((p, i) => (
+          <rect key={`hz-${p.date}`} x={padLeft + i * sliceW} y={0} width={sliceW} height={height}
+            fill="transparent" onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} style={{ cursor: 'pointer' }} />
+        ))}
+      </svg>
+      {hover != null && (
+        <div style={{
+          position: 'absolute', left: `${(points[hover].x / width) * 100}%`, top: Math.max(0, points[hover].y - 42),
+          transform: 'translateX(-50%)', background: '#1B2033', border: '1px solid rgba(255,255,255,0.16)', borderRadius: 7,
+          padding: '5px 9px', fontSize: 11, whiteSpace: 'nowrap', pointerEvents: 'none', boxShadow: '0 8px 20px -8px rgba(0,0,0,0.6)',
+        }}>
+          <div className="mono" style={{ color: '#FFFFFF', fontWeight: 600, fontSize: 13 }}>{points[hover].count}</div>
+          <div style={{ color: '#8A90A8', fontSize: 10 }}>{new Date(points[hover].date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</div>
+        </div>
+      )}
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9.5, color: '#6E7488', marginTop: 4, paddingLeft: `${(padLeft / width) * 100}%` }}>
+        <span>{new Date(data[0].date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</span>
+        <span>{new Date(data[data.length - 1].date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</span>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- modal ---------- */
 
 function EmployeeModal({ emp, onClose }) {
@@ -2054,23 +2119,7 @@ function EmployeeModal({ emp, onClose }) {
                 <span className="mono" style={{ fontSize: 20, fontWeight: 600, color: '#A5A7FA' }}>{emp.externalEmailCount ?? '—'}</span>
               </div>
               {(emp.externalEmailDaily || []).length ? (
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 70 }}>
-                    {emp.externalEmailDaily.map((d) => {
-                      const max = Math.max(1, ...emp.externalEmailDaily.map((x) => x.count));
-                      return (
-                        <div key={d.date} title={`${d.date}: ${d.count}`} style={{ flex: 1, display: 'flex', alignItems: 'flex-end', height: '100%' }}>
-                          <div style={{ width: '100%', height: `${Math.max(3, (d.count / max) * 100)}%`, background: d.count > 0 ? '#A5A7FA' : 'rgba(255,255,255,0.08)', borderRadius: '3px 3px 0 0' }} />
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#6E7488', marginTop: 6 }}>
-                    <span>{new Date(emp.externalEmailDaily[0].date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</span>
-                    <span>Last 14 days</span>
-                    <span>{new Date(emp.externalEmailDaily[emp.externalEmailDaily.length - 1].date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</span>
-                  </div>
-                </div>
+                <DailyTrendChart data={emp.externalEmailDaily} />
               ) : (
                 <div style={{ fontSize: 12.5, color: '#6E7488' }}>{emp.externalEmailCount == null ? 'Not synced yet.' : 'No external emails in this window.'}</div>
               )}
