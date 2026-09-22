@@ -10,6 +10,16 @@ export const C = { rose: '#F43F5E', amber: '#F59E0B', indigo: '#8B8CF6', teal: '
 export const NJ_TENURE_DAYS = 182;
 export const isNewJoiner = (tenureDays) => (tenureDays ?? 0) < NJ_TENURE_DAYS;
 
+// Whether the Worry Index should compute a real score for this employee at
+// all. Every count-based signal (SCs raised, tech calls, audits...) is
+// "since joining" or all-time — meaningful over an NJ's first ~6 months,
+// nonsensical over a multi-year veteran's tenure (a real case: 1074 SCs
+// raised over 18 years scored +5,370 on a scale that only spans -12/+12).
+// Scoring stays limited to genuine New Joiners and active PA/PIP cases —
+// the same population this dashboard already scored meaningfully before
+// the full roster (including long-tenured veterans) got imported.
+export const isScoredEmployee = (e) => isNewJoiner(e.tenure) || e.status === 'PA Issued' || e.status === 'PIP Issued';
+
 export const STATUS = {
   'PIP Issued': { bg: 'rgba(244,63,94,0.12)', color: '#F87171', border: 'rgba(244,63,94,0.3)' },
   'PA Issued': { bg: 'rgba(245,158,11,0.12)', color: '#F59E0B', border: 'rgba(245,158,11,0.3)' },
@@ -18,6 +28,7 @@ export const STATUS = {
 };
 
 export function band(s) {
+  if (s == null) return { label: 'Not scored', color: '#6E7488' };
   if (s <= -4) return { label: 'Critical', color: C.rose };
   if (s <= 0) return { label: 'Low', color: C.amber };
   if (s <= 5) return { label: 'Medium', color: C.indigo };
@@ -35,7 +46,7 @@ export function decorate(e) {
     statusBorder: inactive ? 'rgba(255,255,255,0.12)' : st.border,
     bandColor: inactive ? '#6E7488' : b.color,
     bandLabel: inactive ? 'Inactive' : b.label,
-    scoreStr: (e.score > 0 ? '+' : '') + e.score.toFixed(1),
+    scoreStr: e.score == null ? '—' : (e.score > 0 ? '+' : '') + e.score.toFixed(1),
     short: e.status === 'PIP Issued' ? 'PIP' : e.status === 'PA Issued' ? 'PA' : '—',
     inactive,
     rowStyle: inactive ? { opacity: 0.45, filter: 'grayscale(0.6)' } : undefined,

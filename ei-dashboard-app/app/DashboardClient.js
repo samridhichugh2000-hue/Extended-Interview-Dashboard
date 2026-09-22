@@ -1304,7 +1304,11 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
   const [includeInactive, setIncludeInactive] = useState(false);
   const [missing, setMissing] = useState([]);
   const toggleMissing = (key) => setMissing((m) => (m.includes(key) ? m.filter((k) => k !== key) : [...m, key]));
-  const active = employees.map(decorate).filter((e) => includeInactive || !e.inactive);
+  // Scored employees only (New Joiners + active PA/PIP cases) — everyone
+  // else has score === null (see isScoredEmployee in lib/data.js), and
+  // ranking/coverage stats don't mean anything for someone who was never
+  // actually scored.
+  const active = employees.map(decorate).filter((e) => (includeInactive || !e.inactive) && e.score != null);
   const tabs = [['All Departments', null], ['Sales', 'Sales'], ['Trainer', 'Trainer'], ['PT Team', 'PT Team']].map(([label, val]) => ({
     label, val, active: filter === val || (!filter && !val),
     count: val ? active.filter((e) => e.team === val).length : active.length,
@@ -1953,7 +1957,8 @@ function Report15PreviewModal({ onClose }) {
 function EmployeeModal({ emp, onClose }) {
   const d = decorate(emp);
   const { pending, closeEmployee, openAlertPreview, alertModal } = useEmployeeActions();
-  const bandPct = Math.round(Math.max(0, Math.min(1, (emp.score + 12) / 24)) * 100) + '%';
+  const scored = emp.score != null;
+  const bandPct = scored ? Math.round(Math.max(0, Math.min(1, (emp.score + 12) / 24)) * 100) + '%' : '0%';
   const weeks = emp.weeks.map((w) => ({ ...w, color: w.state === 'Overdue' ? '#F87171' : w.state === 'Received' ? '#5EEAD4' : '#A5A7FA' }));
 
   return (
@@ -1965,7 +1970,7 @@ function EmployeeModal({ emp, onClose }) {
               <span className="disp" style={{ fontSize: 23, fontWeight: 600, letterSpacing: '-0.02em' }}>{d.name}</span>
               <span style={{ fontSize: 10.5, padding: '4px 10px', borderRadius: 999, background: d.statusBg, color: d.statusColor, border: `1px solid ${d.statusBorder}` }}>{d.status}</span>
             </div>
-            <div className="mono" style={{ fontSize: 12, color: '#6E7488', marginTop: 6 }}>{d.id} · {d.team} · manager {d.manager} · day {d.tenure} of 180</div>
+            <div className="mono" style={{ fontSize: 12, color: '#6E7488', marginTop: 6 }}>{d.id} · {d.team} · manager {d.manager} · {isNewJoiner(d.tenure) ? `day ${d.tenure} of 180` : `tenure ${d.tenure} days`}</div>
           </div>
           <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
         </div>
@@ -1974,12 +1979,19 @@ function EmployeeModal({ emp, onClose }) {
             <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, padding: 20, background: 'rgba(255,255,255,0.02)' }}>
               <div style={{ fontSize: 11.5, color: '#8A90A8' }}>Worry Index</div>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 9, margin: '6px 0 14px' }}><span className="disp" style={{ fontSize: 42, fontWeight: 600, color: d.bandColor, letterSpacing: '-0.03em' }}>{d.scoreStr}</span><span style={{ fontSize: 12.5, color: d.bandColor }}>{d.bandLabel}</span></div>
-              <div style={{ height: 8, borderRadius: 4, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}><div style={{ height: '100%', width: bandPct, background: d.bandColor, borderRadius: 4 }} /></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#5C6178', marginTop: 6 }}><span>−12</span><span>0</span><span>+12</span></div>
+              {scored && <>
+                <div style={{ height: 8, borderRadius: 4, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}><div style={{ height: '100%', width: bandPct, background: d.bandColor, borderRadius: 4 }} /></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#5C6178', marginTop: 6 }}><span>−12</span><span>0</span><span>+12</span></div>
+              </>}
               <div style={{ marginTop: 16, fontSize: 12.5, color: '#8A90A8', lineHeight: 1.55 }}>{emp.trendNote}</div>
             </div>
             <div>
               <div className="mono" style={{ fontSize: 10, letterSpacing: '.12em', color: '#5C6178', textTransform: 'uppercase', marginBottom: 10 }}>Signal breakdown — every parameter for {emp.team}</div>
+              {!scored && (
+                <div style={{ fontSize: 12.5, color: '#6E7488', lineHeight: 1.55 }}>
+                  Not scored — Worry Index parameters only apply to New Joiners (first ~6 months) and active PA/PIP cases. Counts like SCs raised or tech calls accumulate over this employee's full tenure, so scoring them the same way would be meaningless.
+                </div>
+              )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                 {emp.signalReport.map((s) => {
                   const notSynced = s.status === 'no-data' || s.status === 'not-tracked';

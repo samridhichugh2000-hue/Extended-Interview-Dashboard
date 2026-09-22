@@ -1,5 +1,5 @@
 import { getDb } from './db';
-import { computeSignalReport, computeWorryScore, trendNoteFor } from './data';
+import { computeSignalReport, computeWorryScore, trendNoteFor, isScoredEmployee } from './data';
 import { getIsoWeek, isWeekOver } from './weekUtils';
 import { getManagerEmail } from './managerDirectory';
 
@@ -16,13 +16,14 @@ function effectiveState(week, rawState) {
 export async function getEmployees() {
   const db = getDb();
 
-  // Employees are tracked for their first year of tenure only — past 365 days
-  // they're dropped from the dashboard/reports (not deleted; the row and its
-  // history stay in Turso for direct lookup, just no longer surfaced here).
-  // Newest joiners first, then increasing tenure — screens that need a
-  // different order (e.g. Worry Index score) re-sort explicitly on top of this.
+  // Every tracked employee, regardless of tenure — this used to cap at
+  // tenure_days < 365 (a leftover from when nobody in the table could be
+  // longer-tenured than that anyway), which silently hid every veteran once
+  // the full active roster got imported (see syncKoenig). Newest joiners
+  // first, then increasing tenure — screens that need a different order
+  // (e.g. Worry Index score) re-sort explicitly on top of this.
   const [empRes, pipRes, feedbackRes] = await Promise.all([
-    db.execute('SELECT * FROM employees WHERE tenure_days < 365 ORDER BY tenure_days ASC'),
+    db.execute('SELECT * FROM employees ORDER BY tenure_days ASC'),
     db.execute('SELECT * FROM pip_status'),
     db.execute('SELECT * FROM manager_feedback'),
   ]);
@@ -117,14 +118,22 @@ export async function getEmployees() {
     // covers every parameter that applies to this team (fired, clear, no-data
     // or not-tracked) — see computeSignalReport in lib/data.js; only the
     // 'fired' ones count toward the score.
-    const signalReport = computeSignalReport(base);
+    //
+    // Scoring only applies to New Joiners and active PA/PIP cases (see
+    // isScoredEmployee) — every count-based signal is "since joining"/
+    // all-time, which explodes into meaningless numbers over a multi-year
+    // veteran's tenure. Everyone else gets score/signals as null — band()
+    // and decorate() already render that as "Not scored" / "—" rather than
+    // a broken number.
+    const scored = isScoredEmployee(base);
+    const signalReport = scored ? computeSignalReport(base) : [];
     const signals = signalReport.filter((s) => s.status === 'fired');
     return {
       ...base,
       signals,
       signalReport,
-      score: computeWorryScore(signals),
-      trendNote: trendNoteFor(signals),
+      score: scored ? computeWorryScore(signals) : null,
+      trendNote: scored ? trendNoteFor(signals) : 'Not scored — outside the New Joiner / active PA-PIP window.',
     };
   });
 }

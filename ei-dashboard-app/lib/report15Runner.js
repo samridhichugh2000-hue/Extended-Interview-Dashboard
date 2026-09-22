@@ -126,7 +126,14 @@ export async function buildReport15Html(employees) {
   const { SIGNAL_DEFS, appliesToTeam, missedWeeksCount, belowSatisfactoryCount } = await import('./data.js');
   const weightMap = new Map(SIGNAL_DEFS.map((d) => [d.label, d.pts]));
 
-  const active = employees.filter((e) => e.active !== false);
+  // Scored employees only (New Joiners + active PA/PIP cases) — since the
+  // full active roster (including multi-year veterans) got imported,
+  // employees.score is null for anyone outside that window (see
+  // isScoredEmployee in lib/data.js); this report's "every active NJ"
+  // scope already matches that population, and score-based sort/counts
+  // below would otherwise be meaningless (or wrong, since null sorts as 0)
+  // for someone who was never actually scored.
+  const active = employees.filter((e) => e.active !== false && e.score != null);
   const sales = active.filter((e) => e.team === 'Sales').sort((a, b) => a.score - b.score);
   const trainer = active.filter((e) => e.team === 'Trainer').sort((a, b) => a.score - b.score);
   const pt = active.filter((e) => e.team === 'PT Team').sort((a, b) => a.score - b.score);
