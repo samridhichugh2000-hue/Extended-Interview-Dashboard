@@ -880,14 +880,29 @@ export async function syncGraphMeetings() {
 // since this resource's subscriptions max out at ~70 hours.
 const EXTERNAL_EMAIL_LOOKBACK_DAYS = Number(process.env.EXTERNAL_EMAIL_LOOKBACK_DAYS || 30);
 
+// UTC calendar dates for today and the 13 days before it, oldest first —
+// zero-fills days with no emails so the modal's trend graph always has
+// exactly 14 points regardless of how sparse a rep's sending is.
+function last14Days() {
+  const days = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() - i);
+    days.push(d.toISOString().slice(0, 10));
+  }
+  return days;
+}
+
 // Outlook Sent Items — External Email Count: for each active Sales rep,
 // tallies every email sent to a non-@koenig-solutions.com address in the
 // lookback window, via Graph. Purely informational (shown in the employee
 // detail modal) — deliberately NOT a Worry Index signal, since emailing
 // external contacts is the normal, expected shape of a Sales rep's job
 // (client/vendor correspondence), not a red flag on its own.
-// details is capped to the top 100 addresses by count for storage/display —
-// externalEmailCount itself is always the true total across every address.
+// details is capped to the top 100 addresses by count for storage — kept
+// for potential future use, though the modal now shows the daily trend
+// instead of the address list. externalEmailCount itself is always the
+// true total across every address.
 export async function syncExternalEmails() {
   const db = getDb();
   const { getSentExternalSummary } = await import('./graphMailer.js');
@@ -895,16 +910,18 @@ export async function syncExternalEmails() {
   const to = new Date();
   const from = new Date(to.getTime() - EXTERNAL_EMAIL_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
   const employees = await db.execute("SELECT id, email FROM employees WHERE team = 'Sales' AND active = 1");
+  const days = last14Days();
 
   let processed = 0, noEmail = 0, apiErrors = 0;
   for (const emp of employees.rows) {
     if (!emp.email) { noEmail++; continue; }
     try {
-      const recipients = await getSentExternalSummary(emp.email, from.toISOString(), to.toISOString());
+      const { recipients, daily } = await getSentExternalSummary(emp.email, from.toISOString(), to.toISOString());
       const totalCount = recipients.reduce((sum, r) => sum + r.count, 0);
+      const dailySeries = days.map((date) => ({ date, count: daily.get(date) || 0 }));
       await db.execute({
-        sql: 'UPDATE employees SET external_email_count = ?, external_email_details = ? WHERE id = ?',
-        args: [totalCount, JSON.stringify(recipients.slice(0, 100)), emp.id],
+        sql: 'UPDATE employees SET external_email_count = ?, external_email_details = ?, external_email_daily = ? WHERE id = ?',
+        args: [totalCount, JSON.stringify(recipients.slice(0, 100)), JSON.stringify(dailySeries), emp.id],
       });
       processed++;
     } catch (err) {

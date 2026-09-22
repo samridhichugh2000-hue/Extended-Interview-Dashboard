@@ -2053,14 +2053,23 @@ function EmployeeModal({ emp, onClose }) {
                 <div className="disp" style={{ fontSize: 14, fontWeight: 600 }}>Emails sent outside Koenig domain</div>
                 <span className="mono" style={{ fontSize: 20, fontWeight: 600, color: '#A5A7FA' }}>{emp.externalEmailCount ?? '—'}</span>
               </div>
-              {(emp.externalEmailDetails || []).length ? (
-                <div style={{ maxHeight: 220, overflow: 'auto' }}>
-                  {emp.externalEmailDetails.map((r) => (
-                    <div key={r.address} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 12.5 }}>
-                      <span style={{ color: '#A8AEC4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.address}</span>
-                      <span className="mono" style={{ color: '#6E7488', flex: 'none' }}>{r.count}× · last {new Date(r.lastSentAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</span>
-                    </div>
-                  ))}
+              {(emp.externalEmailDaily || []).length ? (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 70 }}>
+                    {emp.externalEmailDaily.map((d) => {
+                      const max = Math.max(1, ...emp.externalEmailDaily.map((x) => x.count));
+                      return (
+                        <div key={d.date} title={`${d.date}: ${d.count}`} style={{ flex: 1, display: 'flex', alignItems: 'flex-end', height: '100%' }}>
+                          <div style={{ width: '100%', height: `${Math.max(3, (d.count / max) * 100)}%`, background: d.count > 0 ? '#A5A7FA' : 'rgba(255,255,255,0.08)', borderRadius: '3px 3px 0 0' }} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#6E7488', marginTop: 6 }}>
+                    <span>{new Date(emp.externalEmailDaily[0].date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</span>
+                    <span>Last 14 days</span>
+                    <span>{new Date(emp.externalEmailDaily[emp.externalEmailDaily.length - 1].date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</span>
+                  </div>
                 </div>
               ) : (
                 <div style={{ fontSize: 12.5, color: '#6E7488' }}>{emp.externalEmailCount == null ? 'Not synced yet.' : 'No external emails in this window.'}</div>

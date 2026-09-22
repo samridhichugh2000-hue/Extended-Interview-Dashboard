@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS employees (
   av_issue_count INTEGER,        -- of those, a matched callRecords webhook flagged an audio/video quality problem
   external_email_count INTEGER,  -- total Outlook Sent Items emails to non-@koenig-solutions.com addresses in the lookback window (Sales only). Purely informational — not a Worry Index signal, since emailing external contacts is the normal shape of a Sales rep's job.
   external_email_details TEXT,   -- JSON array of {address, count, lastSentAt}, top 100 addresses by count
+  external_email_daily TEXT,     -- JSON array of {date, count}, oldest to newest, always exactly the last 14 UTC calendar days (zero-filled) — powers the trend graph in the employee modal
   ideas_count INTEGER,           -- count of Non-RMS tasks on file (All teams) — feeds the "Ideas for improvement" Worry Index signal
   ideas_details TEXT,            -- JSON array of {autoTaskId, taskExecutorName, raisedByEmpId, raisedByName, sourceName, taskStatus, taskDescription, createdByActualName, createdDateTime}
   roster_count INTEGER,           -- count of shift entries on file from the Get CSM Roster feed (Sales only). Purely informational, shown on the Graph API Calls screen — not a Worry Index signal.

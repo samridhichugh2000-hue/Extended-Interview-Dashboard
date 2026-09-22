@@ -104,6 +104,7 @@ export async function getEmployees() {
       avIssueCount: e.av_issue_count,
       externalEmailCount: e.external_email_count,
       externalEmailDetails: e.external_email_details ? JSON.parse(e.external_email_details) : [],
+      externalEmailDaily: e.external_email_daily ? JSON.parse(e.external_email_daily) : [],
       ideasCount: e.ideas_count,
       ideasDetails: e.ideas_details ? JSON.parse(e.ideas_details) : [],
       rosterCount: e.roster_count,
