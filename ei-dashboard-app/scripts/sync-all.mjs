@@ -32,6 +32,9 @@ const SCRIPTS = [
   'sync-mgrfeedback.mjs',
   'sync-ideas.mjs',
   'sync-netpayable.mjs',
+  'sync-graph-meetings.mjs',
+  'sync-graph-subscription.mjs',
+  'sync-external-emails.mjs',
 ];
 
 function run(script) {
