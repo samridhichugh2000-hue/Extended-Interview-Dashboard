@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  STATUS, decorate, NAV, TITLES, PATHS, METRIC_HEADS,
+  STATUS, decorate, band, NAV, TITLES, PATHS, METRIC_HEADS,
   WORRY_BANDS, POS_SIGNALS, NEG_SIGNALS, NJ_QUESTIONS, appliesToTeam, feedbackRating,
 } from '../lib/data';
 import { JOB_LABELS } from '../lib/jobLabels';
@@ -116,7 +116,7 @@ function useEmployeeActions() {
 }
 
 const PIP_TYPES = {
-  PA: { code: 'PA', label: 'Performance Appraisal (PA)' },
+  PA: { code: 'PA', label: 'Performance Alert (PA)' },
   PIP: { code: 'PIP', label: 'Performance Improvement Plan (PIP)' },
 };
 // Must match PIP_SUBJECT in app/api/employees/[id]/alert/route.js.
@@ -519,6 +519,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
   const visiblePool = includeInactive ? pool : pool.filter((e) => e.active !== false);
   const statusFiltered = filter === 'Confirmed' ? visiblePool.filter((e) => e.status === 'Confirmed')
     : filter === 'UnderWatch' ? visiblePool.filter((e) => e.status !== 'Confirmed')
+    : filter === 'Alert' ? visiblePool.filter((e) => band(e.score).label === 'Critical')
     : visiblePool;
   const q = search.trim().toLowerCase();
   const searched = q ? statusFiltered.filter((e) => e.name.toLowerCase().includes(q) || String(e.id).toLowerCase().includes(q)) : statusFiltered;
@@ -528,6 +529,10 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
     { label: 'Total', count: activeDeptEmp.length, color: '#A855F7', filterVal: null, isTotal: true },
     { label: 'Not to be Monitored', count: activeDeptEmp.filter((e) => e.status === 'Confirmed').length, color: '#14B8A6', filterVal: 'Confirmed' },
     { label: 'Under Watch', count: activeDeptEmp.filter((e) => e.status !== 'Confirmed').length, color: '#8B8CF6', filterVal: 'UnderWatch' },
+    // Same Critical-band condition that puts the red "Alert" chip on a row
+    // (see cells further below) — this just lets HR jump straight to that
+    // subset instead of scanning for the chip.
+    { label: 'Alert', count: activeDeptEmp.filter((e) => band(e.score).label === 'Critical').length, color: '#F87171', filterVal: 'Alert' },
   ].map((s) => ({ ...s, active: s.isTotal ? !filter : filter === s.filterVal }));
   // Raw sum, not run through the Worry Index scoring — shown plainly here so
   // the "Tech calls < 1 per week" signal's presence in the score doesn't
@@ -642,7 +647,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${dept === 'Sales' ? 4 : 3},1fr)`, gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${dept === 'Sales' ? 5 : 4},1fr)`, gap: 10 }}>
         {statusCards.map((s) => (
           <div key={s.label} onClick={() => setFilter(s.isTotal ? null : (filter === s.filterVal ? null : s.filterVal))}
             style={{ cursor: 'pointer', border: `1px solid ${s.active ? s.color : 'rgba(255,255,255,0.09)'}`, background: s.active ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.025)', borderRadius: 12, padding: '13px 14px' }}>
