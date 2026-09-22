@@ -477,7 +477,7 @@ function Overview({ employees, newJoiners, deptCounts, go, setModal }) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontWeight: 600 }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id} · day {e.tenure}</span></div>
                 <span style={{ color: '#A8AEC4', fontSize: 12.5 }}>{e.team}</span>
                 <span style={{ color: '#A8AEC4', fontSize: 12.5 }}>{e.manager}</span>
-                <span style={{ justifySelf: 'start', fontSize: 11, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` }}>{e.statusLabel}</span>
+                {e.statusLabel && <span style={{ justifySelf: 'start', fontSize: 11, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` }}>{e.statusLabel}</span>}
                 <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontWeight: 600, color: e.bandColor }}>{e.scoreStr}</span>
               </div>
             ))}
@@ -673,7 +673,11 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
     });
     return { ...d, cells };
   });
-  const gridCols = `1.5fr .75fr 1fr .55fr repeat(${mh.length},.7fr) .9fr 1fr`;
+  // minmax(0,Nfr) instead of a bare Nfr — each row is its own grid container
+  // (not a shared table), so a track will otherwise grow past its fr share
+  // to fit a long name/value in that one row, throwing every column after
+  // it out of alignment with the header and every other row.
+  const gridCols = `minmax(0,1.5fr) minmax(0,.75fr) minmax(0,1fr) minmax(0,.55fr) repeat(${mh.length},minmax(0,.7fr)) minmax(0,.9fr) minmax(0,1fr)`;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -717,9 +721,9 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
         </div>
         {rows.map((e) => (
           <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '13px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontWeight: 600 }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id}</span></div>
-            <span style={{ color: '#A8AEC4', fontSize: 12 }}>{e.doj}</span>
-            <span style={{ color: '#A8AEC4', fontSize: 12 }}>{e.manager}</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}><span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.id}</span></div>
+            <span style={{ color: '#A8AEC4', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.doj}</span>
+            <span style={{ color: '#A8AEC4', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.manager}</span>
             <span className="mono" style={{ fontSize: 11, color: '#8A90A8' }}>{e.tenure}</span>
             {e.cells.map((c, i) => (
               <span
@@ -728,7 +732,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
                 style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: c.color, cursor: c.onClick ? 'pointer' : undefined, textDecoration: c.onClick ? 'underline' : undefined, textUnderlineOffset: 3 }}
               >{c.value}</span>
             ))}
-            <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` }}>{e.statusLabel}</span>
+            {e.statusLabel && <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` }}>{e.statusLabel}</span>}
             <div style={{ justifySelf: 'end', display: 'flex', gap: 6, alignItems: 'center' }} onClick={(ev) => ev.stopPropagation()}>
               {!e.inactive && e.bandLabel === 'Critical' && (
                 <span onClick={() => openAlertPreview(e)} style={{ fontSize: 10.5, color: '#F87171', border: '1px solid rgba(244,63,94,0.4)', borderRadius: 7, padding: '4px 8px', cursor: 'pointer' }}>
@@ -1978,7 +1982,7 @@ function EmployeeModal({ emp, onClose }) {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <span className="disp" style={{ fontSize: 23, fontWeight: 600, letterSpacing: '-0.02em' }}>{d.name}</span>
-              <span style={{ fontSize: 10.5, padding: '4px 10px', borderRadius: 999, background: d.statusBg, color: d.statusColor, border: `1px solid ${d.statusBorder}` }}>{d.statusLabel}</span>
+              {d.statusLabel && <span style={{ fontSize: 10.5, padding: '4px 10px', borderRadius: 999, background: d.statusBg, color: d.statusColor, border: `1px solid ${d.statusBorder}` }}>{d.statusLabel}</span>}
             </div>
             <div className="mono" style={{ fontSize: 12, color: '#6E7488', marginTop: 6 }}>{d.id} · {d.team} · manager {d.manager} · {isNewJoiner(d.tenure) ? `day ${d.tenure} of 180` : `tenure ${d.tenure} days`}</div>
           </div>

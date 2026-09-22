@@ -50,7 +50,7 @@ export function decorate(e) {
     statusBg: inactive ? 'rgba(255,255,255,0.06)' : st.bg,
     statusColor: inactive ? '#6E7488' : st.color,
     statusBorder: inactive ? 'rgba(255,255,255,0.12)' : st.border,
-    statusLabel: inactive ? 'Inactive' : showStatus ? e.status : '—',
+    statusLabel: inactive ? 'Inactive' : showStatus ? e.status : '',
     bandColor: inactive ? '#6E7488' : b.color,
     bandLabel: inactive ? 'Inactive' : b.label,
     scoreStr: e.score == null ? '—' : (e.score > 0 ? '+' : '') + e.score.toFixed(1),
