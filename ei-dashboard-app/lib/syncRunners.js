@@ -22,8 +22,7 @@ function normalizeEmpId(raw) {
   return 'EMP' + (Number.isFinite(n) ? n : String(raw).trim());
 }
 
-const FETCH_FROM = '2015-01-01';
-const NJ_TRACKING_DAYS = 182; // ~6 months — only genuinely new joiners get inserted
+const FETCH_FROM = '2000-01-01';
 
 function fetchRange() {
   const to = new Date();
@@ -31,15 +30,17 @@ function fetchRange() {
   return { from: FETCH_FROM, to: fmt(to) };
 }
 
-// Koenig's `active` flag is only returned for rows inside the from/to range
-// we query with — it isn't exposed independent of that window. A rolling
-// "last 6 months" window meant anyone who aged past 6 months tenure dropped
-// out of every future pull, freezing their active/tenure_days at the last
-// value we ever saw, even after they resigned. Fetching back to FETCH_FROM
-// keeps already-known rows getting fresh active/tenure_days updates for as
-// long as Koenig reports on them; new INSERTs are still gated to genuinely
-// recent joiners (see NJ_TRACKING_DAYS) so this doesn't backfill old hires
-// we never tracked as NJs.
+// Every currently-active Sales/Trainer/PT Team employee gets inserted, not
+// just ones within the original 6-month "new joiner" tracking horizon —
+// that used to gate inserts on tenure_days < 182, which meant anyone
+// already a longer-tenured employee the first time this ever synced them
+// was silently never imported (the dashboard's "All employees" view was
+// showing e.g. 25 of Sales' real 108 active headcount). FETCH_FROM stays
+// wide both to actually see those older joiners at all, and because
+// Koenig's `active` flag is only returned for rows inside the queried
+// from/to range — already-known rows need to keep falling inside it too,
+// to get fresh active/tenure_days updates for as long as Koenig reports on
+// them, rather than freezing at their last-seen value if they later exit.
 export async function syncKoenig() {
   const db = getDb();
   const { getNewJoiners } = await import('./koenigApi.js');
@@ -71,11 +72,11 @@ export async function syncKoenig() {
         args: [nj.name, nj.email || null, nj.section, nj.managerName || '—', displayDate(nj.joiningDate), tenureDays(nj.joiningDate), nj.active ? 1 : 0, nj.empId],
       });
       updatedCount++;
-    } else if (tenureDays(nj.joiningDate) < NJ_TRACKING_DAYS) {
+    } else if (nj.active) {
       await db.execute({
         sql: `INSERT INTO employees (id, name, email, team, manager, doj, tenure_days, status, score, trend_note, hr_note, metric1, metric2, metric3, alert, active)
               VALUES (?, ?, ?, ?, ?, ?, ?, 'In Progress', 0, NULL, NULL, NULL, NULL, NULL, NULL, ?)`,
-        args: [nj.empId, nj.name, nj.email || null, nj.section, nj.managerName || '—', displayDate(nj.joiningDate), tenureDays(nj.joiningDate), nj.active ? 1 : 0],
+        args: [nj.empId, nj.name, nj.email || null, nj.section, nj.managerName || '—', displayDate(nj.joiningDate), tenureDays(nj.joiningDate), 1],
       });
       inserted++;
     }

@@ -5,19 +5,17 @@
 // which are populated by the other sync-*.mjs scripts. Run manually or on a
 // schedule (e.g. daily cron) to keep the roster current.
 //
-// Fetch window: Koenig's `active` flag (derived from DOR/LWD) is accurate,
-// but it's only returned for rows that fall inside the from/to range we
-// query with — the API doesn't expose it independent of that window. A
-// rolling "last 6 months" window means anyone who ages past 6 months
-// tenure drops out of every future pull, and their row here (active,
-// tenure_days) then freezes forever at its last-known value, even if they
-// resign afterward. So the fetch window here goes back to FETCH_FROM
-// (well beyond the 6-month tracking horizon) to keep receiving fresh
-// active/tenure_days updates for anyone already in our roster, for as long
-// as Koenig still reports on them. New employees are still only inserted
-// if they're within the 6-month "new joiner" horizon — this widened window
-// is for keeping already-known rows fresh, not for backfilling old hires
-// we never tracked as NJs in the first place.
+// Every currently-active Sales/Trainer/PT Team employee gets inserted, not
+// just ones within the original 6-month "new joiner" tracking horizon —
+// this used to gate inserts on tenure_days < 182, which meant anyone who
+// was already a longer-tenured employee the first time this ever synced
+// them was silently never imported at all. That left the dashboard's
+// "All employees" view showing e.g. 25 of Sales' real 108 active headcount.
+// The fetch window (FETCH_FROM) still needs to go back far enough to
+// actually see those older joiners in the first place, and stays wide for
+// the same reason afterward — Koenig's `active` flag is only returned for
+// rows inside the queried from/to range, so already-known rows need to
+// keep falling inside it to get fresh active/tenure_days updates too.
 import { createClient } from '@libsql/client';
 import { fileURLToPath } from 'url';
 import path from 'path';
@@ -33,8 +31,7 @@ const db = createClient({
   authToken: process.env.TURSO_AUTH_TOKEN,
 });
 
-const FETCH_FROM = '2015-01-01';
-const NJ_TRACKING_DAYS = 182; // ~6 months — only genuinely new joiners get inserted
+const FETCH_FROM = '2000-01-01';
 
 function fetchRange() {
   const to = new Date();
@@ -82,7 +79,7 @@ const knownIds = new Set(existing.rows.map((r) => r.id));
 const seen = new Set();
 let inserted = 0;
 let updatedCount = 0;
-let skippedOldNew = 0;
+let skippedInactive = 0;
 for (const nj of newJoiners) {
   if (seen.has(nj.empId)) continue; // Koenig occasionally repeats a row across paginated date windows
   seen.add(nj.empId);
@@ -94,18 +91,18 @@ for (const nj of newJoiners) {
       args: [nj.name, nj.email || null, nj.section, nj.managerName || '—', displayDate(nj.joiningDate), tenureDays(nj.joiningDate), nj.active ? 1 : 0, nj.empId],
     });
     updatedCount++;
-  } else if (tenureDays(nj.joiningDate) < NJ_TRACKING_DAYS) {
+  } else if (nj.active) {
     await db.execute({
       sql: `INSERT INTO employees (id, name, email, team, manager, doj, tenure_days, status, score, trend_note, hr_note, metric1, metric2, metric3, alert, active)
             VALUES (?, ?, ?, ?, ?, ?, ?, 'In Progress', 0, NULL, NULL, NULL, NULL, NULL, NULL, ?)`,
-      args: [nj.empId, nj.name, nj.email || null, nj.section, nj.managerName || '—', displayDate(nj.joiningDate), tenureDays(nj.joiningDate), nj.active ? 1 : 0],
+      args: [nj.empId, nj.name, nj.email || null, nj.section, nj.managerName || '—', displayDate(nj.joiningDate), tenureDays(nj.joiningDate), 1],
     });
     inserted++;
   } else {
-    skippedOldNew++; // never tracked as an NJ and already past the 6-month horizon — not backfilled
+    skippedInactive++; // already exited and never tracked before — not worth importing
   }
 }
 
-console.log(`Synced from Koenig (${from} to ${to}): ${inserted} new, ${updatedCount} updated in place${skippedOldNew ? `, ${skippedOldNew} old untracked rows ignored` : ''}. Other synced columns (NR, utilization, exams, audits, SCs, PIP/PA...) were left untouched.`);
+console.log(`Synced from Koenig (${from} to ${to}): ${inserted} new, ${updatedCount} updated in place${skippedInactive ? `, ${skippedInactive} already-exited untracked rows ignored` : ''}. Other synced columns (NR, utilization, exams, audits, SCs, PIP/PA...) were left untouched.`);
 const check = await db.execute('SELECT id, name, team, doj, tenure_days, active FROM employees ORDER BY tenure_days DESC');
 for (const row of check.rows) console.log(' ', row.id, row.name, row.team, row.doj, `day ${row.tenure_days}`, row.active ? 'active' : 'INACTIVE');
