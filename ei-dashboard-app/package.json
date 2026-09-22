@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "db:init": "node scripts/init-db.mjs",
+    "rate:list": "node scripts/list-unrated-responses.mjs",
+    "rate:save": "node scripts/save-ratings.mjs",
     "sync:koenig": "node scripts/sync-koenig.mjs",
     "sync:pip": "node scripts/sync-pip.mjs",
     "sync:pms": "node scripts/sync-pms.mjs",

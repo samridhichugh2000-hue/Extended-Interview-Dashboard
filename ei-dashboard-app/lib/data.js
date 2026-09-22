@@ -241,6 +241,12 @@ export const SIGNAL_DEFS = [
     hasData: (e) => e.negAudits != null,
     fires: (e) => e.negAudits > 0,
     count: (e) => e.negAudits },
+  // Flat -5 once the running average drops below 1 tech call/week (same
+  // "weeks since joining" math as the skills-count signals above) — not
+  // scaled by shortfall size, unlike those.
+  { label: 'Tech calls < 1 per week', teams: 'Sales', pts: -5, live: true,
+    hasData: (e) => e.techCallsCount != null,
+    fires: (e) => { const wks = Math.floor((e.tenure ?? 0) / 7); return wks > 0 && (e.techCallsCount ?? 0) < wks; } },
   // negative, not yet tracked
   // Cumulative across every week this NJ has been tracked, not just the
   // current one — 2 missed weeks scores 2 × -1, same convention as other

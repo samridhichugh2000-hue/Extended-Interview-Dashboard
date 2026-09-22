@@ -101,6 +101,7 @@ CREATE TABLE IF NOT EXISTS weekly_responses (
   q1 TEXT, a1 TEXT,
   q2 TEXT, a2 TEXT,
   ai_rating TEXT,
+  ai_rating_reason TEXT,        -- one-sentence rationale Claude gave for ai_rating
   token TEXT UNIQUE,            -- public submission-link token
   shoddy_marked_at TEXT,         -- set once a shoddy incident has been marked with Koenig for this non-response, so the job doesn't double-mark on a re-run
   shoddy_incident_id TEXT        -- Koenig's IncidentId for that marked shoddy, if it returned one

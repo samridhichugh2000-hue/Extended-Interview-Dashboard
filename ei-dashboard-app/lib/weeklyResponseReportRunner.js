@@ -102,6 +102,7 @@ export async function sendWeeklyResponseReport() {
     { header: 'Q2', key: 'q2', width: 32 },
     { header: 'A2', key: 'a2', width: 40 },
     { header: 'AI Rating', key: 'aiRating', width: 12 },
+    { header: 'Reason for Rating', key: 'aiReason', width: 40 },
     { header: 'Shoddy Marked', key: 'shoddyMarked', width: 14 },
   ];
   sheet.getRow(1).font = { bold: true };
@@ -127,6 +128,7 @@ export async function sendWeeklyResponseReport() {
       q2: r?.q2 || '—',
       a2: r?.a2 || '—',
       aiRating: r?.ai_rating || '—',
+      aiReason: r?.ai_rating_reason || '—',
       shoddyMarked: r?.shoddy_marked_at ? 'Yes' : '—',
     });
     if (status !== 'Received') {

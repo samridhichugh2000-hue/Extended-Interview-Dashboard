@@ -529,6 +529,10 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
     { label: 'Not to be Monitored', count: activeDeptEmp.filter((e) => e.status === 'Confirmed').length, color: '#14B8A6', filterVal: 'Confirmed' },
     { label: 'Under Watch', count: activeDeptEmp.filter((e) => e.status !== 'Confirmed').length, color: '#8B8CF6', filterVal: 'UnderWatch' },
   ].map((s) => ({ ...s, active: s.isTotal ? !filter : filter === s.filterVal }));
+  // Raw sum, not run through the Worry Index scoring — shown plainly here so
+  // the "Tech calls < 1 per week" signal's presence in the score doesn't
+  // make the underlying count itself any harder to see at a glance.
+  const salesTechCallsTotal = dept === 'Sales' ? activeDeptEmp.reduce((sum, e) => sum + (e.techCallsCount || 0), 0) : null;
   const baseHeads = METRIC_HEADS[dept] || METRIC_HEADS.Sales;
   const mh = dept === 'Sales' ? [...baseHeads, 'Neg. Audits', 'SCs Raised', 'Tech Calls', 'Shoddy Log', 'Mgr Feedback', 'Polls', 'KGT', 'Ideas']
     : dept === 'Trainer' ? [...baseHeads, 'Exams', 'Neg. Feedback', 'Assignments', 'Skills', 'In-House Skills', 'Tech Calls', 'TBTs', 'Shoddy Log', 'Mgr Feedback', 'Polls', 'KGT', 'Ideas']
@@ -638,7 +642,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${dept === 'Sales' ? 4 : 3},1fr)`, gap: 10 }}>
         {statusCards.map((s) => (
           <div key={s.label} onClick={() => setFilter(s.isTotal ? null : (filter === s.filterVal ? null : s.filterVal))}
             style={{ cursor: 'pointer', border: `1px solid ${s.active ? s.color : 'rgba(255,255,255,0.09)'}`, background: s.active ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.025)', borderRadius: 12, padding: '13px 14px' }}>
@@ -646,6 +650,12 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
             <div style={{ fontSize: 11, color: '#A8AEC4', marginTop: 3, lineHeight: 1.3 }}>{s.label}</div>
           </div>
         ))}
+        {dept === 'Sales' && (
+          <div style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.025)', borderRadius: 12, padding: '13px 14px' }}>
+            <div className="disp" style={{ fontSize: 24, fontWeight: 600, color: '#5EEAD4', letterSpacing: '-0.02em' }}>{salesTechCallsTotal}</div>
+            <div style={{ fontSize: 11, color: '#A8AEC4', marginTop: 3, lineHeight: 1.3 }}>Total Tech Calls</div>
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
@@ -1830,7 +1840,7 @@ function Reports({ employees, responses, week, filter, setFilter }) {
                 <span style={{ color: '#8A90A8', fontSize: 12 }}>sent {r.sent}</span>
                 <span style={{ color: '#8A90A8', fontSize: 12 }}>{r.received}</span>
                 <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: st.bg, color: st.color, border: `1px solid ${st.border}` }}>{r.state}</span>
-                <span style={{ textAlign: 'right', fontSize: 12, color: '#A8AEC4' }}>AI rating: <span style={{ color: st.color }}>{r.ai}</span>{canExpand && <span style={{ marginLeft: 8, color: '#6E7488' }}>{open ? '▲' : '▼'}</span>}</span>
+                <span style={{ textAlign: 'right', fontSize: 12, color: '#A8AEC4' }}>AI rating: <span style={{ color: st.color }}>{r.ai}{r.ai !== '—' ? '/5' : ''}</span>{canExpand && <span style={{ marginLeft: 8, color: '#6E7488' }}>{open ? '▲' : '▼'}</span>}</span>
               </div>
               {open && canExpand && (
                 <div style={{ padding: '4px 18px 16px 18px', background: 'rgba(255,255,255,0.02)', display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -1842,6 +1852,12 @@ function Reports({ employees, responses, week, filter, setFilter }) {
                     <div className="mono" style={{ fontSize: 10.5, color: '#6366F1', marginBottom: 3 }}>{r.q2}</div>
                     <div style={{ fontSize: 13, color: '#C7CBDA', lineHeight: 1.5 }}>{r.a2}</div>
                   </div>
+                  {r.aiReason && (
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 10 }}>
+                      <div className="mono" style={{ fontSize: 10.5, color: '#6366F1', marginBottom: 3 }}>AI rating: {r.ai}/5</div>
+                      <div style={{ fontSize: 12.5, color: '#8A90A8', lineHeight: 1.5, fontStyle: 'italic' }}>{r.aiReason}</div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

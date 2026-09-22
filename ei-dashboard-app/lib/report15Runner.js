@@ -76,7 +76,7 @@ function weightCell(weightMap, label, label2) {
 // which are only available once buildReport15Html has imported them.
 function buildParamColumns(missedWeeksCount, belowSatisfactoryCount) {
   return [
-    { header: 'Tech calls', teams: 'Sales · PT Team', get: (e) => e.techCallsCount, weightLabels: ['Tech calls'] },
+    { header: 'Tech calls', teams: 'Sales · PT Team', get: (e) => e.techCallsCount, weightLabels: ['Tech calls < 1 per week', 'Tech calls'] },
     { header: 'SCs raised', teams: 'Sales · PT Team', get: (e) => e.scRaised, weightLabels: ['SCs raised'] },
     { header: 'Neg audits', teams: 'Sales · PT Team', get: (e) => e.negAudits, weightLabels: ['Negative enquiry audit'] },
     { header: 'Tech Calls converted', teams: 'Trainer · PT Team', get: (e) => e.techCallsConverted, weightLabels: ['Tech calls converted'] },

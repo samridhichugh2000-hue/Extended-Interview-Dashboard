@@ -180,6 +180,7 @@ export async function getWeeklyResponses(week) {
     received: r.received_at || '—',
     state: effectiveState(r.week, r.state),
     ai: r.ai_rating || '—',
+    aiReason: r.ai_rating_reason || null,
     q1: r.q1, a1: r.a1, q2: r.q2, a2: r.a2,
   }));
 }

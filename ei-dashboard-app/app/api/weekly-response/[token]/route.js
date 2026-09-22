@@ -43,6 +43,11 @@ export async function POST(request, { params }) {
     args: [a1, a2, new Date().toISOString(), token],
   });
 
+  // ai_rating / ai_rating_reason get filled in later by the scheduled rating
+  // pass (scripts/rate-weekly-responses.mjs) rather than here — there's no
+  // API key wired up for a synchronous call, so this route just leaves them
+  // NULL and moves on.
+
   // A Graph hiccup here shouldn't lose an already-recorded answer — log and
   // still report success to the NJ.
   if (row.email) {

@@ -1,0 +1,11 @@
+In this directory (the EI Dashboard app): read scripts/RATING_RUBRIC.md for the rating rubric.
+
+Run `node scripts/list-unrated-responses.mjs` (redirect stdout to a scratch file — its stderr count line should go elsewhere, e.g. `node scripts/list-unrated-responses.mjs 2>NUL > scratch-unrated.json` on Windows) to get every 'Received' weekly_responses row with no ai_rating yet, each with {id, name, team, week, q1, a1, q2, a2, priorA1, priorA2}.
+
+For each row, read the actual response content and rate it 1-5 per the rubric, with a one-sentence analytical reason in the same terse style as the rubric's examples — apply real judgment per response (name what's concrete/verifiable, what repeats last week's answer, what's a non-answer), not a formula or shortcut.
+
+Write the results as a JSON array of {id, rating, reason} to a scratch file, then run `node scripts/save-ratings.mjs <path>` to persist them to the live Turso DB (credentials already in .env.local in this directory).
+
+If there are zero unrated rows, just say so and stop.
+
+Do not modify any files in the repo or run anything beyond these two scripts — this is a data-only pass against the database. Delete the scratch JSON files you created when done. Finish by reporting how many rows were rated and the rating distribution.

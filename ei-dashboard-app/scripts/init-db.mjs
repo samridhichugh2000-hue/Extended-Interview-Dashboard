@@ -149,4 +149,10 @@ for (const stmt of [
   }
 }
 
+try {
+  await db.execute('ALTER TABLE weekly_responses ADD COLUMN ai_rating_reason TEXT');
+} catch (err) {
+  if (!String(err.message).includes('duplicate column')) throw err;
+}
+
 console.log('Done. Run `npm run sync:koenig` to populate employees from the live API.');
