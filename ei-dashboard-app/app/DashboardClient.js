@@ -423,7 +423,12 @@ function Overview({ employees, newJoiners, deptCounts, go, setModal }) {
   // Worst-first — only NJs currently running a negative Worry Index score,
   // the ones that actually need review, not just the first 5 in DB order.
   const reviewQueue = activeEmployees.map(decorate).filter((e) => e.score < 0).sort((a, b) => a.score - b.score);
-  const paPipList = activeEmployees.filter((e) => e.status !== 'In Progress').map((e) => ({ name: e.name, due: e.due, type: e.status === 'PIP Issued' ? 'PIP' : 'PA', active: e.active, ...STATUS[e.status] }));
+  const paPipList = activeEmployees.filter((e) => e.status === 'PA Issued' || e.status === 'PIP Issued').map((e) => ({ name: e.name, due: e.due, type: e.status === 'PIP Issued' ? 'PIP' : 'PA', active: e.active, ...STATUS[e.status] }));
+  // Real band breakdown across every currently-scored employee (was
+  // hardcoded mock numbers — 7/11/13/11 — that never reflected live data).
+  const scoredEmployees = activeEmployees.filter((e) => e.score != null).map(decorate);
+  const bandCounts = { Critical: 0, Low: 0, Medium: 0, Good: 0 };
+  for (const e of scoredEmployees) bandCounts[e.bandLabel] = (bandCounts[e.bandLabel] || 0) + 1;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
@@ -441,14 +446,14 @@ function Overview({ employees, newJoiners, deptCounts, go, setModal }) {
         </div>
         <div onClick={() => go('worryindex')} style={{ cursor: 'pointer', border: '1px solid rgba(244,63,94,0.25)', background: 'linear-gradient(150deg,rgba(244,63,94,0.13),rgba(244,63,94,0.02))', borderRadius: 16, padding: 20, animation: 'floatcard 6s ease-in-out infinite .6s' }}>
           <div style={{ fontSize: 12, color: '#A8AEC4' }}>Worry Index · Critical</div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, margin: '8px 0 12px' }}><span className="disp" style={{ fontSize: 38, fontWeight: 600, letterSpacing: '-0.03em' }}>7</span><span style={{ fontSize: 11.5, color: '#F43F5E' }}>▲ 2 this week</span></div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, margin: '8px 0 12px' }}><span className="disp" style={{ fontSize: 38, fontWeight: 600, letterSpacing: '-0.03em' }}>{bandCounts.Critical}</span><span style={{ fontSize: 11.5, color: '#6E7488' }}>of {scoredEmployees.length} scored NJs</span></div>
           <div style={{ display: 'flex', gap: 4, height: 8 }}>
-            <div style={{ flex: 7, background: '#F43F5E', borderRadius: 3 }} />
-            <div style={{ flex: 11, background: '#F59E0B', borderRadius: 3 }} />
-            <div style={{ flex: 13, background: '#6366F1', borderRadius: 3 }} />
-            <div style={{ flex: 11, background: '#14B8A6', borderRadius: 3 }} />
+            <div style={{ flex: bandCounts.Critical || 0.001, background: '#F43F5E', borderRadius: 3 }} />
+            <div style={{ flex: bandCounts.Low || 0.001, background: '#F59E0B', borderRadius: 3 }} />
+            <div style={{ flex: bandCounts.Medium || 0.001, background: '#6366F1', borderRadius: 3 }} />
+            <div style={{ flex: bandCounts.Good || 0.001, background: '#14B8A6', borderRadius: 3 }} />
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, color: '#6E7488', marginTop: 7 }}><span>Critical 7</span><span>Low 11</span><span>Medium 13</span><span>Good 11</span></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, color: '#6E7488', marginTop: 7 }}><span>Critical {bandCounts.Critical}</span><span>Low {bandCounts.Low}</span><span>Medium {bandCounts.Medium}</span><span>Good {bandCounts.Good}</span></div>
         </div>
         <div onClick={() => go('reports', null, 'Pending')} style={{ cursor: 'pointer', border: '1px solid rgba(245,158,11,0.25)', background: 'linear-gradient(150deg,rgba(245,158,11,0.13),rgba(245,158,11,0.02))', borderRadius: 16, padding: 20, animation: 'floatcard 6s ease-in-out infinite 1.2s' }}>
           <div style={{ fontSize: 12, color: '#A8AEC4' }}>Weekly progress mail pending NJs</div>
@@ -472,7 +477,7 @@ function Overview({ employees, newJoiners, deptCounts, go, setModal }) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontWeight: 600 }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id} · day {e.tenure}</span></div>
                 <span style={{ color: '#A8AEC4', fontSize: 12.5 }}>{e.team}</span>
                 <span style={{ color: '#A8AEC4', fontSize: 12.5 }}>{e.manager}</span>
-                <span style={{ justifySelf: 'start', fontSize: 11, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` }}>{e.inactive ? 'Inactive' : e.status}</span>
+                <span style={{ justifySelf: 'start', fontSize: 11, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` }}>{e.statusLabel}</span>
                 <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontWeight: 600, color: e.bandColor }}>{e.scoreStr}</span>
               </div>
             ))}
@@ -481,7 +486,7 @@ function Overview({ employees, newJoiners, deptCounts, go, setModal }) {
         </div>
 
         <div style={{ ...card, overflow: 'hidden' }}>
-          <div style={{ padding: '16px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}><div className="disp" style={{ fontSize: 15, fontWeight: 600 }}>Employee Status</div><div style={{ fontSize: 11.5, color: '#6E7488', marginTop: 2 }}>PA / PIP cases · 6 open</div></div>
+          <div style={{ padding: '16px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}><div className="disp" style={{ fontSize: 15, fontWeight: 600 }}>Employee Status</div><div style={{ fontSize: 11.5, color: '#6E7488', marginTop: 2 }}>PA / PIP cases · {paPipList.length} open</div></div>
           <div style={{ maxHeight: 296, overflow: 'auto' }}>
             {paPipList.map((p) => (
               <div key={p.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 18px', borderBottom: '1px solid rgba(255,255,255,0.05)', opacity: p.active === false ? 0.45 : 1, filter: p.active === false ? 'grayscale(0.6)' : undefined }}>
@@ -723,7 +728,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
                 style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: c.color, cursor: c.onClick ? 'pointer' : undefined, textDecoration: c.onClick ? 'underline' : undefined, textUnderlineOffset: 3 }}
               >{c.value}</span>
             ))}
-            <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` }}>{e.inactive ? 'Inactive' : e.status}</span>
+            <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` }}>{e.statusLabel}</span>
             <div style={{ justifySelf: 'end', display: 'flex', gap: 6, alignItems: 'center' }} onClick={(ev) => ev.stopPropagation()}>
               {!e.inactive && e.bandLabel === 'Critical' && (
                 <span onClick={() => openAlertPreview(e)} style={{ fontSize: 10.5, color: '#F87171', border: '1px solid rgba(244,63,94,0.4)', borderRadius: 7, padding: '4px 8px', cursor: 'pointer' }}>
@@ -1251,7 +1256,7 @@ function PaPip({ employees, filter, setFilter, setModal }) {
   const q = search.trim().toLowerCase();
   const missingDefs = missingFiltersFor(filter);
   const rows = employees
-    .filter((e) => (includeInactive || e.active !== false) && e.status !== 'In Progress')
+    .filter((e) => (includeInactive || e.active !== false) && (e.status === 'PA Issued' || e.status === 'PIP Issued'))
     .filter((e) => !filter || e.team === filter)
     .filter((e) => !q || e.name.toLowerCase().includes(q) || String(e.id).toLowerCase().includes(q))
     .map(decorate)
@@ -1973,7 +1978,7 @@ function EmployeeModal({ emp, onClose }) {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <span className="disp" style={{ fontSize: 23, fontWeight: 600, letterSpacing: '-0.02em' }}>{d.name}</span>
-              <span style={{ fontSize: 10.5, padding: '4px 10px', borderRadius: 999, background: d.statusBg, color: d.statusColor, border: `1px solid ${d.statusBorder}` }}>{d.status}</span>
+              <span style={{ fontSize: 10.5, padding: '4px 10px', borderRadius: 999, background: d.statusBg, color: d.statusColor, border: `1px solid ${d.statusBorder}` }}>{d.statusLabel}</span>
             </div>
             <div className="mono" style={{ fontSize: 12, color: '#6E7488', marginTop: 6 }}>{d.id} · {d.team} · manager {d.manager} · {isNewJoiner(d.tenure) ? `day ${d.tenure} of 180` : `tenure ${d.tenure} days`}</div>
           </div>

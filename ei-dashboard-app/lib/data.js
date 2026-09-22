@@ -36,7 +36,13 @@ export function band(s) {
 }
 
 export function decorate(e) {
-  const st = STATUS[e.status];
+  // Status pill only ever shows PA Issued / PIP Issued — In Progress and
+  // Confirmed (the "not currently under a formal action" states) render
+  // blank instead. Doesn't touch e.status itself, so the Close/Closed
+  // action button and the isScoredEmployee/filter logic keyed off the raw
+  // status keep working exactly as before.
+  const showStatus = e.status === 'PA Issued' || e.status === 'PIP Issued';
+  const st = showStatus ? STATUS[e.status] : { bg: 'rgba(255,255,255,0.03)', color: '#6E7488', border: 'rgba(255,255,255,0.08)' };
   const b = band(e.score);
   const inactive = e.active === false;
   return {
@@ -44,6 +50,7 @@ export function decorate(e) {
     statusBg: inactive ? 'rgba(255,255,255,0.06)' : st.bg,
     statusColor: inactive ? '#6E7488' : st.color,
     statusBorder: inactive ? 'rgba(255,255,255,0.12)' : st.border,
+    statusLabel: inactive ? 'Inactive' : showStatus ? e.status : '—',
     bandColor: inactive ? '#6E7488' : b.color,
     bandLabel: inactive ? 'Inactive' : b.label,
     scoreStr: e.score == null ? '—' : (e.score > 0 ? '+' : '') + e.score.toFixed(1),
