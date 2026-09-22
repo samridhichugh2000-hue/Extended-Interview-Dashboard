@@ -33,11 +33,11 @@ for (const row of existing.rows) {
   }
 }
 
-// Capped to at most the last 2 years regardless of actual tenure — same fix
+// Capped to at most the last 1 year regardless of actual tenure — same fix
 // as sync-sc.mjs/sync-assignments.mjs, for the same reason (a multi-year
 // veteran's feedback count should reflect recent history, not their full
 // career total).
-const MGR_FEEDBACK_LOOKBACK_DAYS = 730;
+const MGR_FEEDBACK_LOOKBACK_DAYS = 365;
 function sinceDate(tenureDays) {
   const joined = new Date();
   joined.setDate(joined.getDate() - tenureDays);
