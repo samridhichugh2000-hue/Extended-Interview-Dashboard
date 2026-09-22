@@ -109,15 +109,27 @@ export const WORRY_BANDS = [
 // API really returned none) from a field that was never synced for this NJ
 // (null/undefined) — the two look identical as "didn't fire" otherwise, and
 // the whole point of tracking this is telling HR which is which.
-// Koenig's manager feedback feed has no structured rating field — the three
-// sub-ratings (Discipline / role suitability / WFH capability) arrive as
-// free text embedded in AreaOfStrength, e.g. "Discipline : Average; Suitable
-// for the role hired for? : Above Average; WFH capable - Below Average".
-// "Below Average" is this feed's equivalent of "below satisfactory"; check
-// for it before the bare "average" match since "average" is a substring of
-// "below average". Returns 'below' | 'good' | null (no rating language
-// found at all, e.g. a blank entry).
+// Koenig's manager feedback feed has no structured rating field, and mixes
+// two different surveys under one endpoint — actual performance feedback
+// (sometimes structured, "Discipline : Average; Suitable for the role hired
+// for? : Above Average; WFH capable - Below Average"; sometimes plain-
+// English prose with no rating keywords at all, e.g. "Improve your meeting
+// preparation...") and an unrelated onboarding-formalities checklist that
+// isn't performance feedback at all.
+//
+// scripts/sync-mgrfeedback.mjs has Claude/OpenAI (lib/classifyFeedback.js)
+// read every entry and store the verdict as entry.aiRating — 'below' |
+// 'satisfactory' | 'above' | 'not-applicable' (onboarding checklist, never
+// counted). That's authoritative when present. The literal keyword match
+// below only remains as a fallback for entries synced before this existed.
+// Returns 'below' | 'good' | null (no signal either way — not-applicable,
+// or a blank/unrated entry).
 export function feedbackRating(entry) {
+  if (entry?.aiRating) {
+    if (entry.aiRating === 'below') return 'below';
+    if (entry.aiRating === 'satisfactory' || entry.aiRating === 'above') return 'good';
+    return null; // 'not-applicable'
+  }
   const text = [entry?.strength, entry?.improvement, entry?.other].filter(Boolean).join(' ').toLowerCase();
   if (!text) return null;
   if (/below average|below satisfactory|unsatisfactory/.test(text)) return 'below';
