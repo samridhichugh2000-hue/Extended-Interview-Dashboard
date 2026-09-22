@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  STATUS, decorate, band, NAV, TITLES, PATHS, METRIC_HEADS,
+  STATUS, decorate, band, isNewJoiner, NAV, TITLES, PATHS, METRIC_HEADS,
   WORRY_BANDS, POS_SIGNALS, NEG_SIGNALS, NJ_QUESTIONS, appliesToTeam, feedbackRating,
 } from '../lib/data';
 import { JOB_LABELS } from '../lib/jobLabels';
@@ -275,6 +275,20 @@ function IncludeInactiveToggle({ value, onChange }) {
   );
 }
 
+// New Joiners (tenure < NJ_TENURE_DAYS) vs every tracked employee in this
+// dept, including PA/PIP cases that have aged past the NJ window — those
+// two populations were only ever visually distinguishable by scanning
+// "day X of 180" per row. Defaults to New Joiners only, since that's this
+// dashboard's original/primary scope; toggling off broadens to everyone.
+function NjOnlyToggle({ value, onChange }) {
+  return (
+    <div onClick={() => onChange(!value)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, border: `1px solid ${value ? 'rgba(20,184,166,0.45)' : 'rgba(255,255,255,0.1)'}`, background: value ? 'rgba(20,184,166,0.14)' : 'rgba(255,255,255,0.03)', color: value ? '#FFFFFF' : '#9BA1B8', borderRadius: 10, padding: '10px 14px', fontSize: 13, flex: 'none' }}>
+      <span style={{ width: 14, height: 14, borderRadius: 4, border: `1px solid ${value ? '#5EEAD4' : 'rgba(255,255,255,0.25)'}`, background: value ? '#14B8A6' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#fff' }}>{value ? '✓' : ''}</span>
+      {value ? 'New Joiners only' : 'All employees'}
+    </div>
+  );
+}
+
 function MissingFilterChips({ defs, active, onToggle }) {
   if (!defs.length) return null;
   return (
@@ -485,6 +499,7 @@ function Overview({ employees, newJoiners, deptCounts, go, setModal }) {
 function Dept({ employees, dept, filter, setFilter, setModal }) {
   const [search, setSearch] = useState('');
   const [includeInactive, setIncludeInactive] = useState(false);
+  const [njOnly, setNjOnly] = useState(true);
   const [missing, setMissing] = useState([]);
   const toggleMissing = (key) => setMissing((m) => (m.includes(key) ? m.filter((k) => k !== key) : [...m, key]));
   const { pending, closeEmployee, openAlertPreview, alertModal } = useEmployeeActions();
@@ -503,7 +518,12 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
   const [pollsModal, setPollsModal] = useState(null);
   const [kgtModal, setKgtModal] = useState(null);
   const [ideasModal, setIdeasModal] = useState(null);
-  const deptEmp = employees.filter((e) => e.team === dept);
+  const deptEmpAllTenure = employees.filter((e) => e.team === dept);
+  // New Joiners only (default) vs every tracked employee in this dept —
+  // applied before the status cards below are computed, same as the active
+  // filter, so "Total" and the table always agree on which population
+  // they're counting instead of the toggle only narrowing the row list.
+  const deptEmp = njOnly ? deptEmpAllTenure.filter((e) => isNewJoiner(e.tenure)) : deptEmpAllTenure;
   const pool = deptEmp.length ? deptEmp : employees;
   // Not to be Monitored / Under Watch is a status call, not a score call —
   // the weekly Worry Index score fluctuates, but an NJ stays under watch
@@ -670,6 +690,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
           placeholder="Search by name or employee ID…"
           style={{ flex: 1, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#E4E6F0', outline: 'none' }}
         />
+        <NjOnlyToggle value={njOnly} onChange={setNjOnly} />
         <IncludeInactiveToggle value={includeInactive} onChange={setIncludeInactive} />
         <div onClick={() => setFilter(null)} style={{ border: '1px solid rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.1)', color: '#A5A7FA', borderRadius: 10, padding: '10px 14px', fontSize: 13, cursor: 'pointer', flex: 'none' }}>
           {filter ? `Filter: ${filter === 'Confirmed' ? 'Not to be Monitored' : filter === 'UnderWatch' ? 'Under Watch' : filter} ×` : 'No filter applied'}

@@ -2,6 +2,14 @@ import { getIsoWeek, isPastWednesdayCheckIn } from './weekUtils';
 
 export const C = { rose: '#F43F5E', amber: '#F59E0B', indigo: '#8B8CF6', teal: '#14B8A6', purple: '#A855F7' };
 
+// Same cutoff as NJ_TRACKING_DAYS in lib/syncRunners.js (kept as a separate
+// constant since that one gates which employees get newly INSERTed as NJs,
+// while this one is just "is this employee still within the NJ window" for
+// display/filtering — same number, different purpose, so not imported from
+// there to avoid a syncRunners->data.js dependency for a client component).
+export const NJ_TENURE_DAYS = 182;
+export const isNewJoiner = (tenureDays) => (tenureDays ?? 0) < NJ_TENURE_DAYS;
+
 export const STATUS = {
   'PIP Issued': { bg: 'rgba(244,63,94,0.12)', color: '#F87171', border: 'rgba(244,63,94,0.3)' },
   'PA Issued': { bg: 'rgba(245,158,11,0.12)', color: '#F59E0B', border: 'rgba(245,158,11,0.3)' },
