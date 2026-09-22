@@ -19,9 +19,22 @@ const db = createClient({
 
 const trainerEmployees = await db.execute("SELECT id FROM employees WHERE team = 'Trainer'");
 
+// Bounded concurrency — see scripts/sync-exam.mjs for why.
+const CONCURRENCY = 20;
+async function mapWithConcurrency(items, limit, fn) {
+  let i = 0;
+  async function worker() {
+    while (i < items.length) {
+      const idx = i++;
+      await fn(items[idx]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+}
+
 let updated = 0;
 let unmatched = 0;
-for (const emp of trainerEmployees.rows) {
+await mapWithConcurrency(trainerEmployees.rows, CONCURRENCY, async (emp) => {
   const empCode = emp.id.replace('EMP', '');
   const skills = await getInHouseSkills(empCode);
 
@@ -30,7 +43,7 @@ for (const emp of trainerEmployees.rows) {
     args: [skills.length, JSON.stringify(skills), emp.id],
   });
   if (skills.length) updated++; else unmatched++;
-}
+});
 
 console.log(`Synced in-house skills data for Trainer roster — ${updated} employees have at least one (${unmatched} have none).`);
 const check = await db.execute("SELECT id, name, in_house_skills_count FROM employees WHERE team = 'Trainer' AND in_house_skills_count > 0 ORDER BY in_house_skills_count DESC");

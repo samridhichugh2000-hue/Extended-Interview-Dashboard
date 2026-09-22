@@ -38,6 +38,26 @@ function normalizeEmpId(raw) {
   return 'EMP' + (Number.isFinite(n) ? n : String(raw).trim());
 }
 
+// Runs `fn` over `items` with at most `limit` in flight at once. A plain
+// sequential loop over the ~350-500 rows these per-employee feeds each hit
+// (one Koenig API round-trip per row, ~300ms-1s each) takes 1-6 minutes —
+// well past Vercel's 60s function limit, so the cron route gets killed
+// mid-loop and only the first N rows it managed ever get updated (confirmed
+// live for exam/negfeedback/skills/inhouseskills/tbt/techcalls-trainer: only
+// ~57-90 of ~324 active Trainers were ever synced in production). Bounded
+// concurrency keeps every one of these comfortably under that cap.
+async function mapWithConcurrency(items, limit, fn) {
+  let i = 0;
+  async function worker() {
+    while (i < items.length) {
+      const idx = i++;
+      await fn(items[idx]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+}
+const SYNC_CONCURRENCY = 20;
+
 const FETCH_FROM = '2000-01-01';
 
 function fetchRange() {
@@ -375,19 +395,22 @@ export async function syncExam() {
 
   const trainerEmployees = await db.execute("SELECT id FROM employees WHERE team = 'Trainer'");
 
+  const statements = [];
   let updated = 0;
   let unmatched = 0;
-  for (const emp of trainerEmployees.rows) {
+  await mapWithConcurrency(trainerEmployees.rows, SYNC_CONCURRENCY, async (emp) => {
     const empCode = emp.id.replace('EMP', '');
     const summary = await getExamSummary(empCode);
-    if (!summary) { unmatched++; continue; }
+    if (!summary) { unmatched++; return; }
 
-    await db.execute({
+    statements.push({
       sql: 'UPDATE employees SET exam_pass = ?, exam_fail = ?, exam_total = ?, exam_not_updated = ? WHERE id = ?',
       args: [summary.passCount, summary.failCount, summary.totalExam, summary.statusNotUpdated, emp.id],
     });
     updated++;
-  }
+  });
+
+  if (statements.length) await db.batch(statements, 'write');
 
   return { message: `Synced exam data for ${updated} Trainer employees (${unmatched} unmatched).` };
 }
@@ -398,17 +421,20 @@ export async function syncNegFeedback() {
 
   const trainerEmployees = await db.execute("SELECT id FROM employees WHERE team = 'Trainer'");
 
+  const statements = [];
   let updated = 0;
-  for (const emp of trainerEmployees.rows) {
+  await mapWithConcurrency(trainerEmployees.rows, SYNC_CONCURRENCY, async (emp) => {
     const empCode = emp.id.replace('EMP', '');
     const feedback = await getTrainerNegativeFeedback(empCode);
 
-    await db.execute({
+    statements.push({
       sql: 'UPDATE employees SET neg_feedback = ?, neg_feedback_details = ? WHERE id = ?',
       args: [feedback.length, JSON.stringify(feedback), emp.id],
     });
     if (feedback.length) updated++;
-  }
+  });
+
+  if (statements.length) await db.batch(statements, 'write');
 
   return { message: `Synced negative feedback — ${updated} Trainer employees have at least one record.` };
 }
@@ -466,18 +492,21 @@ export async function syncSkills() {
 
   const trainerEmployees = await db.execute("SELECT id FROM employees WHERE team = 'Trainer'");
 
+  const statements = [];
   let updated = 0;
   let unmatched = 0;
-  for (const emp of trainerEmployees.rows) {
+  await mapWithConcurrency(trainerEmployees.rows, SYNC_CONCURRENCY, async (emp) => {
     const empCode = emp.id.replace('EMP', '');
     const skills = await getTrainerSkills(empCode);
 
-    await db.execute({
+    statements.push({
       sql: 'UPDATE employees SET skills_count = ?, skills_details = ? WHERE id = ?',
       args: [skills.length, JSON.stringify(skills), emp.id],
     });
     if (skills.length) updated++; else unmatched++;
-  }
+  });
+
+  if (statements.length) await db.batch(statements, 'write');
 
   return { message: `Synced skills — ${updated} Trainer employees have at least one (${unmatched} have none).` };
 }
@@ -488,18 +517,21 @@ export async function syncInHouseSkills() {
 
   const trainerEmployees = await db.execute("SELECT id FROM employees WHERE team = 'Trainer'");
 
+  const statements = [];
   let updated = 0;
   let unmatched = 0;
-  for (const emp of trainerEmployees.rows) {
+  await mapWithConcurrency(trainerEmployees.rows, SYNC_CONCURRENCY, async (emp) => {
     const empCode = emp.id.replace('EMP', '');
     const skills = await getInHouseSkills(empCode);
 
-    await db.execute({
+    statements.push({
       sql: 'UPDATE employees SET in_house_skills_count = ?, in_house_skills_details = ? WHERE id = ?',
       args: [skills.length, JSON.stringify(skills), emp.id],
     });
     if (skills.length) updated++; else unmatched++;
-  }
+  });
+
+  if (statements.length) await db.batch(statements, 'write');
 
   return { message: `Synced in-house skills — ${updated} Trainer employees have at least one (${unmatched} have none).` };
 }
@@ -532,17 +564,20 @@ export async function syncTechCallsTrainer() {
 
   const trainerEmployees = await db.execute("SELECT id, email FROM employees WHERE team = 'Trainer'");
 
+  const statements = [];
   let updated = 0;
   let noEmail = 0;
   let unmatched = 0;
-  for (const emp of trainerEmployees.rows) {
-    if (!emp.email) { noEmail++; continue; }
+  await mapWithConcurrency(trainerEmployees.rows, SYNC_CONCURRENCY, async (emp) => {
+    if (!emp.email) { noEmail++; return; }
     const result = await getConvertedTechCalls(emp.email);
-    if (!result) { unmatched++; continue; }
+    if (!result) { unmatched++; return; }
 
-    await db.execute({ sql: 'UPDATE employees SET tech_calls_converted = ? WHERE id = ?', args: [result.converted, emp.id] });
+    statements.push({ sql: 'UPDATE employees SET tech_calls_converted = ? WHERE id = ?', args: [result.converted, emp.id] });
     updated++;
-  }
+  });
+
+  if (statements.length) await db.batch(statements, 'write');
 
   return { message: `Synced converted tech calls for ${updated} Trainer employees (${unmatched} unmatched, ${noEmail} no email).` };
 }
@@ -553,18 +588,21 @@ export async function syncTbt() {
 
   const trainerEmployees = await db.execute("SELECT id FROM employees WHERE team = 'Trainer'");
 
+  const statements = [];
   let updated = 0;
   let unmatched = 0;
-  for (const emp of trainerEmployees.rows) {
+  await mapWithConcurrency(trainerEmployees.rows, SYNC_CONCURRENCY, async (emp) => {
     const empCode = emp.id.replace('EMP', '');
     const records = await getTbtRecords(empCode);
 
-    await db.execute({
+    statements.push({
       sql: 'UPDATE employees SET tbt_count = ?, tbt_details = ? WHERE id = ?',
       args: [records.length, JSON.stringify(records), emp.id],
     });
     if (records.length) updated++; else unmatched++;
-  }
+  });
+
+  if (statements.length) await db.batch(statements, 'write');
 
   return { message: `Synced TBT data — ${updated} Trainer employees have at least one (${unmatched} have none).` };
 }
@@ -962,26 +1000,11 @@ export async function syncNetPayable() {
   return { message: `Synced net payable details for ${updated} employees (${unmatched} had no payroll record for this or last month, ${apiErrors} API errors).` };
 }
 
-// Common Index — All teams. Per-employee lookup only (no bulk mode), and at
-// ~300ms/call a plain sequential loop over ~500 active employees takes
-// ~2.5 minutes — comfortably past Vercel's 60s function limit (confirmed:
-// the cron route 504'd). Fetched with bounded concurrency instead so the
-// whole run finishes in a few seconds; the shared token is safe to reuse
-// across concurrent calls (only fetching a *new* token concurrently is the
-// unsafe part — see getToken's comment in koenigCommonIndexApi.js).
-const COMMON_INDEX_CONCURRENCY = 20;
-
-async function mapWithConcurrency(items, limit, fn) {
-  let i = 0;
-  async function worker() {
-    while (i < items.length) {
-      const idx = i++;
-      await fn(items[idx]);
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-}
-
+// Common Index — All teams. Per-employee lookup only (no bulk mode); see
+// mapWithConcurrency above for why this needs bounded concurrency (the
+// shared token is safe to reuse across concurrent calls — only fetching a
+// *new* token concurrently is the unsafe part, see getToken's comment in
+// koenigCommonIndexApi.js).
 export async function syncCommonIndex() {
   const db = getDb();
   const { getCommonIndexPoints } = await import('./koenigCommonIndexApi.js');
@@ -991,7 +1014,7 @@ export async function syncCommonIndex() {
   const statements = [];
   let updated = 0;
   let apiErrors = 0;
-  await mapWithConcurrency(allEmployees.rows, COMMON_INDEX_CONCURRENCY, async (emp) => {
+  await mapWithConcurrency(allEmployees.rows, SYNC_CONCURRENCY, async (emp) => {
     const empCode = emp.id.replace('EMP', '');
     try {
       const points = await getCommonIndexPoints(empCode);

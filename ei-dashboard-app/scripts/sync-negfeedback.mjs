@@ -19,8 +19,21 @@ const db = createClient({
 
 const trainerEmployees = await db.execute("SELECT id FROM employees WHERE team = 'Trainer'");
 
+// Bounded concurrency — see scripts/sync-exam.mjs for why.
+const CONCURRENCY = 20;
+async function mapWithConcurrency(items, limit, fn) {
+  let i = 0;
+  async function worker() {
+    while (i < items.length) {
+      const idx = i++;
+      await fn(items[idx]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+}
+
 let updated = 0;
-for (const emp of trainerEmployees.rows) {
+await mapWithConcurrency(trainerEmployees.rows, CONCURRENCY, async (emp) => {
   const empCode = emp.id.replace('EMP', '');
   const feedback = await getTrainerNegativeFeedback(empCode);
 
@@ -29,7 +42,7 @@ for (const emp of trainerEmployees.rows) {
     args: [feedback.length, JSON.stringify(feedback), emp.id],
   });
   if (feedback.length) updated++;
-}
+});
 
 console.log(`Synced negative feedback for Trainer roster — ${updated} employees have at least one record.`);
 const check = await db.execute("SELECT id, name, neg_feedback FROM employees WHERE team = 'Trainer' AND neg_feedback > 0 ORDER BY neg_feedback DESC");

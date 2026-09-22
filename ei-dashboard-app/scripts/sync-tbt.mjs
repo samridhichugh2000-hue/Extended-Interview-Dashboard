@@ -19,9 +19,22 @@ const db = createClient({
 
 const trainerEmployees = await db.execute("SELECT id FROM employees WHERE team = 'Trainer'");
 
+// Bounded concurrency — see scripts/sync-exam.mjs for why.
+const CONCURRENCY = 20;
+async function mapWithConcurrency(items, limit, fn) {
+  let i = 0;
+  async function worker() {
+    while (i < items.length) {
+      const idx = i++;
+      await fn(items[idx]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+}
+
 let updated = 0;
 let unmatched = 0;
-for (const emp of trainerEmployees.rows) {
+await mapWithConcurrency(trainerEmployees.rows, CONCURRENCY, async (emp) => {
   const empCode = emp.id.replace('EMP', '');
   const records = await getTbtRecords(empCode);
 
@@ -30,7 +43,7 @@ for (const emp of trainerEmployees.rows) {
     args: [records.length, JSON.stringify(records), emp.id],
   });
   if (records.length) updated++; else unmatched++;
-}
+});
 
 console.log(`Synced TBT data for Trainer roster — ${updated} employees have at least one TBT (${unmatched} have none).`);
 const check = await db.execute("SELECT id, name, tbt_count FROM employees WHERE team = 'Trainer' AND tbt_count > 0 ORDER BY tbt_count DESC");

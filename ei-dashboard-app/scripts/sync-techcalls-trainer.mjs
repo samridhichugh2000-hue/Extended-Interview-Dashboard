@@ -19,11 +19,26 @@ const db = createClient({
 
 const trainerEmployees = await db.execute("SELECT id, email FROM employees WHERE team = 'Trainer'");
 
+// Bounded concurrency — see scripts/sync-exam.mjs for why. This feed in
+// particular is the slowest of the Trainer syncs (~1s/call via email
+// lookup), so it needs this the most.
+const CONCURRENCY = 20;
+async function mapWithConcurrency(items, limit, fn) {
+  let i = 0;
+  async function worker() {
+    while (i < items.length) {
+      const idx = i++;
+      await fn(items[idx]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+}
+
 let updated = 0;
 let noEmail = 0;
 let unmatched = 0;
-for (const emp of trainerEmployees.rows) {
-  if (!emp.email) { noEmail++; continue; }
+await mapWithConcurrency(trainerEmployees.rows, CONCURRENCY, async (emp) => {
+  if (!emp.email) { noEmail++; return; }
   const result = await getConvertedTechCalls(emp.email);
   // Same treatment as the Sales tech-calls feed: "no matching record" from
   // Koenig is a confirmed 0, not a reason to leave the field null forever.
@@ -33,7 +48,7 @@ for (const emp of trainerEmployees.rows) {
 
   await db.execute({ sql: 'UPDATE employees SET tech_calls_converted = ? WHERE id = ?', args: [converted, emp.id] });
   updated++;
-}
+});
 
 console.log(`Synced converted tech calls for ${updated} Trainer employees (${unmatched} of those had no matching record and were set to 0, ${noEmail} had no email on file and were left untouched).`);
 const check = await db.execute("SELECT id, name, tech_calls_converted FROM employees WHERE team = 'Trainer' AND tech_calls_converted > 0 ORDER BY tech_calls_converted DESC");
