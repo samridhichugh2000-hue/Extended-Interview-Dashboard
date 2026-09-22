@@ -61,7 +61,8 @@ CREATE TABLE IF NOT EXISTS employees (
   roster_count INTEGER,           -- count of shift entries on file from the Get CSM Roster feed (Sales only). Purely informational, shown on the Graph API Calls screen — not a Worry Index signal.
   roster_details TEXT,            -- JSON array of {startDate, startTime, endDate, endTime}, newest first
   net_payable_month TEXT,         -- 'YYYY-MM' the payroll snapshot below is for (All teams). Not a Worry Index signal, not exposed in any UI yet — synced for future use only.
-  net_payable_details TEXT        -- JSON: raw Koenig "Net Payable Details" row for that month (Leave_BF, Leave_Granted, Payable_Days, PayScale, PF, TDS, Salary, ...)
+  net_payable_details TEXT,       -- JSON: raw Koenig "Net Payable Details" row for that month (Leave_BF, Leave_Granted, Payable_Days, PayScale, PF, TDS, Salary, ...)
+  common_index_points REAL        -- Koenig "Common Index" TotalPoint (All teams). Shown plainly in every dept table — not a Worry Index signal.
 );
 
 CREATE TABLE IF NOT EXISTS pip_status (

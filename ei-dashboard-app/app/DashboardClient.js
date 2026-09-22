@@ -559,9 +559,9 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
   // make the underlying count itself any harder to see at a glance.
   const salesTechCallsTotal = dept === 'Sales' ? activeDeptEmp.reduce((sum, e) => sum + (e.techCallsCount || 0), 0) : null;
   const baseHeads = METRIC_HEADS[dept] || METRIC_HEADS.Sales;
-  const mh = dept === 'Sales' ? [...baseHeads, 'Neg. Audits', 'SCs Raised', 'Tech Calls', 'Shoddy Log', 'Mgr Feedback', 'Polls', 'KGT', 'Ideas']
-    : dept === 'Trainer' ? [...baseHeads, 'Exams', 'Neg. Feedback', 'Assignments', 'Skills', 'In-House Skills', 'Tech Calls', 'TBTs', 'Shoddy Log', 'Mgr Feedback', 'Polls', 'KGT', 'Ideas']
-    : [...baseHeads, 'Shoddy Log', 'Mgr Feedback', 'Polls', 'KGT', 'Ideas'];
+  const mh = dept === 'Sales' ? [...baseHeads, 'Neg. Audits', 'SCs Raised', 'Tech Calls', 'Shoddy Log', 'Mgr Feedback', 'Polls', 'KGT', 'Ideas', 'Common Index']
+    : dept === 'Trainer' ? [...baseHeads, 'Exams', 'Neg. Feedback', 'Assignments', 'Skills', 'In-House Skills', 'Tech Calls', 'TBTs', 'Shoddy Log', 'Mgr Feedback', 'Polls', 'KGT', 'Ideas', 'Common Index']
+    : [...baseHeads, 'Shoddy Log', 'Mgr Feedback', 'Polls', 'KGT', 'Ideas', 'Common Index'];
   const rows = filtered.map((e) => {
     const d = decorate(e);
     const cells = baseHeads.map((_, i) => ({
@@ -660,6 +660,11 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
       value: e.active === false ? '—' : (e.ideasCount ?? '—'),
       color: e.active === false ? '#6E7488' : (e.ideasCount > 0 ? '#5EEAD4' : '#6E7488'),
       onClick: e.active !== false && e.ideasCount > 0 ? () => setIdeasModal(e) : null,
+    });
+    cells.push({
+      value: e.active === false ? '—' : (e.commonIndexPoints ?? '—'),
+      color: e.active === false || e.commonIndexPoints == null ? '#6E7488' : e.commonIndexPoints < 0 ? '#F87171' : e.commonIndexPoints > 0 ? '#5EEAD4' : '#C7CBDA',
+      onClick: null,
     });
     return { ...d, cells };
   });

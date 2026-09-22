@@ -962,6 +962,39 @@ export async function syncNetPayable() {
   return { message: `Synced net payable details for ${updated} employees (${unmatched} had no payroll record for this or last month, ${apiErrors} API errors).` };
 }
 
+// Common Index — All teams. Per-employee lookup only (no bulk mode), so
+// this loops every active employee same as Net Payable. Shown plainly in
+// every dept table — not a Worry Index signal.
+export async function syncCommonIndex() {
+  const db = getDb();
+  const { getCommonIndexPoints } = await import('./koenigCommonIndexApi.js');
+
+  const allEmployees = await db.execute("SELECT id FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team') AND active = 1");
+
+  const statements = [];
+  let updated = 0;
+  let apiErrors = 0;
+  for (const emp of allEmployees.rows) {
+    const empCode = emp.id.replace('EMP', '');
+    try {
+      const points = await getCommonIndexPoints(empCode);
+      if (points == null) continue;
+      statements.push({
+        sql: 'UPDATE employees SET common_index_points = ? WHERE id = ?',
+        args: [points, emp.id],
+      });
+      updated++;
+    } catch (err) {
+      console.error(`Common Index sync failed for ${emp.id}:`, err.message);
+      apiErrors++;
+    }
+  }
+
+  if (statements.length) await db.batch(statements, 'write');
+
+  return { message: `Synced Common Index points for ${updated} employees (${apiErrors} API errors).` };
+}
+
 export async function syncGraphSubscription() {
   const db = getDb();
   const { createCallRecordsSubscription, renewSubscription } = await import('./graphCallsApi.js');
@@ -1026,6 +1059,7 @@ export const SYNC_RUNNERS = {
   mgrfeedback: syncMgrFeedback,
   ideas: syncIdeas,
   netpayable: syncNetPayable,
+  commonindex: syncCommonIndex,
   graphmeetings: syncGraphMeetings,
   graphsubscription: syncGraphSubscription,
   externalemails: syncExternalEmails,
