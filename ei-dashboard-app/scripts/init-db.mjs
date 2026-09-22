@@ -155,4 +155,15 @@ try {
   if (!String(err.message).includes('duplicate column')) throw err;
 }
 
+for (const stmt of [
+  'ALTER TABLE employees ADD COLUMN net_payable_month TEXT',
+  'ALTER TABLE employees ADD COLUMN net_payable_details TEXT',
+]) {
+  try {
+    await db.execute(stmt);
+  } catch (err) {
+    if (!String(err.message).includes('duplicate column')) throw err;
+  }
+}
+
 console.log('Done. Run `npm run sync:koenig` to populate employees from the live API.');

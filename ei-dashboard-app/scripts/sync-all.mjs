@@ -31,6 +31,7 @@ const SCRIPTS = [
   'sync-kgt.mjs',
   'sync-mgrfeedback.mjs',
   'sync-ideas.mjs',
+  'sync-netpayable.mjs',
 ];
 
 function run(script) {

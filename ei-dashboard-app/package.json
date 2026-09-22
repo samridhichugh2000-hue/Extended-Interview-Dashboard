@@ -28,6 +28,7 @@
     "sync:polls": "node scripts/sync-polls.mjs",
     "sync:mgrfeedback": "node scripts/sync-mgrfeedback.mjs",
     "sync:ideas": "node scripts/sync-ideas.mjs",
+    "sync:netpayable": "node scripts/sync-netpayable.mjs",
     "sync:graph-meetings": "node scripts/sync-graph-meetings.mjs",
     "sync:graph-subscription": "node scripts/sync-graph-subscription.mjs",
     "sync:external-emails": "node scripts/sync-external-emails.mjs",
