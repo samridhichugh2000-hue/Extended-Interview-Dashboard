@@ -4,7 +4,14 @@ import { NextResponse } from 'next/server';
 // per-feed sync route authenticates with its own SYNC_TRIGGER_SECRET header
 // (called by an external scheduler, not a browser) — neither can go through
 // a Basic Auth prompt, so both stay outside the password gate below.
-const PUBLIC_PATHS = ['/respond', '/api/weekly-response', '/api/sync'];
+// Same reasoning for the Graph callRecords webhook: Microsoft Graph calls it
+// directly (both the subscription-validation handshake and every
+// notification after), and it authenticates itself via clientState (see
+// app/api/graph/callrecords-webhook/route.js) — a 401 here fails Graph's
+// validation outright ("Notification endpoint must respond with 200 OK to
+// validation request"), which is exactly why syncGraphSubscription's
+// createCallRecordsSubscription call has never actually succeeded.
+const PUBLIC_PATHS = ['/respond', '/api/weekly-response', '/api/sync', '/api/graph/callrecords-webhook'];
 
 export function middleware(request) {
   const { pathname } = request.nextUrl;
