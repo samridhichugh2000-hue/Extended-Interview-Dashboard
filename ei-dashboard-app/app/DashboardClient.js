@@ -507,7 +507,6 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
   const [njOnly, setNjOnly] = useState(true);
   const [missing, setMissing] = useState([]);
   const toggleMissing = (key) => setMissing((m) => (m.includes(key) ? m.filter((k) => k !== key) : [...m, key]));
-  const { pending, closeEmployee, openAlertPreview, alertModal } = useEmployeeActions();
   const [auditModal, setAuditModal] = useState(null);
   const [scModal, setScModal] = useState(null);
   const [examModal, setExamModal] = useState(null);
@@ -677,7 +676,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
   // (not a shared table), so a track will otherwise grow past its fr share
   // to fit a long name/value in that one row, throwing every column after
   // it out of alignment with the header and every other row.
-  const gridCols = `minmax(0,1.5fr) minmax(0,.75fr) minmax(0,1fr) minmax(0,.55fr) repeat(${mh.length},minmax(0,.7fr)) minmax(0,.9fr) minmax(0,1fr)`;
+  const gridCols = `minmax(0,1.5fr) minmax(0,.75fr) minmax(0,1fr) minmax(0,.55fr) repeat(${mh.length},minmax(0,.7fr)) minmax(0,.9fr)`;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -717,7 +716,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
         <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           <span>Employee</span><span>DOJ</span><span>Manager</span><span>Day</span>
           {mh.map((h) => <span key={h} style={{ textAlign: 'right' }}>{h}</span>)}
-          <span>Status</span><span style={{ textAlign: 'right' }}>Actions</span>
+          <span>Status</span>
         </div>
         {rows.map((e) => (
           <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '13px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
@@ -733,23 +732,10 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
               >{c.value}</span>
             ))}
             {e.statusLabel && <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` }}>{e.statusLabel}</span>}
-            <div style={{ justifySelf: 'end', display: 'flex', gap: 6, alignItems: 'center' }} onClick={(ev) => ev.stopPropagation()}>
-              {!e.inactive && e.bandLabel === 'Critical' && (
-                <span onClick={() => openAlertPreview(e)} style={{ fontSize: 10.5, color: '#F87171', border: '1px solid rgba(244,63,94,0.4)', borderRadius: 7, padding: '4px 8px', cursor: 'pointer' }}>
-                  Alert
-                </span>
-              )}
-              {!e.inactive && (e.status === 'Confirmed'
-                ? <span style={{ fontSize: 10.5, color: '#6E7488', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 7, padding: '4px 8px' }}>Closed</span>
-                : <span onClick={() => closeEmployee(e)} style={{ fontSize: 10.5, color: '#8A90A8', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 7, padding: '4px 8px', cursor: pending === `close:${e.id}` ? 'default' : 'pointer', opacity: pending === `close:${e.id}` ? 0.6 : 1 }}>
-                    {pending === `close:${e.id}` ? 'Closing…' : 'Close'}
-                  </span>)}
-            </div>
           </div>
         ))}
         {!rows.length && <div style={{ padding: '18px', fontSize: 12.5, color: '#6E7488' }}>No employees match this filter.</div>}
       </div>
-      {alertModal}
       {auditModal && <AuditRemarksModal emp={auditModal} onClose={() => setAuditModal(null)} />}
       {scModal && <ScListModal emp={scModal} onClose={() => setScModal(null)} />}
       {techCallsModal && <TechCallsModal emp={techCallsModal} onClose={() => setTechCallsModal(null)} />}
