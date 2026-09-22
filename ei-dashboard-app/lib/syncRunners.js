@@ -5,18 +5,18 @@
 // unlike the standalone CLI scripts these mirror).
 import { getDb } from './db.js';
 
-// Shared by syncSc/syncAssignments/syncMgrFeedback — reconstructs an
+// Used by syncSc/syncAssignments/syncMgrFeedback — reconstructs an
 // employee's join date from tenure_days (for recycled-emp-code exclusion),
-// capped to at most the last 2 years regardless of actual tenure, so a
+// capped to at most `lookbackDays` regardless of actual tenure, so a
 // multi-year veteran's count reflects recent activity, not a full-career
 // total (e.g. 1074 SCs raised over 18 years isn't a meaningful figure).
-const SINCE_LOOKBACK_DAYS = 730;
-function sinceDate(tenureDays) {
+// SC/Assignments use 2 years; Manager Feedback uses 1 year (see call sites).
+function sinceDate(tenureDays, lookbackDays) {
   const joined = new Date();
   joined.setDate(joined.getDate() - tenureDays);
   joined.setHours(0, 0, 0, 0);
   const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - SINCE_LOOKBACK_DAYS);
+  cutoff.setDate(cutoff.getDate() - lookbackDays);
   cutoff.setHours(0, 0, 0, 0);
   return joined > cutoff ? joined : cutoff;
 }
@@ -269,7 +269,7 @@ export async function syncSc() {
   let unmatched = 0;
   for (const emp of salesEmployees.rows) {
     const empCode = parseInt(emp.id.replace('EMP', ''), 10);
-    const since = sinceDate(emp.tenure_days);
+    const since = sinceDate(emp.tenure_days, 730);
     const all = byEmpCode.get(empCode) || [];
     const scs = all.filter((s) => new Date(s.createdOn) >= since).sort((a, b) => new Date(b.createdOn) - new Date(a.createdOn));
     if (!scs.length) { unmatched++; continue; }
@@ -431,7 +431,7 @@ export async function syncAssignments() {
   let unmatched = 0;
   for (const emp of trainerEmployees.rows) {
     const empCode = parseInt(emp.id.replace('EMP', ''), 10);
-    const since = sinceDate(emp.tenure_days);
+    const since = sinceDate(emp.tenure_days, 730);
     const all = byEmpCode.get(empCode) || [];
     const assignments = all
       .filter((a) => new Date(a.startDate) >= since)
@@ -617,7 +617,7 @@ export async function syncMgrFeedback() {
   let confirmedZero = 0;
   for (const emp of allEmployees.rows) {
     const empCode = parseInt(emp.id.replace('EMP', ''), 10);
-    const since = sinceDate(emp.tenure_days);
+    const since = sinceDate(emp.tenure_days, 365);
     const all = byEmpCode.get(empCode) || [];
     const feedback = all.filter((f) => new Date(f.date) >= since).sort((a, b) => new Date(b.date) - new Date(a.date));
 
