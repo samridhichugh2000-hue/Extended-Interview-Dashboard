@@ -754,7 +754,11 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
             ))}
             {e.statusLabel && <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` }}>{e.statusLabel}</span>}
             <div style={{ justifySelf: 'end' }} onClick={(ev) => ev.stopPropagation()}>
-              {!e.inactive && e.bandLabel === 'Critical' && (
+              {/* Same Alert action as the Critical band already gets, also
+                  surfaced for any Trainer with a negative feedback report on
+                  file — that's a direct signal worth an alert on its own,
+                  independent of whether it's dragged the overall band down. */}
+              {!e.inactive && (e.bandLabel === 'Critical' || (dept === 'Trainer' && e.negFeedback > 0)) && (
                 <span onClick={() => openAlertPreview(e)} style={{ fontSize: 10.5, color: '#F87171', border: '1px solid rgba(244,63,94,0.4)', borderRadius: 7, padding: '4px 8px', cursor: 'pointer' }}>
                   Alert
                 </span>
@@ -1264,18 +1268,39 @@ function InHouseSkillsModal({ emp, onClose }) {
   );
 }
 
+// 6 months, same window as NJ_TENURE_DAYS elsewhere — "was in PA/PIP
+// recently" reads off pip_status.review_by (each incident's end/review
+// date), not employees.status, since status has already moved on to In
+// Progress/Confirmed once a case closes and pipHistory is the only place
+// that closed case is still visible.
+const SIX_MONTHS_MS = 182 * 24 * 60 * 60 * 1000;
+function wasRecentPaPip(e) {
+  if (e.status === 'PA Issued' || e.status === 'PIP Issued') return true;
+  const cutoff = Date.now() - SIX_MONTHS_MS;
+  return (e.pipHistory || []).some((p) => {
+    const d = new Date(p.reviewBy);
+    return !isNaN(d.getTime()) && d.getTime() >= cutoff;
+  });
+}
+
 function PaPip({ employees, filter, setFilter, setModal }) {
   const [search, setSearch] = useState('');
   const [includeInactive, setIncludeInactive] = useState(false);
+  // Off by default — unlike Worry Index/department tables, this screen's
+  // whole point is comprehensive PA/PIP case tracking across every tenure,
+  // so New Joiners Only stays an optional narrowing here rather than the
+  // default.
+  const [njOnly, setNjOnly] = useState(false);
   const [missing, setMissing] = useState([]);
   const toggleMissing = (key) => setMissing((m) => (m.includes(key) ? m.filter((k) => k !== key) : [...m, key]));
-  // Real counts across every open case (was hardcoded mock numbers —
-  // 6/4/2 total and 6/3/2/1 per department tab — that never reflected live
-  // data, same class of bug as Overview's band counts before that got
-  // wired up). Scoped to includeInactive same as `rows` below, but not to
-  // search/team/missing filters — these are meant to read as the full open
-  // caseload regardless of what's currently typed in the search box.
-  const allCases = employees.filter((e) => (includeInactive || e.active !== false) && (e.status === 'PA Issued' || e.status === 'PIP Issued'));
+  // Real counts across every case that's either open now or was open at
+  // some point in the last 6 months (was hardcoded mock numbers — 6/4/2
+  // total and 6/3/2/1 per department tab — that never reflected live data,
+  // same class of bug as Overview's band counts before that got wired up).
+  // Scoped to includeInactive/njOnly same as `rows` below, but not to
+  // search/team/missing filters — these are meant to read as the full
+  // tracked caseload regardless of what's currently typed in the search box.
+  const allCases = employees.filter((e) => (includeInactive || e.active !== false) && (!njOnly || isNewJoiner(e.tenure)) && wasRecentPaPip(e));
   const paCount = allCases.filter((e) => e.status === 'PA Issued').length;
   const pipCount = allCases.filter((e) => e.status === 'PIP Issued').length;
   const tabs = [['All Departments', null], ['Sales', 'Sales'], ['Trainer', 'Trainer'], ['PT Team', 'PT Team']].map(([label, val]) => ({
@@ -1312,6 +1337,7 @@ function PaPip({ employees, filter, setFilter, setModal }) {
           placeholder="Search by name or employee ID…"
           style={{ flex: 1, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#E4E6F0', outline: 'none' }}
         />
+        <NjOnlyToggle value={njOnly} onChange={setNjOnly} />
         <IncludeInactiveToggle value={includeInactive} onChange={setIncludeInactive} />
       </div>
       <MissingFilterChips defs={missingDefs} active={missing} onToggle={toggleMissing} />
