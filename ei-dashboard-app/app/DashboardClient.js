@@ -1249,13 +1249,22 @@ function PaPip({ employees, filter, setFilter, setModal }) {
   const [includeInactive, setIncludeInactive] = useState(false);
   const [missing, setMissing] = useState([]);
   const toggleMissing = (key) => setMissing((m) => (m.includes(key) ? m.filter((k) => k !== key) : [...m, key]));
-  const tabs = [['All Departments', 6, null], ['Sales', 3, 'Sales'], ['Trainer', 2, 'Trainer'], ['PT Team', 1, 'PT Team']].map(([label, count, d]) => ({
-    label, count, val: d, active: filter === d || (!filter && !d),
+  // Real counts across every open case (was hardcoded mock numbers —
+  // 6/4/2 total and 6/3/2/1 per department tab — that never reflected live
+  // data, same class of bug as Overview's band counts before that got
+  // wired up). Scoped to includeInactive same as `rows` below, but not to
+  // search/team/missing filters — these are meant to read as the full open
+  // caseload regardless of what's currently typed in the search box.
+  const allCases = employees.filter((e) => (includeInactive || e.active !== false) && (e.status === 'PA Issued' || e.status === 'PIP Issued'));
+  const paCount = allCases.filter((e) => e.status === 'PA Issued').length;
+  const pipCount = allCases.filter((e) => e.status === 'PIP Issued').length;
+  const tabs = [['All Departments', null], ['Sales', 'Sales'], ['Trainer', 'Trainer'], ['PT Team', 'PT Team']].map(([label, val]) => ({
+    label, val, active: filter === val || (!filter && !val),
+    count: val ? allCases.filter((e) => e.team === val).length : allCases.length,
   }));
   const q = search.trim().toLowerCase();
   const missingDefs = missingFiltersFor(filter);
-  const rows = employees
-    .filter((e) => (includeInactive || e.active !== false) && (e.status === 'PA Issued' || e.status === 'PIP Issued'))
+  const rows = allCases
     .filter((e) => !filter || e.team === filter)
     .filter((e) => !q || e.name.toLowerCase().includes(q) || String(e.id).toLowerCase().includes(q))
     .map(decorate)
@@ -1265,9 +1274,9 @@ function PaPip({ employees, filter, setFilter, setModal }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16 }}>
-        <div style={{ border: '1px solid rgba(168,85,247,0.28)', background: 'linear-gradient(150deg,rgba(168,85,247,0.14),rgba(168,85,247,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>Total PA / PIP cases</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6 }}>6</div></div>
-        <div style={{ border: '1px solid rgba(245,158,11,0.28)', background: 'linear-gradient(150deg,rgba(245,158,11,0.13),rgba(245,158,11,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>PA Issued</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6, color: '#F59E0B' }}>4</div></div>
-        <div style={{ border: '1px solid rgba(244,63,94,0.28)', background: 'linear-gradient(150deg,rgba(244,63,94,0.13),rgba(244,63,94,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>PIP Issued</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6, color: '#F43F5E' }}>2</div></div>
+        <div style={{ border: '1px solid rgba(168,85,247,0.28)', background: 'linear-gradient(150deg,rgba(168,85,247,0.14),rgba(168,85,247,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>Total PA / PIP cases</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6 }}>{allCases.length}</div></div>
+        <div style={{ border: '1px solid rgba(245,158,11,0.28)', background: 'linear-gradient(150deg,rgba(245,158,11,0.13),rgba(245,158,11,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>PA Issued</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6, color: '#F59E0B' }}>{paCount}</div></div>
+        <div style={{ border: '1px solid rgba(244,63,94,0.28)', background: 'linear-gradient(150deg,rgba(244,63,94,0.13),rgba(244,63,94,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>PIP Issued</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6, color: '#F43F5E' }}>{pipCount}</div></div>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {tabs.map((t) => (
