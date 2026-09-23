@@ -420,13 +420,23 @@ function Overview({ employees, newJoiners, deptCounts, go, setModal }) {
     { label: 'Trainer', count: counts.Trainer, bg: 'rgba(168,85,247,0.14)', border: 'rgba(168,85,247,0.35)', color: '#D8B4FE', dept: 'Trainer' },
     { label: 'PT', count: counts['PT Team'], bg: 'rgba(20,184,166,0.14)', border: 'rgba(20,184,166,0.35)', color: '#5EEAD4', dept: 'PT Team' },
   ];
+  // Overview is a New Joiner dashboard — every widget on it stays scoped to
+  // isNewJoiner (tenure < 182 days), not the wider isScoredEmployee/PA-PIP
+  // population. A long-tenured PA/PIP veteran's "weeks since joining" signal
+  // math (SCs raised, tech calls < 1/week — see lib/data.js) explodes into
+  // scores in the thousands over years of tenure, which used to flood the
+  // Critical count, the review queue and the open-cases tile with veterans
+  // rather than actual new joiners. Those veterans are still fully visible
+  // on the PA/PIP Detection screen — this restriction is Overview-only.
+  const njActiveEmployees = activeEmployees.filter((e) => isNewJoiner(e.tenure));
+
   // Worst-first — only NJs currently running a negative Worry Index score,
   // the ones that actually need review, not just the first 5 in DB order.
-  const reviewQueue = activeEmployees.map(decorate).filter((e) => e.score < 0).sort((a, b) => a.score - b.score);
-  const paPipList = activeEmployees.filter((e) => e.status === 'PA Issued' || e.status === 'PIP Issued').map((e) => ({ name: e.name, due: e.due, type: e.status === 'PIP Issued' ? 'PIP' : 'PA', active: e.active, ...STATUS[e.status] }));
+  const reviewQueue = njActiveEmployees.map(decorate).filter((e) => e.score < 0).sort((a, b) => a.score - b.score);
+  const paPipList = njActiveEmployees.filter((e) => e.status === 'PA Issued' || e.status === 'PIP Issued').map((e) => ({ name: e.name, due: e.due, type: e.status === 'PIP Issued' ? 'PIP' : 'PA', active: e.active, ...STATUS[e.status] }));
   // Real band breakdown across every currently-scored employee (was
   // hardcoded mock numbers — 7/11/13/11 — that never reflected live data).
-  const scoredEmployees = activeEmployees.filter((e) => e.score != null).map(decorate);
+  const scoredEmployees = njActiveEmployees.filter((e) => e.score != null).map(decorate);
   const bandCounts = { Critical: 0, Low: 0, Medium: 0, Good: 0 };
   for (const e of scoredEmployees) bandCounts[e.bandLabel] = (bandCounts[e.bandLabel] || 0) + 1;
 
