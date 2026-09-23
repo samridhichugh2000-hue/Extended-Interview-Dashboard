@@ -25,6 +25,16 @@ const DEPT_MISSING_FILTERS = {
   Sales: [
     { key: 'techCalls', label: 'Without Tech Calls', test: (e) => !(e.techCallsCount > 0) },
     { key: 'scRaised', label: 'Without SCs Raised', test: (e) => !(e.scRaised > 0) },
+    // scDetails carries a dated record per SC (see syncSc) — unlike scRaised
+    // above (any SC ever, within the 2-year sync lookback), this flags reps
+    // who've gone quiet lately even if they have older SCs on file.
+    { key: 'noScRecent', label: 'No SC within 30 days', test: (e) => !(e.scDetails || []).some((s) => Date.now() - new Date(s.createdOn).getTime() <= 30 * 86400000) },
+    // techCallsCount has no per-call dates (see koenigTechCallApi.js — Koenig
+    // only returns one all-time summary row per rep), so "in 1 year" can't be
+    // a rolling window like the SC filter above. Gated on tenure >= 365 so it
+    // only fires once a full year has actually elapsed — otherwise it'd be
+    // identical to "Without Tech Calls" for every NJ under a year old.
+    { key: 'zeroTechCallsYear', label: 'Zero Tech Calls in 1 Year', test: (e) => (e.tenure ?? 0) >= 365 && !(e.techCallsCount > 0) },
     { key: 'withNegAudits', label: 'With Neg. Audits', test: (e) => e.negAudits > 0 },
   ],
   Trainer: [
