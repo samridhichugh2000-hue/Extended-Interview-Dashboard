@@ -487,7 +487,7 @@ function Overview({ employees, newJoiners, deptCounts, go, setModal }) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontWeight: 600 }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id} · day {e.tenure}</span></div>
                 <span style={{ color: '#A8AEC4', fontSize: 12.5 }}>{e.team}</span>
                 <span style={{ color: '#A8AEC4', fontSize: 12.5 }}>{e.manager}</span>
-                {e.statusLabel && <span style={{ justifySelf: 'start', fontSize: 11, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` }}>{e.statusLabel}</span>}
+                <span style={e.statusLabel ? { justifySelf: 'start', fontSize: 11, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` } : undefined}>{e.statusLabel}</span>
                 <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontWeight: 600, color: e.bandColor }}>{e.scoreStr}</span>
               </div>
             ))}
