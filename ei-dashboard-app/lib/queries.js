@@ -29,7 +29,17 @@ export async function getEmployees() {
   ]);
 
   const pipByEmp = new Map();
-  for (const row of pipRes.rows) pipByEmp.set(row.employee_id, row);
+  // Every incident per employee, not just one — pipByEmp above only keeps
+  // whichever row a plain table scan happens to end on, which is fine for
+  // the single issued/due display fields below but not enough to answer
+  // "was this employee in PA/PIP at any point recently" once their case has
+  // since closed and employees.status moved on to In Progress/Confirmed.
+  const pipHistoryByEmp = new Map();
+  for (const row of pipRes.rows) {
+    pipByEmp.set(row.employee_id, row);
+    if (!pipHistoryByEmp.has(row.employee_id)) pipHistoryByEmp.set(row.employee_id, []);
+    pipHistoryByEmp.get(row.employee_id).push({ type: row.type, issuedOn: row.issued_on, reviewBy: row.review_by, isActive: !!row.is_active });
+  }
 
   const feedbackByEmp = new Map();
   for (const row of feedbackRes.rows) {
@@ -62,6 +72,7 @@ export async function getEmployees() {
       issued: pip?.issued_on || '—',
       due: pip?.review_by || '—',
       breaches: pip?.breaches ? JSON.parse(pip.breaches) : [],
+      pipHistory: pipHistoryByEmp.get(e.id) || [],
       v: [e.metric1, e.metric2, e.metric3, e.metric4, e.metric5, e.metric6],
       alert: e.alert || 'Alert',
       weeks: weeksByEmp.get(e.id) || [],
