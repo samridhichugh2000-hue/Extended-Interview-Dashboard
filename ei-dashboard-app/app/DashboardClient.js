@@ -1331,13 +1331,20 @@ function PaPip({ employees, filter, setFilter, setModal }) {
 function WorryIndex({ employees, filter, setFilter, setModal }) {
   const [search, setSearch] = useState('');
   const [includeInactive, setIncludeInactive] = useState(false);
+  // Same default as the department table's NjOnlyToggle, and for the same
+  // reason: a long-tenured PA/PIP veteran's "weeks since joining" signal math
+  // (SCs raised, tech calls < 1/week — lib/data.js) explodes into scores in
+  // the thousands over years of tenure, which used to bury real NJs under
+  // veteran noise here same as it did on Overview before that got scoped
+  // down. Toggling off still shows every scored employee, veterans included.
+  const [njOnly, setNjOnly] = useState(true);
   const [missing, setMissing] = useState([]);
   const toggleMissing = (key) => setMissing((m) => (m.includes(key) ? m.filter((k) => k !== key) : [...m, key]));
   // Scored employees only (New Joiners + active PA/PIP cases) — everyone
   // else has score === null (see isScoredEmployee in lib/data.js), and
   // ranking/coverage stats don't mean anything for someone who was never
   // actually scored.
-  const active = employees.map(decorate).filter((e) => (includeInactive || !e.inactive) && e.score != null);
+  const active = employees.map(decorate).filter((e) => (includeInactive || !e.inactive) && e.score != null && (!njOnly || isNewJoiner(e.tenure)));
   const tabs = [['All Departments', null], ['Sales', 'Sales'], ['Trainer', 'Trainer'], ['PT Team', 'PT Team']].map(([label, val]) => ({
     label, val, active: filter === val || (!filter && !val),
     count: val ? active.filter((e) => e.team === val).length : active.length,
@@ -1380,6 +1387,7 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
           placeholder="Search by name or employee ID…"
           style={{ flex: 1, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#E4E6F0', outline: 'none' }}
         />
+        <NjOnlyToggle value={njOnly} onChange={setNjOnly} />
         <IncludeInactiveToggle value={includeInactive} onChange={setIncludeInactive} />
       </div>
       <MissingFilterChips defs={missingDefs} active={missing} onToggle={toggleMissing} />
