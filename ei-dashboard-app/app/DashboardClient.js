@@ -1366,19 +1366,19 @@ function PaPip({ employees, filter, setFilter, setModal }) {
 function WorryIndex({ employees, filter, setFilter, setModal }) {
   const [search, setSearch] = useState('');
   const [includeInactive, setIncludeInactive] = useState(false);
-  // Same default as the department table's NjOnlyToggle, and for the same
-  // reason: a long-tenured PA/PIP veteran's "weeks since joining" signal math
-  // (SCs raised, tech calls < 1/week — lib/data.js) explodes into scores in
-  // the thousands over years of tenure, which used to bury real NJs under
-  // veteran noise here same as it did on Overview before that got scoped
-  // down. Toggling off still shows every scored employee, veterans included.
-  const [njOnly, setNjOnly] = useState(true);
+  // Defaults to off — isScoredEmployee (lib/data.js) now scores every
+  // employee, not just New Joiners/active PA-PIP, by explicit request, so
+  // this screen should show everyone by default too. A long-tenured
+  // veteran's "weeks since joining" signal math (SCs raised, tech calls <
+  // 1/week) can still explode into a score in the thousands — that's an
+  // accepted tradeoff of scoring everyone, not a bug — so the toggle stays
+  // available for narrowing back down to New Joiners when that noise isn't
+  // wanted.
+  const [njOnly, setNjOnly] = useState(false);
   const [missing, setMissing] = useState([]);
   const toggleMissing = (key) => setMissing((m) => (m.includes(key) ? m.filter((k) => k !== key) : [...m, key]));
-  // Scored employees only (New Joiners + active PA/PIP cases) — everyone
-  // else has score === null (see isScoredEmployee in lib/data.js), and
-  // ranking/coverage stats don't mean anything for someone who was never
-  // actually scored.
+  // score is non-null for every employee now (isScoredEmployee always
+  // returns true) — the `!= null` check is just defensive.
   const active = employees.map(decorate).filter((e) => (includeInactive || !e.inactive) && e.score != null && (!njOnly || isNewJoiner(e.tenure)));
   const tabs = [['All Departments', null], ['Sales', 'Sales'], ['Trainer', 'Trainer'], ['PT Team', 'PT Team']].map(([label, val]) => ({
     label, val, active: filter === val || (!filter && !val),
