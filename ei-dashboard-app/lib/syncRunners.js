@@ -137,14 +137,21 @@ export async function syncPip() {
     byEmployee.get(employeeId).push(r);
   }
 
+  // Batched into one round trip (same fix as syncSc/syncAssignments) instead
+  // of a DELETE+INSERTs+UPDATE per employee — this now also runs inline at
+  // the top of the weeklyreport cron (see SYNC_RUNNERS.weeklyreport below),
+  // so it needs to stay well clear of Vercel Hobby's 60s function limit
+  // rather than only being fast enough for its own standalone cron-job.org
+  // schedule.
+  const statements = [];
   let updated = 0;
   for (const [employeeId, incidents] of byEmployee) {
     incidents.sort((a, b) => new Date(b.createdOn) - new Date(a.createdOn));
     const current = incidents.find((i) => i.isActive) || null;
 
-    await db.execute({ sql: 'DELETE FROM pip_status WHERE employee_id = ?', args: [employeeId] });
+    statements.push({ sql: 'DELETE FROM pip_status WHERE employee_id = ?', args: [employeeId] });
     for (const i of incidents) {
-      await db.execute({
+      statements.push({
         sql: `INSERT INTO pip_status (employee_id, type, issued_on, review_by, breaches, comment, is_active, source_id)
               VALUES (?, ?, ?, ?, '[]', ?, ?, ?)`,
         args: [employeeId, i.type, i.fromDate || '—', i.toDate || '—', i.comment, i.isActive ? 1 : 0, i.sourceId],
@@ -152,12 +159,14 @@ export async function syncPip() {
     }
 
     const status = current ? (current.type === 'PIP' ? 'PIP Issued' : 'PA Issued') : 'In Progress';
-    await db.execute({
+    statements.push({
       sql: 'UPDATE employees SET status = ?, hr_note = ? WHERE id = ?',
       args: [status, current ? current.comment : null, employeeId],
     });
     updated++;
   }
+
+  if (statements.length) await db.batch(statements, 'write');
 
   return { message: `Synced ${rows.length} incidents; ${byEmployee.size} matched; ${updated} employee records updated.` };
 }
@@ -1120,11 +1129,28 @@ export const SYNC_RUNNERS = {
   graphmeetings: syncGraphMeetings,
   graphsubscription: syncGraphSubscription,
   externalemails: syncExternalEmails,
+  // PA/PIP status normally comes from the standalone 'pip' feed, which runs
+  // on its own cron-job.org schedule independent of this one — that race let
+  // this Monday's run miss six people whose status flipped to PA/PIP Issued
+  // only after this job had already sent for the week, so they didn't get
+  // caught until pip's own cron happened to land mid-week. Syncing pip here
+  // first makes eligibility always reflect current status regardless of when
+  // the external cron fires.
   weeklyreport: async () => {
     const { sendWeeklyReports, sendPaPipWeeklyCheckIns } = await import('./weeklyReportRunner.js');
+    // Caught rather than left to propagate — a Koenig API hiccup here
+    // shouldn't cost everyone their check-in email for the day; falling
+    // back to whatever status is already on file (this morning's send is
+    // then no worse than before this pip-sync-inline change existed).
+    let pipMessage;
+    try {
+      pipMessage = (await syncPip()).message;
+    } catch (err) {
+      pipMessage = `pip status refresh failed, using last-known status: ${err.message}`;
+    }
     const nj = await sendWeeklyReports();
     const paPip = await sendPaPipWeeklyCheckIns();
-    return { message: `${nj.message} | ${paPip.message}` };
+    return { message: `${pipMessage} | ${nj.message} | ${paPip.message}` };
   },
   weeklyresponsereport: async () => {
     const { sendWeeklyResponseReport } = await import('./weeklyResponseReportRunner.js');

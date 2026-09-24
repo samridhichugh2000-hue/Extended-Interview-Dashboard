@@ -25,6 +25,16 @@ const DEPT_MISSING_FILTERS = {
   Sales: [
     { key: 'techCalls', label: 'Without Tech Calls', test: (e) => !(e.techCallsCount > 0) },
     { key: 'scRaised', label: 'Without SCs Raised', test: (e) => !(e.scRaised > 0) },
+    // scDetails carries a dated record per SC (see syncSc) — unlike scRaised
+    // above (any SC ever, within the 2-year sync lookback), this flags reps
+    // who've gone quiet lately even if they have older SCs on file.
+    { key: 'noScRecent', label: 'No SC within 30 days', test: (e) => !(e.scDetails || []).some((s) => Date.now() - new Date(s.createdOn).getTime() <= 30 * 86400000) },
+    // techCallsCount has no per-call dates (see koenigTechCallApi.js — Koenig
+    // only returns one all-time summary row per rep), so "in 1 year" can't be
+    // a rolling window like the SC filter above. Gated on tenure >= 365 so it
+    // only fires once a full year has actually elapsed — otherwise it'd be
+    // identical to "Without Tech Calls" for every NJ under a year old.
+    { key: 'zeroTechCallsYear', label: 'Zero Tech Calls in 1 Year', test: (e) => (e.tenure ?? 0) >= 365 && !(e.techCallsCount > 0) },
     { key: 'withNegAudits', label: 'With Neg. Audits', test: (e) => e.negAudits > 0 },
   ],
   Trainer: [
@@ -420,13 +430,23 @@ function Overview({ employees, newJoiners, deptCounts, go, setModal }) {
     { label: 'Trainer', count: counts.Trainer, bg: 'rgba(168,85,247,0.14)', border: 'rgba(168,85,247,0.35)', color: '#D8B4FE', dept: 'Trainer' },
     { label: 'PT', count: counts['PT Team'], bg: 'rgba(20,184,166,0.14)', border: 'rgba(20,184,166,0.35)', color: '#5EEAD4', dept: 'PT Team' },
   ];
+  // Overview is a New Joiner dashboard — every widget on it stays scoped to
+  // isNewJoiner (tenure < 182 days), not the wider isScoredEmployee/PA-PIP
+  // population. A long-tenured PA/PIP veteran's "weeks since joining" signal
+  // math (SCs raised, tech calls < 1/week — see lib/data.js) explodes into
+  // scores in the thousands over years of tenure, which used to flood the
+  // Critical count, the review queue and the open-cases tile with veterans
+  // rather than actual new joiners. Those veterans are still fully visible
+  // on the PA/PIP Detection screen — this restriction is Overview-only.
+  const njActiveEmployees = activeEmployees.filter((e) => isNewJoiner(e.tenure));
+
   // Worst-first — only NJs currently running a negative Worry Index score,
   // the ones that actually need review, not just the first 5 in DB order.
-  const reviewQueue = activeEmployees.map(decorate).filter((e) => e.score < 0).sort((a, b) => a.score - b.score);
-  const paPipList = activeEmployees.filter((e) => e.status === 'PA Issued' || e.status === 'PIP Issued').map((e) => ({ name: e.name, due: e.due, type: e.status === 'PIP Issued' ? 'PIP' : 'PA', active: e.active, ...STATUS[e.status] }));
+  const reviewQueue = njActiveEmployees.map(decorate).filter((e) => e.score < 0).sort((a, b) => a.score - b.score);
+  const paPipList = njActiveEmployees.filter((e) => e.status === 'PA Issued' || e.status === 'PIP Issued').map((e) => ({ name: e.name, due: e.due, type: e.status === 'PIP Issued' ? 'PIP' : 'PA', active: e.active, ...STATUS[e.status] }));
   // Real band breakdown across every currently-scored employee (was
   // hardcoded mock numbers — 7/11/13/11 — that never reflected live data).
-  const scoredEmployees = activeEmployees.filter((e) => e.score != null).map(decorate);
+  const scoredEmployees = njActiveEmployees.filter((e) => e.score != null).map(decorate);
   const bandCounts = { Critical: 0, Low: 0, Medium: 0, Good: 0 };
   for (const e of scoredEmployees) bandCounts[e.bandLabel] = (bandCounts[e.bandLabel] || 0) + 1;
 
@@ -477,7 +497,7 @@ function Overview({ employees, newJoiners, deptCounts, go, setModal }) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontWeight: 600 }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id} · day {e.tenure}</span></div>
                 <span style={{ color: '#A8AEC4', fontSize: 12.5 }}>{e.team}</span>
                 <span style={{ color: '#A8AEC4', fontSize: 12.5 }}>{e.manager}</span>
-                {e.statusLabel && <span style={{ justifySelf: 'start', fontSize: 11, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` }}>{e.statusLabel}</span>}
+                <span style={e.statusLabel ? { justifySelf: 'start', fontSize: 11, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` } : undefined}>{e.statusLabel}</span>
                 <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontWeight: 600, color: e.bandColor }}>{e.scoreStr}</span>
               </div>
             ))}
@@ -734,7 +754,11 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
             ))}
             {e.statusLabel && <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` }}>{e.statusLabel}</span>}
             <div style={{ justifySelf: 'end' }} onClick={(ev) => ev.stopPropagation()}>
-              {!e.inactive && e.bandLabel === 'Critical' && (
+              {/* Same Alert action as the Critical band already gets, also
+                  surfaced for any Trainer with a negative feedback report on
+                  file — that's a direct signal worth an alert on its own,
+                  independent of whether it's dragged the overall band down. */}
+              {!e.inactive && (e.bandLabel === 'Critical' || (dept === 'Trainer' && e.negFeedback > 0)) && (
                 <span onClick={() => openAlertPreview(e)} style={{ fontSize: 10.5, color: '#F87171', border: '1px solid rgba(244,63,94,0.4)', borderRadius: 7, padding: '4px 8px', cursor: 'pointer' }}>
                   Alert
                 </span>
@@ -1244,18 +1268,48 @@ function InHouseSkillsModal({ emp, onClose }) {
   );
 }
 
+// 6 months, same window as NJ_TENURE_DAYS elsewhere — "was in PA/PIP
+// recently" reads off pip_status.review_by (each incident's end/review
+// date), not employees.status, since status has already moved on to In
+// Progress/Confirmed once a case closes and pipHistory is the only place
+// that closed case is still visible.
+const SIX_MONTHS_MS = 182 * 24 * 60 * 60 * 1000;
+function wasRecentPaPip(e) {
+  if (e.status === 'PA Issued' || e.status === 'PIP Issued') return true;
+  const cutoff = Date.now() - SIX_MONTHS_MS;
+  return (e.pipHistory || []).some((p) => {
+    const d = new Date(p.reviewBy);
+    return !isNaN(d.getTime()) && d.getTime() >= cutoff;
+  });
+}
+
 function PaPip({ employees, filter, setFilter, setModal }) {
   const [search, setSearch] = useState('');
   const [includeInactive, setIncludeInactive] = useState(false);
+  // Off by default — unlike Worry Index/department tables, this screen's
+  // whole point is comprehensive PA/PIP case tracking across every tenure,
+  // so New Joiners Only stays an optional narrowing here rather than the
+  // default.
+  const [njOnly, setNjOnly] = useState(false);
   const [missing, setMissing] = useState([]);
   const toggleMissing = (key) => setMissing((m) => (m.includes(key) ? m.filter((k) => k !== key) : [...m, key]));
-  const tabs = [['All Departments', 6, null], ['Sales', 3, 'Sales'], ['Trainer', 2, 'Trainer'], ['PT Team', 1, 'PT Team']].map(([label, count, d]) => ({
-    label, count, val: d, active: filter === d || (!filter && !d),
+  // Real counts across every case that's either open now or was open at
+  // some point in the last 6 months (was hardcoded mock numbers — 6/4/2
+  // total and 6/3/2/1 per department tab — that never reflected live data,
+  // same class of bug as Overview's band counts before that got wired up).
+  // Scoped to includeInactive/njOnly same as `rows` below, but not to
+  // search/team/missing filters — these are meant to read as the full
+  // tracked caseload regardless of what's currently typed in the search box.
+  const allCases = employees.filter((e) => (includeInactive || e.active !== false) && (!njOnly || isNewJoiner(e.tenure)) && wasRecentPaPip(e));
+  const paCount = allCases.filter((e) => e.status === 'PA Issued').length;
+  const pipCount = allCases.filter((e) => e.status === 'PIP Issued').length;
+  const tabs = [['All Departments', null], ['Sales', 'Sales'], ['Trainer', 'Trainer'], ['PT Team', 'PT Team']].map(([label, val]) => ({
+    label, val, active: filter === val || (!filter && !val),
+    count: val ? allCases.filter((e) => e.team === val).length : allCases.length,
   }));
   const q = search.trim().toLowerCase();
   const missingDefs = missingFiltersFor(filter);
-  const rows = employees
-    .filter((e) => (includeInactive || e.active !== false) && (e.status === 'PA Issued' || e.status === 'PIP Issued'))
+  const rows = allCases
     .filter((e) => !filter || e.team === filter)
     .filter((e) => !q || e.name.toLowerCase().includes(q) || String(e.id).toLowerCase().includes(q))
     .map(decorate)
@@ -1265,9 +1319,9 @@ function PaPip({ employees, filter, setFilter, setModal }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16 }}>
-        <div style={{ border: '1px solid rgba(168,85,247,0.28)', background: 'linear-gradient(150deg,rgba(168,85,247,0.14),rgba(168,85,247,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>Total PA / PIP cases</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6 }}>6</div></div>
-        <div style={{ border: '1px solid rgba(245,158,11,0.28)', background: 'linear-gradient(150deg,rgba(245,158,11,0.13),rgba(245,158,11,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>PA Issued</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6, color: '#F59E0B' }}>4</div></div>
-        <div style={{ border: '1px solid rgba(244,63,94,0.28)', background: 'linear-gradient(150deg,rgba(244,63,94,0.13),rgba(244,63,94,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>PIP Issued</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6, color: '#F43F5E' }}>2</div></div>
+        <div style={{ border: '1px solid rgba(168,85,247,0.28)', background: 'linear-gradient(150deg,rgba(168,85,247,0.14),rgba(168,85,247,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>Total PA / PIP cases</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6 }}>{allCases.length}</div></div>
+        <div style={{ border: '1px solid rgba(245,158,11,0.28)', background: 'linear-gradient(150deg,rgba(245,158,11,0.13),rgba(245,158,11,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>PA Issued</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6, color: '#F59E0B' }}>{paCount}</div></div>
+        <div style={{ border: '1px solid rgba(244,63,94,0.28)', background: 'linear-gradient(150deg,rgba(244,63,94,0.13),rgba(244,63,94,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>PIP Issued</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6, color: '#F43F5E' }}>{pipCount}</div></div>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {tabs.map((t) => (
@@ -1283,6 +1337,7 @@ function PaPip({ employees, filter, setFilter, setModal }) {
           placeholder="Search by name or employee ID…"
           style={{ flex: 1, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#E4E6F0', outline: 'none' }}
         />
+        <NjOnlyToggle value={njOnly} onChange={setNjOnly} />
         <IncludeInactiveToggle value={includeInactive} onChange={setIncludeInactive} />
       </div>
       <MissingFilterChips defs={missingDefs} active={missing} onToggle={toggleMissing} />
@@ -1311,13 +1366,20 @@ function PaPip({ employees, filter, setFilter, setModal }) {
 function WorryIndex({ employees, filter, setFilter, setModal }) {
   const [search, setSearch] = useState('');
   const [includeInactive, setIncludeInactive] = useState(false);
+  // Same default as the department table's NjOnlyToggle, and for the same
+  // reason: a long-tenured PA/PIP veteran's "weeks since joining" signal math
+  // (SCs raised, tech calls < 1/week — lib/data.js) explodes into scores in
+  // the thousands over years of tenure, which used to bury real NJs under
+  // veteran noise here same as it did on Overview before that got scoped
+  // down. Toggling off still shows every scored employee, veterans included.
+  const [njOnly, setNjOnly] = useState(true);
   const [missing, setMissing] = useState([]);
   const toggleMissing = (key) => setMissing((m) => (m.includes(key) ? m.filter((k) => k !== key) : [...m, key]));
   // Scored employees only (New Joiners + active PA/PIP cases) — everyone
   // else has score === null (see isScoredEmployee in lib/data.js), and
   // ranking/coverage stats don't mean anything for someone who was never
   // actually scored.
-  const active = employees.map(decorate).filter((e) => (includeInactive || !e.inactive) && e.score != null);
+  const active = employees.map(decorate).filter((e) => (includeInactive || !e.inactive) && e.score != null && (!njOnly || isNewJoiner(e.tenure)));
   const tabs = [['All Departments', null], ['Sales', 'Sales'], ['Trainer', 'Trainer'], ['PT Team', 'PT Team']].map(([label, val]) => ({
     label, val, active: filter === val || (!filter && !val),
     count: val ? active.filter((e) => e.team === val).length : active.length,
@@ -1360,6 +1422,7 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
           placeholder="Search by name or employee ID…"
           style={{ flex: 1, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#E4E6F0', outline: 'none' }}
         />
+        <NjOnlyToggle value={njOnly} onChange={setNjOnly} />
         <IncludeInactiveToggle value={includeInactive} onChange={setIncludeInactive} />
       </div>
       <MissingFilterChips defs={missingDefs} active={missing} onToggle={toggleMissing} />
