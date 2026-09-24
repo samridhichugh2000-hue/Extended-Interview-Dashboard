@@ -91,10 +91,14 @@ async function sendCheckIns({ db, week, employees, questionsByTeam, baseUrl, sub
 // (a plain constants module, no 'use client', safe to import server-side —
 // same as lib/queries.js already does for computeSignalReport etc).
 export async function sendWeeklyReports() {
+  const { getIsoWeek, isMondayIst } = await import('./weekUtils.js');
+  if (!isMondayIst()) {
+    return { message: 'Skipped — weekly NJ check-in only sends on Monday (IST), not today.' };
+  }
+
   const db = getDb();
   const { NJ_QUESTIONS } = await import('./data.js');
   const { sendMail } = await import('./graphMailer.js');
-  const { getIsoWeek } = await import('./weekUtils.js');
   const { getManagerEmail } = await import('./managerDirectory.js');
 
   const week = getIsoWeek(new Date());
@@ -112,6 +116,22 @@ export async function sendWeeklyReports() {
   return { message: `Sent ${r.sent} of ${r.total} eligible active NJs for ${week} (${r.skippedSent} already sent, ${r.skippedNoEmail} no email on file${r.skippedNoQuestions ? `, ${r.skippedNoQuestions} no questions for team` : ''}).` };
 }
 
+// A PA/PIP case counts as "ongoing" only if today falls inside its own
+// issued_on..review_by window — Koenig's is_active flag alone isn't enough
+// to go by, since Koenig doesn't auto-close a case just because its review
+// date passed (a case sits "active" indefinitely until someone formally
+// closes it there). issued_on/review_by are display strings like "29 Jan
+// 2026", which Date() parses fine for this day-level comparison.
+function hasOngoingPipWindow(pipRows, wantType, today) {
+  return pipRows.some((r) => {
+    if (r.type !== wantType) return false;
+    const start = r.issued_on && new Date(r.issued_on);
+    const end = r.review_by && new Date(r.review_by);
+    if (!start || isNaN(start) || !end || isNaN(end)) return false;
+    return start <= today && today <= end;
+  });
+}
+
 // Same weekly cadence and weekly_responses tracking as the NJ check-in, but
 // for active PA/PIP employees who've aged out of the 6-month NJ window
 // (tenure_days >= 182, the NJ query's cutoff above) — they'd otherwise get
@@ -121,25 +141,49 @@ export async function sendWeeklyReports() {
 // used by weeklyreport + weeklyresponsereport (see vercel.json) and this
 // needs to run the same day/cadence anyway.
 export async function sendPaPipWeeklyCheckIns() {
+  const { getIsoWeek, isMondayIst } = await import('./weekUtils.js');
+  if (!isMondayIst()) {
+    return { message: 'Skipped — weekly PA/PIP check-in only sends on Monday (IST), not today.' };
+  }
+
   const db = getDb();
   const { NJ_QUESTIONS } = await import('./data.js');
   const { sendMail } = await import('./graphMailer.js');
-  const { getIsoWeek } = await import('./weekUtils.js');
   const { getManagerEmail } = await import('./managerDirectory.js');
 
   const week = getIsoWeek(new Date());
   const questionsByTeam = new Map(NJ_QUESTIONS.map((q) => [q.team, q]));
   const baseUrl = process.env.APP_BASE_URL;
+  const today = new Date();
 
-  const employees = await db.execute(
-    "SELECT id, name, email, team, manager FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team') AND active = 1 AND tenure_days >= 182 AND status IN ('PA Issued', 'PIP Issued')"
+  const candidates = await db.execute(
+    "SELECT id, name, email, team, manager, status FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team') AND active = 1 AND tenure_days >= 182 AND status IN ('PA Issued', 'PIP Issued')"
   );
 
+  const ids = candidates.rows.map((e) => e.id);
+  const pipStatusRows = ids.length
+    ? await db.execute({ sql: `SELECT * FROM pip_status WHERE employee_id IN (${ids.map(() => '?').join(',')})`, args: ids })
+    : { rows: [] };
+  const pipByEmp = new Map();
+  for (const p of pipStatusRows.rows) {
+    if (!pipByEmp.has(p.employee_id)) pipByEmp.set(p.employee_id, []);
+    pipByEmp.get(p.employee_id).push(p);
+  }
+
+  // Only the employees whose current status type actually has an ongoing
+  // (not lapsed, not future) window get the check-in — this is what "active
+  // PA/PIP" is supposed to mean, not just an unclosed Koenig flag.
+  const employees = candidates.rows.filter((e) => {
+    const wantType = e.status === 'PIP Issued' ? 'PIP' : 'PA';
+    return hasOngoingPipWindow(pipByEmp.get(e.id) || [], wantType, today);
+  });
+  const skippedLapsed = candidates.rows.length - employees.length;
+
   const r = await sendCheckIns({
-    db, week, employees: employees.rows, questionsByTeam, baseUrl, getManagerEmail, sendMail,
+    db, week, employees, questionsByTeam, baseUrl, getManagerEmail, sendMail,
     subjectFor: (emp) => `Weekly Progress Check-In - ${emp.name}`,
     htmlFor: paPipEmailHtml,
   });
 
-  return { message: `Sent ${r.sent} of ${r.total} eligible active PA/PIP employees for ${week} (${r.skippedSent} already sent, ${r.skippedNoEmail} no email on file${r.skippedNoQuestions ? `, ${r.skippedNoQuestions} no questions for team` : ''}).` };
+  return { message: `Sent ${r.sent} of ${r.total} employees with an ongoing PA/PIP window for ${week} (${r.skippedSent} already sent, ${r.skippedNoEmail} no email on file${r.skippedNoQuestions ? `, ${r.skippedNoQuestions} no questions for team` : ''}, ${skippedLapsed} excluded — PA/PIP flagged active in Koenig but window already lapsed).` };
 }

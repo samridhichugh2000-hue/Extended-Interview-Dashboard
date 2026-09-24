@@ -67,3 +67,13 @@ export function isPastWednesdayCheckIn(weekStr) {
   const wednesdaySixPm = start.getTime() + 66 * 60 * 60 * 1000; // + 66h = Wednesday 18:00 IST
   return Date.now() >= wednesdaySixPm;
 }
+
+// True only on Monday, IST. The weekly check-in emails (NJ and PA/PIP) are
+// meant to go out once, on Monday, full stop — no catch-up send later in the
+// week for people newly added/flagged after Monday's run. sendWeeklyReports
+// and sendPaPipWeeklyCheckIns both gate on this before doing anything, even
+// though the underlying cron still fires daily (see vercel.json) — it's just
+// a no-op every day that isn't Monday.
+export function isMondayIst(date = new Date()) {
+  return istCalendarMidnightUtc(date).getUTCDay() === 1;
+}

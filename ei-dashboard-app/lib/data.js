@@ -10,15 +10,16 @@ export const C = { rose: '#F43F5E', amber: '#F59E0B', indigo: '#8B8CF6', teal: '
 export const NJ_TENURE_DAYS = 182;
 export const isNewJoiner = (tenureDays) => (tenureDays ?? 0) < NJ_TENURE_DAYS;
 
-// Whether the Worry Index should compute a real score for this employee at
-// all. Every count-based signal (SCs raised, tech calls, audits...) is
-// "since joining" or all-time — meaningful over an NJ's first ~6 months,
-// nonsensical over a multi-year veteran's tenure (a real case: 1074 SCs
-// raised over 18 years scored +5,370 on a scale that only spans -12/+12).
-// Scoring stays limited to genuine New Joiners and active PA/PIP cases —
-// the same population this dashboard already scored meaningfully before
-// the full roster (including long-tenured veterans) got imported.
-export const isScoredEmployee = (e) => isNewJoiner(e.tenure) || e.status === 'PA Issued' || e.status === 'PIP Issued';
+// Whether the Worry Index should compute a real score for this employee.
+// Previously limited to New Joiners + active PA/PIP cases, because every
+// count-based signal (SCs raised, tech calls, audits...) is "since joining"
+// or all-time — meaningful over an NJ's first ~6 months, but capable of
+// exploding into a nonsensical number over a multi-year veteran's tenure
+// (a real case: 1074 SCs raised over 18 years scored +5,370 on a scale that
+// only spans -12/+12 — see commit 22087af). Explicitly reopened to score
+// everyone regardless of tenure/status; the out-of-range-score risk for
+// long-tenured employees is accepted, not fixed.
+export const isScoredEmployee = () => true;
 
 export const STATUS = {
   'PIP Issued': { bg: 'rgba(244,63,94,0.12)', color: '#F87171', border: 'rgba(244,63,94,0.3)' },
