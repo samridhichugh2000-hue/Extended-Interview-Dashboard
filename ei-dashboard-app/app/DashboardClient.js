@@ -2116,10 +2116,37 @@ function DailyTrendChart({ data }) {
 /* ---------- modal ---------- */
 
 function EmployeeModal({ emp, onClose }) {
-  const d = decorate(emp);
   const { pending, closeEmployee, openAlertPreview, alertModal } = useEmployeeActions();
-  const scored = emp.score != null;
-  const bandPct = scored ? Math.round(Math.max(0, Math.min(1, (emp.score + 12) / 24)) * 100) + '%' : '0%';
+  // Header, status pill and the Alert action below always read the true
+  // all-time picture, independent of whatever window (if any) was active on
+  // the screen that opened this modal — emp.score/signalReport may already
+  // be pre-windowed (e.g. clicked from Worry Index mid-Monthly-view).
+  // Raising a real PA/PIP alert off a partial windowed signal set would
+  // misrepresent the employee, so it's recomputed from scratch here rather
+  // than trusting the prop.
+  const allTimeSignalReport = computeSignalReport(emp, {});
+  const allTimeSignals = allTimeSignalReport.filter((s) => s.status === 'fired');
+  // signalReport is set explicitly too (not just score) since
+  // AlertPreviewModal reads emp.signalReport directly (see
+  // useEmployeeActions/openAlertPreview above) — leaving the prop's
+  // original value in place would leak whatever window was active on the
+  // calling screen into the alert.
+  const d = decorate({ ...emp, score: computeWorryScore(allTimeSignals), signalReport: allTimeSignalReport, signals: allTimeSignals });
+
+  // Worry Index box + signal breakdown below ARE window-aware — same
+  // Weekly/Monthly/6 Months/All time selector as the Worry Index screen,
+  // recomputed the same way (computeSignalReport's `since` option). 'All
+  // time' with no `since` reproduces the exact all-time score above.
+  const [windowKey, setWindowKey] = useState('all');
+  const windowDef = WORRY_WINDOWS.find((w) => w.key === windowKey) || WORRY_WINDOWS[0];
+  const since = windowSince(windowDef.days);
+  const signalReport = computeSignalReport(emp, since ? { since } : {});
+  const signals = signalReport.filter((s) => s.status === 'fired');
+  const score = computeWorryScore(signals);
+  const trendNote = trendNoteFor(signals, windowDef.trendPhrase);
+  const wd = decorate({ ...emp, score });
+  const scored = score != null;
+  const bandPct = scored ? Math.round(Math.max(0, Math.min(1, (score + 12) / 24)) * 100) + '%' : '0%';
   const weeks = emp.weeks.map((w) => ({ ...w, color: w.state === 'Overdue' ? '#F87171' : w.state === 'Received' ? '#5EEAD4' : '#A5A7FA' }));
 
   return (
@@ -2139,22 +2166,34 @@ function EmployeeModal({ emp, onClose }) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.35fr', gap: 22, alignItems: 'start' }}>
             <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, padding: 20, background: 'rgba(255,255,255,0.02)' }}>
               <div style={{ fontSize: 11.5, color: '#8A90A8' }}>Worry Index</div>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 9, margin: '6px 0 14px' }}><span className="disp" style={{ fontSize: 42, fontWeight: 600, color: d.bandColor, letterSpacing: '-0.03em' }}>{d.scoreStr}</span><span style={{ fontSize: 12.5, color: d.bandColor }}>{d.bandLabel}</span></div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 9, margin: '6px 0 14px' }}><span className="disp" style={{ fontSize: 42, fontWeight: 600, color: wd.bandColor, letterSpacing: '-0.03em' }}>{wd.scoreStr}</span><span style={{ fontSize: 12.5, color: wd.bandColor }}>{wd.bandLabel}</span></div>
               {scored && <>
-                <div style={{ height: 8, borderRadius: 4, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}><div style={{ height: '100%', width: bandPct, background: d.bandColor, borderRadius: 4 }} /></div>
+                <div style={{ height: 8, borderRadius: 4, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}><div style={{ height: '100%', width: bandPct, background: wd.bandColor, borderRadius: 4 }} /></div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#5C6178', marginTop: 6 }}><span>−12</span><span>0</span><span>+12</span></div>
               </>}
-              <div style={{ marginTop: 16, fontSize: 12.5, color: '#8A90A8', lineHeight: 1.55 }}>{emp.trendNote}</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 14 }}>
+                {WORRY_WINDOWS.map((w) => (
+                  <div key={w.key} onClick={() => setWindowKey(w.key)} style={{ cursor: 'pointer', border: `1px solid ${windowKey === w.key ? 'rgba(20,184,166,0.45)' : 'rgba(255,255,255,0.1)'}`, background: windowKey === w.key ? 'rgba(20,184,166,0.18)' : 'rgba(255,255,255,0.03)', color: windowKey === w.key ? '#FFFFFF' : '#9BA1B8', borderRadius: 999, padding: '5px 11px', fontSize: 11.5 }}>
+                    {w.label}
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: 12, fontSize: 12.5, color: '#8A90A8', lineHeight: 1.55 }}>{trendNote}</div>
             </div>
             <div>
               <div className="mono" style={{ fontSize: 10, letterSpacing: '.12em', color: '#5C6178', textTransform: 'uppercase', marginBottom: 10 }}>Signal breakdown — every parameter for {emp.team}</div>
+              {windowKey !== 'all' && (
+                <div style={{ fontSize: 11.5, color: '#6E7488', lineHeight: 1.5, marginBottom: 10 }}>
+                  Signals with no per-event date on file show "no dated records" and are excluded from this window's score — the Alert action above still uses the full all-time record regardless of this filter.
+                </div>
+              )}
               {!scored && (
                 <div style={{ fontSize: 12.5, color: '#6E7488', lineHeight: 1.55 }}>
                   Not scored — Worry Index parameters only apply to New Joiners (first ~6 months) and active PA/PIP cases. Counts like SCs raised or tech calls accumulate over this employee's full tenure, so scoring them the same way would be meaningless.
                 </div>
               )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                {emp.signalReport.map((s) => {
+                {signalReport.map((s) => {
                   const notSynced = s.status === 'no-data' || s.status === 'not-tracked' || s.status === 'not-windowed';
                   return (
                     <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 12, opacity: notSynced ? 0.55 : 1 }}>
