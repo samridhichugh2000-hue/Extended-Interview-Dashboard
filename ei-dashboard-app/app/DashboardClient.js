@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import {
   STATUS, decorate, band, isNewJoiner, NAV, TITLES, PATHS, METRIC_HEADS,
   WORRY_BANDS, POS_SIGNALS, NEG_SIGNALS, NJ_QUESTIONS, appliesToTeam, feedbackRating,
+  computeSignalReport, computeWorryScore, trendNoteFor, WORRY_WINDOWS, windowSince,
 } from '../lib/data';
 import { JOB_LABELS } from '../lib/jobLabels';
 
@@ -1377,9 +1378,25 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
   const [njOnly, setNjOnly] = useState(false);
   const [missing, setMissing] = useState([]);
   const toggleMissing = (key) => setMissing((m) => (m.includes(key) ? m.filter((k) => k !== key) : [...m, key]));
+  // Weekly/Monthly/6 Months/All time — recomputes score, signalReport and
+  // trendNote per employee for the selected window rather than reading the
+  // all-time values lib/queries.js already attached server-side. Safe to
+  // always recompute (even for 'All time'): computeSignalReport(e) with no
+  // `since` produces the exact same result as the server did. Signals
+  // without a countInWindow (see SIGNAL_DEFS) surface as 'not-windowed'
+  // under Weekly/Monthly/6 Months rather than silently keeping their
+  // all-time count under a window label that would misrepresent them.
+  const [windowKey, setWindowKey] = useState('all');
+  const windowDef = WORRY_WINDOWS.find((w) => w.key === windowKey) || WORRY_WINDOWS[0];
+  const since = windowSince(windowDef.days);
+  const windowedEmployees = employees.map((e) => {
+    const signalReport = computeSignalReport(e, since ? { since } : {});
+    const signals = signalReport.filter((s) => s.status === 'fired');
+    return { ...e, signalReport, signals, score: computeWorryScore(signals), trendNote: trendNoteFor(signals, windowDef.trendPhrase) };
+  });
   // score is non-null for every employee now (isScoredEmployee always
   // returns true) — the `!= null` check is just defensive.
-  const active = employees.map(decorate).filter((e) => (includeInactive || !e.inactive) && e.score != null && (!njOnly || isNewJoiner(e.tenure)));
+  const active = windowedEmployees.map(decorate).filter((e) => (includeInactive || !e.inactive) && e.score != null && (!njOnly || isNewJoiner(e.tenure)));
   const tabs = [['All Departments', null], ['Sales', 'Sales'], ['Trainer', 'Trainer'], ['PT Team', 'PT Team']].map(([label, val]) => ({
     label, val, active: filter === val || (!filter && !val),
     count: val ? active.filter((e) => e.team === val).length : active.length,
@@ -1401,7 +1418,8 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
     const eligible = ranked.filter((e) => appliesToTeam(s.teams, e.team));
     const fired = eligible.filter((e) => e.signals.some((sig) => sig.label === s.label)).length;
     const noData = eligible.filter((e) => e.signalReport.find((r) => r.label === s.label)?.status === 'no-data').length;
-    return { eligible: eligible.length, fired, noData };
+    const notWindowed = eligible.filter((e) => e.signalReport.find((r) => r.label === s.label)?.status === 'not-windowed').length;
+    return { eligible: eligible.length, fired, noData, notWindowed };
   };
   const posSignals = POS_SIGNALS.filter((s) => !filter || appliesToTeam(s.teams, filter));
   const negSignals = NEG_SIGNALS.filter((s) => !filter || appliesToTeam(s.teams, filter));
@@ -1414,6 +1432,19 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
             <span>{t.label}</span><span className="mono" style={{ fontSize: 11, opacity: 0.75 }}>{t.count}</span>
           </div>
         ))}
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span className="mono" style={{ fontSize: 10, letterSpacing: '.1em', color: '#5C6178', textTransform: 'uppercase', marginRight: 2 }}>Window</span>
+        {WORRY_WINDOWS.map((w) => (
+          <div key={w.key} onClick={() => setWindowKey(w.key)} style={{ cursor: 'pointer', border: `1px solid ${windowKey === w.key ? 'rgba(20,184,166,0.45)' : 'rgba(255,255,255,0.1)'}`, background: windowKey === w.key ? 'rgba(20,184,166,0.18)' : 'rgba(255,255,255,0.03)', color: windowKey === w.key ? '#FFFFFF' : '#9BA1B8', borderRadius: 999, padding: '6px 14px', fontSize: 12.5 }}>
+            {w.label}
+          </div>
+        ))}
+        {windowKey !== 'all' && (
+          <span style={{ fontSize: 11, color: '#6E7488' }}>
+            Signals with no per-event date on file (tech calls, exam results, skills pace, polls) can't be scoped to a window — shown as "no dated records" and excluded from this score.
+          </span>
+        )}
       </div>
       <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
         <input
@@ -1446,7 +1477,7 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
       <div style={{ ...card, overflow: 'hidden' }}>
         <div style={{ padding: '16px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
           <div className="disp" style={{ fontSize: 15, fontWeight: 600 }}>Every NJ, ranked worst to best</div>
-          <div style={{ fontSize: 11.5, color: '#6E7488', marginTop: 2 }}>2026-W30 · click a row for the full signal breakdown</div>
+          <div style={{ fontSize: 11.5, color: '#6E7488', marginTop: 2 }}>{windowDef.label} · click a row for the full signal breakdown</div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1.5fr .9fr .7fr .8fr 2fr', padding: '10px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 10, letterSpacing: '.1em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
           <span>Employee</span><span>Team</span><span style={{ textAlign: 'right' }}>Score</span><span>Band</span><span>Trend</span>
@@ -1474,15 +1505,16 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
           {posSignals.map((s) => {
             const cov = coverageFor(s);
             return (
-              <div key={s.label} style={{ display: 'grid', gridTemplateColumns: '1fr .8fr .5fr .9fr', padding: '10px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.04)', opacity: s.live ? 1 : 0.45 }}>
+              <div key={s.label} style={{ display: 'grid', gridTemplateColumns: '1fr .8fr .5fr .9fr', padding: '10px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.04)', opacity: !s.live ? 0.45 : !s.windowed && windowKey !== 'all' ? 0.6 : 1 }}>
                 <span style={{ fontSize: 13, color: '#C7CBDA', display: 'flex', alignItems: 'center', gap: 8 }}>
                   {s.label}
                   {!s.live && <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase' }}>not tracked</span>}
+                  {s.live && !s.windowed && windowKey !== 'all' && <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase' }}>not dated</span>}
                 </span>
                 <span style={{ fontSize: 11, color: '#6E7488' }}>{s.teams}</span>
                 <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12.5, color: '#14B8A6' }}>{s.w}</span>
                 <span style={{ textAlign: 'right', fontSize: 11, color: '#6E7488' }}>
-                  {s.live ? `fired ${cov.fired}/${cov.eligible}${cov.noData ? ` · ${cov.noData} no data` : ''}` : '—'}
+                  {s.live ? `fired ${cov.fired}/${cov.eligible}${cov.noData ? ` · ${cov.noData} no data` : ''}${cov.notWindowed ? ` · ${cov.notWindowed} not dated` : ''}` : '—'}
                 </span>
               </div>
             );
@@ -1498,15 +1530,16 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
           {negSignals.map((s) => {
             const cov = coverageFor(s);
             return (
-              <div key={s.label} style={{ display: 'grid', gridTemplateColumns: '1fr .8fr .5fr .9fr', padding: '10px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.04)', opacity: s.live ? 1 : 0.45 }}>
+              <div key={s.label} style={{ display: 'grid', gridTemplateColumns: '1fr .8fr .5fr .9fr', padding: '10px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.04)', opacity: !s.live ? 0.45 : !s.windowed && windowKey !== 'all' ? 0.6 : 1 }}>
                 <span style={{ fontSize: 13, color: '#C7CBDA', display: 'flex', alignItems: 'center', gap: 8 }}>
                   {s.label}
                   {!s.live && <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase' }}>not tracked</span>}
+                  {s.live && !s.windowed && windowKey !== 'all' && <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase' }}>not dated</span>}
                 </span>
                 <span style={{ fontSize: 11, color: '#6E7488' }}>{s.teams}</span>
                 <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12.5, color: '#F87171' }}>{s.w}</span>
                 <span style={{ textAlign: 'right', fontSize: 11, color: '#6E7488' }}>
-                  {s.live ? `fired ${cov.fired}/${cov.eligible}${cov.noData ? ` · ${cov.noData} no data` : ''}` : '—'}
+                  {s.live ? `fired ${cov.fired}/${cov.eligible}${cov.noData ? ` · ${cov.noData} no data` : ''}${cov.notWindowed ? ` · ${cov.notWindowed} not dated` : ''}` : '—'}
                 </span>
               </div>
             );
@@ -2122,7 +2155,7 @@ function EmployeeModal({ emp, onClose }) {
               )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                 {emp.signalReport.map((s) => {
-                  const notSynced = s.status === 'no-data' || s.status === 'not-tracked';
+                  const notSynced = s.status === 'no-data' || s.status === 'not-tracked' || s.status === 'not-windowed';
                   return (
                     <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 12, opacity: notSynced ? 0.55 : 1 }}>
                       <span style={{ flex: 1, fontSize: 13, color: notSynced ? '#6E7488' : '#FFFFFF', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -2132,7 +2165,7 @@ function EmployeeModal({ emp, onClose }) {
                         )}
                         {s.status !== 'fired' && (
                           <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase', flex: 'none' }}>
-                            {s.status === 'not-tracked' ? 'not tracked' : s.status === 'no-data' ? 'no data traced' : 'no incident'}
+                            {s.status === 'not-tracked' ? 'not tracked' : s.status === 'no-data' ? 'no data traced' : s.status === 'not-windowed' ? 'no dated records' : 'no incident'}
                           </span>
                         )}
                       </span>

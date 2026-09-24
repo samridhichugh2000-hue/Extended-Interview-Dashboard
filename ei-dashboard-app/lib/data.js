@@ -1,4 +1,4 @@
-import { getIsoWeek, isPastWednesdayCheckIn } from './weekUtils';
+import { getIsoWeek, isPastWednesdayCheckIn, weekDateRange } from './weekUtils';
 
 export const C = { rose: '#F43F5E', amber: '#F59E0B', indigo: '#8B8CF6', teal: '#14B8A6', purple: '#A855F7' };
 
@@ -188,6 +188,37 @@ export function missedWeeksCount(e) {
   }).length;
 }
 
+// Date-window support for the Worry Index screen's Weekly/Monthly/6 Months
+// filter. Only signals backed by a per-event dated record (see each
+// `countInWindow` below) can honestly be scoped to a window — count-only
+// fields like techCallsCount or examPass never had per-occurrence dates
+// synced, so there's nothing to filter; computeSignalReport surfaces those
+// as status 'not-windowed' rather than silently keeping the all-time count
+// under a window label that would misrepresent it.
+function countDatedRecords(details, dateField, since) {
+  return (details || []).filter((d) => {
+    const dt = d?.[dateField] && new Date(d[dateField]);
+    return dt && !isNaN(dt) && dt >= since;
+  }).length;
+}
+
+// Same "cumulative, not just current" rule as missedWeeksCount, restricted
+// to weeks whose date range (weekUtils.weekDateRange) falls at or after the
+// window start — a week is "in the window" if it hadn't fully ended before
+// the window began.
+export function missedWeeksInWindow(e, since) {
+  const currentWeek = getIsoWeek(new Date());
+  return (e.weeks || []).filter((w) => {
+    if (w.state === 'Received') return false;
+    if (w.week === currentWeek && !isPastWednesdayCheckIn(currentWeek)) return false;
+    return weekDateRange(w.week).end.getTime() >= since.getTime();
+  }).length;
+}
+
+export function belowSatisfactoryCountInWindow(e, since) {
+  return (e.mgrFeedbackDetails || []).filter((f) => feedbackRating(f) === 'below' && f.date && new Date(f.date) >= since).length;
+}
+
 // PT Team is deliberately NOT tagged onto the Sales-only/Trainer-only
 // signals below (Tech calls, SCs raised, Neg. enquiry audit are Sales-only;
 // Tech calls converted, TBTs, Skills count, Marking course inhouse, Zero
@@ -197,6 +228,16 @@ export function missedWeeksCount(e) {
 // 15-Day Report's PT_COLUMNS (lib/report15Runner.js) and to
 // DEPT_MISSING_FILTERS['PT Team'] (empty) in DashboardClient.js — keep all
 // three in sync if PT's applicable set ever changes.
+// Signals below with no `countInWindow` (Tech calls, Tech calls converted,
+// both Skills-vs-weeks-since-joining signals, Polls participated, Zero
+// assignments, Failure/Passed exam, Tech calls < 1/week) have no per-event
+// date synced at all — Koenig's feeds for these only ever returned an
+// all-time/summary count, never a dated list of occurrences (see each
+// field's comment in lib/schema.sql) — or, for the two weeks-since-joining
+// signals, are inherently an all-tenure pace comparison that a rolling
+// window can't meaningfully reproduce. Under a date-windowed view
+// (computeSignalReport's `since` option) these surface as status
+// 'not-windowed' rather than quietly keeping their all-time count.
 export const SIGNAL_DEFS = [
   // positive, live
   { label: 'Tech calls', teams: 'Sales', pts: 1, live: true,
@@ -210,11 +251,13 @@ export const SIGNAL_DEFS = [
   { label: 'SCs raised', teams: 'Sales', pts: 5, live: true,
     hasData: (e) => e.scRaised != null,
     fires: (e) => e.scRaised > 0,
-    count: (e) => e.scRaised },
+    count: (e) => e.scRaised,
+    countInWindow: (e, since) => countDatedRecords(e.scDetails, 'createdOn', since) },
   { label: 'TBTs requested', teams: 'Trainer', pts: 1, live: true,
     hasData: (e) => e.tbtCount != null,
     fires: (e) => e.tbtCount > 0,
-    count: (e) => e.tbtCount },
+    count: (e) => e.tbtCount,
+    countInWindow: (e, since) => countDatedRecords(e.tbtDetails, 'requestedOn', since) },
   // Sourced from Koenig's incident feed (lib/koenigShoddyApi.js) — despite the
   // "shoddy" naming on that module, its positive-nature records are HR
   // incidents logged in the NJ's favor, not specifically about catching
@@ -224,7 +267,8 @@ export const SIGNAL_DEFS = [
   { label: 'HR incidents (positive)', teams: 'All', pts: 3, live: true,
     hasData: (e) => e.shoddyPosCount != null,
     fires: (e) => e.shoddyPosCount > 0,
-    count: (e) => e.shoddyPosCount },
+    count: (e) => e.shoddyPosCount,
+    countInWindow: (e, since) => countDatedRecords(e.shoddyPosDetails, 'reportedDate', since) },
   // Penalty scales with the shortfall — -0.5 for every week skillsCount
   // trails behind weeks since joining.
   { label: 'Skills count < weeks since joining', teams: 'Trainer', pts: -0.5, live: true,
@@ -248,25 +292,29 @@ export const SIGNAL_DEFS = [
   { label: 'Marking course inhouse', teams: 'Trainer', pts: 0.5, live: true,
     hasData: (e) => e.inHouseSkillsCount != null,
     fires: (e) => e.inHouseSkillsCount > 0,
-    count: (e) => e.inHouseSkillsCount },
+    count: (e) => e.inHouseSkillsCount,
+    countInWindow: (e, since) => countDatedRecords(e.inHouseSkillsDetails, 'markDate', since) },
   // Sourced from the standalone Polls Dashboard's KGT (ownership-transfer
   // request) endpoint, matched by emp_code. Null means the polls dashboard
   // has no record for this emp_code at all — distinct from a confirmed 0.
   { label: 'Applied for KGT', teams: 'All', pts: 1, live: true,
     hasData: (e) => e.kgtCount != null,
     fires: (e) => e.kgtCount > 0,
-    count: (e) => e.kgtCount },
+    count: (e) => e.kgtCount,
+    countInWindow: (e, since) => countDatedRecords(e.kgtDetails, 'submitted_at', since) },
   // Sourced from Koenig's "Get Non-RMS Tasks By EmpID" feed (lib/koenigIdeasApi.js)
   // — each task on file for this NJ counts as one improvement idea raised.
   { label: 'Ideas for improvement', teams: 'All', pts: 1, live: true,
     hasData: (e) => e.ideasCount != null,
     fires: (e) => e.ideasCount > 0,
-    count: (e) => e.ideasCount },
+    count: (e) => e.ideasCount,
+    countInWindow: (e, since) => countDatedRecords(e.ideasDetails, 'createdDateTime', since) },
   // negative, live
   { label: 'Shoddy marked against NJ', teams: 'All', pts: -5, live: true,
     hasData: (e) => e.shoddyNegCount != null,
     fires: (e) => e.shoddyNegCount > 0,
-    count: (e) => e.shoddyNegCount },
+    count: (e) => e.shoddyNegCount,
+    countInWindow: (e, since) => countDatedRecords(e.shoddyNegDetails, 'reportedDate', since) },
   // Boolean absence-of-any state, not a count — either they have zero
   // assignments for every week since joining (including future weeks) or
   // they don't.
@@ -284,11 +332,13 @@ export const SIGNAL_DEFS = [
   { label: 'Negative feedback on delivery', teams: 'Trainer', pts: -5, live: true,
     hasData: (e) => e.negFeedback != null,
     fires: (e) => e.negFeedback > 0,
-    count: (e) => e.negFeedback },
+    count: (e) => e.negFeedback,
+    countInWindow: (e, since) => countDatedRecords(e.negFeedbackDetails, 'feedbackDate', since) },
   { label: 'Negative enquiry audit', teams: 'Sales', pts: -5, live: true,
     hasData: (e) => e.negAudits != null,
     fires: (e) => e.negAudits > 0,
-    count: (e) => e.negAudits },
+    count: (e) => e.negAudits,
+    countInWindow: (e, since) => countDatedRecords(e.auditRemarks, 'createdOn', since) },
   // -5 per week short of the 1-call/week pace (same "weeks since joining"
   // math as the skills-count signals above) — scales with the shortfall,
   // same convention as Shoddy marked against NJ above.
@@ -303,11 +353,13 @@ export const SIGNAL_DEFS = [
   { label: 'Weekly progress email not received', teams: 'All', pts: -1, live: true,
     hasData: (e) => (e.weeks || []).length > 0,
     fires: (e) => missedWeeksCount(e) > 0,
-    count: missedWeeksCount },
+    count: missedWeeksCount,
+    countInWindow: missedWeeksInWindow },
   { label: 'Manager feedback below satisfactory', teams: 'All', pts: -1, live: true,
     hasData: (e) => e.mgrFeedbackCount != null,
     fires: (e) => belowSatisfactoryCount(e) > 0,
-    count: belowSatisfactoryCount },
+    count: belowSatisfactoryCount,
+    countInWindow: belowSatisfactoryCountInWindow },
   { label: 'Not replying to HR emails', teams: 'All', pts: -1, live: false, hasData: () => false, fires: () => false },
   { label: 'Audio / video not OK in meetings', teams: 'All', pts: -1, live: false, hasData: () => false, fires: () => false },
   { label: 'Weekly email shows less progress', teams: 'All', pts: -2, live: false, hasData: () => false, fires: () => false },
@@ -326,44 +378,82 @@ export function appliesToTeam(teams, team) {
   return teams === 'All' || teams.split(' · ').includes(team);
 }
 
-export const POS_SIGNALS = SIGNAL_DEFS.filter((d) => d.pts > 0).map((d) => ({ label: d.label, teams: d.teams, w: fmtPts(d.pts), live: d.live }));
-export const NEG_SIGNALS = SIGNAL_DEFS.filter((d) => d.pts < 0).map((d) => ({ label: d.label, teams: d.teams, w: fmtPts(d.pts), live: d.live }));
+export const POS_SIGNALS = SIGNAL_DEFS.filter((d) => d.pts > 0).map((d) => ({ label: d.label, teams: d.teams, w: fmtPts(d.pts), live: d.live, windowed: !!d.countInWindow }));
+export const NEG_SIGNALS = SIGNAL_DEFS.filter((d) => d.pts < 0).map((d) => ({ label: d.label, teams: d.teams, w: fmtPts(d.pts), live: d.live, windowed: !!d.countInWindow }));
 
 // Every parameter that applies to this employee's team, whichever way it
 // landed — this is the "each and every parameter" view, not just the ones
 // that fired. status is one of:
-//   'fired'       — live, has data, condition true — counts toward the score
-//   'clear'       — live, has data, condition false — a confirmed non-event
-//   'no-data'     — live signal, but this NJ has no synced value for it yet
-//   'not-tracked' — no data source exists for this signal at all
-export function computeSignalReport(e) {
+//   'fired'         — condition true for the active window — counts toward the score
+//   'clear'         — has data for the active window, condition false — a confirmed non-event
+//   'no-data'       — live signal, but this employee has no synced value for it at all
+//   'not-tracked'   — no data source exists for this signal at all
+//   'not-windowed'  — a date window is active but this signal has no per-event
+//                     dates to filter by (see the note above SIGNAL_DEFS) —
+//                     excluded from the windowed score rather than silently
+//                     kept at its all-time value
+//
+// `opts.since`, when passed, scopes fired/count to d.countInWindow(e, since)
+// instead of d.fires(e)/d.count(e) — see SIGNAL_DEFS for which signals
+// support this. Omitting it (the default) is the original all-time
+// behavior, unchanged — every existing caller that doesn't pass opts (e.g.
+// lib/queries.js's getEmployees) computes exactly as before.
+export function computeSignalReport(e, { since } = {}) {
   return SIGNAL_DEFS
     .filter((d) => appliesToTeam(d.teams, e.team))
     .map((d) => {
-      const status = !d.live ? 'not-tracked' : !d.hasData(e) ? 'no-data' : d.fires(e) ? 'fired' : 'clear';
+      let status, count = null;
+      if (!d.live) {
+        status = 'not-tracked';
+      } else if (!d.hasData(e)) {
+        status = 'no-data';
+      } else if (since && !d.countInWindow) {
+        status = 'not-windowed';
+      } else if (since) {
+        count = d.countInWindow(e, since);
+        status = count > 0 ? 'fired' : 'clear';
+      } else {
+        status = d.fires(e) ? 'fired' : 'clear';
+      }
       // Occurrence count multiplies the per-unit pts (3 negative audits score
       // 3 × -2, not a flat -2) — weight classification stays keyed to the
       // per-unit severity in d.pts, not the multiplied total.
-      const count = status === 'fired' && d.count ? d.count(e) : null;
+      if (status === 'fired' && count == null && d.count) count = d.count(e);
+      if (status !== 'fired') count = null;
       const pts = count ? Math.round(d.pts * count * 100) / 100 : d.pts;
       return { label: d.label, pts, ptsStr: fmtPts(pts), weight: weightClass(d.pts), status, count };
     });
 }
 // Only fired signals feed the actual score.
-export function computeWorrySignals(e) {
-  return computeSignalReport(e).filter((s) => s.status === 'fired');
+export function computeWorrySignals(e, opts) {
+  return computeSignalReport(e, opts).filter((s) => s.status === 'fired');
 }
 export function computeWorryScore(signals) {
   return Math.round(signals.reduce((sum, s) => sum + s.pts, 0) * 10) / 10;
 }
-export function trendNoteFor(signals) {
+export function trendNoteFor(signals, windowPhrase = 'this week') {
   if (!signals.length) return 'No live signals recorded yet — score reflects only tracked data sources.';
   const pos = signals.filter((s) => s.pts > 0).length;
   const neg = signals.filter((s) => s.pts < 0).length;
   const parts = [];
   if (pos) parts.push(`${pos} positive`);
   if (neg) parts.push(`${neg} negative`);
-  return `${parts.join(', ')} signal${signals.length > 1 ? 's' : ''} this week.`;
+  return `${parts.join(', ')} signal${signals.length > 1 ? 's' : ''} ${windowPhrase}.`;
+}
+
+// Worry Index date-window presets for the dashboard's filter. 'All time'
+// (days: null) is the original/default scoring behavior — every signal
+// counted since joining. days converts to a `since` Date for
+// computeSignalReport; signals without a countInWindow show as
+// 'not-windowed' rather than falling back to their all-time count.
+export const WORRY_WINDOWS = [
+  { key: 'all', label: 'All time', days: null, trendPhrase: 'in total' },
+  { key: 'weekly', label: 'Weekly', days: 7, trendPhrase: 'this week' },
+  { key: 'monthly', label: 'Monthly', days: 30, trendPhrase: 'this month' },
+  { key: '6month', label: '6 Months', days: 182, trendPhrase: 'in the last 6 months' },
+];
+export function windowSince(days) {
+  return days ? new Date(Date.now() - days * 86400000) : null;
 }
 export const LOOP = [
   { when: 'MON 09:00', title: 'Progress email goes out', text: 'Every active NJ gets two role-specific questions. Cron-fired, no HR action.' },
