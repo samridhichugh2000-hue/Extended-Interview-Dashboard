@@ -2,6 +2,12 @@
 // employees.metric1..metric6 — the trailing six calendar months of
 // utilization % ending with the current month. Unlike the Sales NR feed,
 // this API is per-employee (no bulk endpoint), so it's one call per Trainer.
+//
+// Also stores the full raw month history (util_monthly_details) — the API
+// returns ~14 months per employee, more than the 6 display months kept in
+// metric1-6 — so the Trainer PA Algo's 180/270/360-day trailing-utilization
+// windows (approximated as 6/9/12 trailing calendar months) have enough
+// history to compute from.
 import { createClient } from '@libsql/client';
 import { fileURLToPath } from 'url';
 import path from 'path';
@@ -20,6 +26,14 @@ const db = createClient({
 function monthKey(date) {
   const mon = date.toLocaleString('en-US', { month: 'short' });
   return `${mon} ${date.getFullYear()}`;
+}
+
+// Chronological (oldest first) so trailing-N-month windows can just slice
+// off the end. `month` parses fine with `new Date('MMM YYYY')`.
+function fullHistory(months) {
+  return Object.entries(months)
+    .map(([month, rec]) => ({ month, hours: rec.hours, util: rec.util }))
+    .sort((a, b) => new Date(a.month) - new Date(b.month));
 }
 
 // Trailing 6 calendar months ending with the current one — was "first 6
@@ -49,8 +63,8 @@ for (const emp of trainerEmployees.rows) {
 
   const values = lastSixMonths(data.months);
   await db.execute({
-    sql: 'UPDATE employees SET metric1 = ?, metric2 = ?, metric3 = ?, metric4 = ?, metric5 = ?, metric6 = ? WHERE id = ?',
-    args: [...values, emp.id],
+    sql: 'UPDATE employees SET metric1 = ?, metric2 = ?, metric3 = ?, metric4 = ?, metric5 = ?, metric6 = ?, util_monthly_details = ? WHERE id = ?',
+    args: [...values, JSON.stringify(fullHistory(data.months)), emp.id],
   });
   updated++;
 }

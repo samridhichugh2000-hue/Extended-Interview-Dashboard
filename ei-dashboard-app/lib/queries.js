@@ -2,6 +2,7 @@ import { getDb } from './db';
 import { computeSignalReport, computeWorryScore, trendNoteFor, isScoredEmployee } from './data';
 import { getIsoWeek, isWeekOver } from './weekUtils';
 import { getManagerEmail } from './managerDirectory';
+import { computeTrainerPaAlgoFlag } from './paAlgo';
 
 // A 'Pending' response for a week that has fully passed reads as 'Overdue' —
 // derived live at read time rather than stored, same "derive, don't
@@ -91,6 +92,8 @@ export async function getEmployees() {
       negFeedbackDetails: e.neg_feedback_details ? JSON.parse(e.neg_feedback_details) : [],
       assignmentsCount: e.assignments_count,
       assignmentsDetails: e.assignments_details ? JSON.parse(e.assignments_details) : [],
+      rcMainAssignmentsCount: e.rc_main_assignments_count,
+      rcMainAssignmentsDetails: e.rc_main_assignments_details ? JSON.parse(e.rc_main_assignments_details) : [],
       skillsCount: e.skills_count,
       skillsDetails: e.skills_details ? JSON.parse(e.skills_details) : [],
       inHouseSkillsCount: e.in_house_skills_count,
@@ -121,6 +124,11 @@ export async function getEmployees() {
       rosterCount: e.roster_count,
       rosterDetails: e.roster_details ? JSON.parse(e.roster_details) : [],
       commonIndexPoints: e.common_index_points,
+      netPayableMonth: e.net_payable_month,
+      netPayableDetails: e.net_payable_details ? JSON.parse(e.net_payable_details) : null,
+      country: e.country,
+      designation: e.designation,
+      utilMonthlyDetails: e.util_monthly_details ? JSON.parse(e.util_monthly_details) : [],
       // null = no weekly_responses row yet for this week (e.g. feature hasn't
       // been run for them this week) — distinct from a confirmed Pending/Overdue.
       weeklyReportState: (weeksByEmp.get(e.id) || []).find((w) => w.week === currentWeek)?.state ?? null,
@@ -147,6 +155,10 @@ export async function getEmployees() {
       signalReport,
       score: scored ? computeWorryScore(signals) : null,
       trendNote: scored ? trendNoteFor(signals) : 'Not scored — outside the New Joiner / active PA-PIP window.',
+      // Proposed PA/PIP candidacy from delivery numbers (assignments/
+      // utilization) vs salary tier — see lib/paAlgo.js. Trainer only for
+      // now; Sales/CSM's own salary-multiple criteria isn't built yet.
+      trainerPaAlgo: base.team === 'Trainer' ? computeTrainerPaAlgoFlag(base) : null,
     };
   });
 }
@@ -156,14 +168,25 @@ export async function getEmployees() {
 // null (not 0/1) until a callRecords webhook notification has matched this
 // meeting — that's a real "no data yet" state, distinct from a confirmed
 // clean call.
+//
+// Excludes only meetings organized by Gunjan Setia (692 of 3646 total rows)
+// — her recurring internal briefings were never meant to be tracked here.
+// Every other organizer stays in, internal (FM team, other Koenig staff) and
+// external (real client domains) alike — this is specifically a Gunjan
+// exclusion, not a blanket internal-vs-external filter.
+const EXCLUDED_ORGANIZERS = ['gunjan.setia@koenig-solutions.com'];
 export async function getGraphMeetings() {
   const db = getDb();
-  const res = await db.execute(`
-    SELECT gm.*, e.name AS emp_name, e.team AS emp_team
-    FROM graph_meetings gm
-    JOIN employees e ON e.id = gm.employee_id
-    ORDER BY gm.scheduled_start DESC
-  `);
+  const res = await db.execute({
+    sql: `
+      SELECT gm.*, e.name AS emp_name, e.team AS emp_team
+      FROM graph_meetings gm
+      JOIN employees e ON e.id = gm.employee_id
+      WHERE lower(gm.organizer_email) NOT IN (${EXCLUDED_ORGANIZERS.map(() => '?').join(',')})
+      ORDER BY gm.scheduled_start DESC
+    `,
+    args: EXCLUDED_ORGANIZERS,
+  });
   return res.rows.map((r) => ({
     id: r.id,
     employeeId: r.employee_id,

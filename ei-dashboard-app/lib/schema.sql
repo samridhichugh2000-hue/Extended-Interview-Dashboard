@@ -32,6 +32,8 @@ CREATE TABLE IF NOT EXISTS employees (
   neg_feedback_details TEXT,    -- JSON array of {assignmentId, feedbackDate, clientName, question, answer, deliveryMode}
   assignments_count INTEGER,    -- count of training assignments delivered (Trainer only)
   assignments_details TEXT,     -- JSON array of {assignmentId, courseName, startDate, endDate, totalPax, deliveryMode, batchType}
+  rc_main_assignments_count INTEGER,  -- count of distinct assignments this Trainer was Main Trainer on, from the Trainer RC Schedule feed (koenigTrainerRcApi.js) — unlike assignments_details above, this feed's TrainerRole field tells a lead trainer apart from a co/backup trainer on the same batch. Feeds the PA Algo's "zero assignments as main trainer" check (lib/paAlgo.js) — not the same population as assignments_count.
+  rc_main_assignments_details TEXT,   -- JSON array of {assignmentId, courseName, startDate, endDate}, one per distinct Main Trainer assignment
   skills_count INTEGER,         -- count of skills/courses marked (Trainer only)
   skills_details TEXT,          -- JSON array of {courseId, courseName, isDuplicate, isDiscontinued}
   in_house_skills_count INTEGER,  -- count of courses marked in-house (Trainer only)
@@ -61,9 +63,15 @@ CREATE TABLE IF NOT EXISTS employees (
   ideas_details TEXT,            -- JSON array of {autoTaskId, taskExecutorName, raisedByEmpId, raisedByName, sourceName, taskStatus, taskDescription, createdByActualName, createdDateTime}
   roster_count INTEGER,           -- count of shift entries on file from the Get CSM Roster feed (Sales only). Purely informational, shown on the Graph API Calls screen — not a Worry Index signal.
   roster_details TEXT,            -- JSON array of {startDate, startTime, endDate, endTime}, newest first
-  net_payable_month TEXT,         -- 'YYYY-MM' the payroll snapshot below is for (All teams). Not a Worry Index signal, not exposed in any UI yet — synced for future use only.
+  net_payable_month TEXT,         -- 'YYYY-MM' the payroll snapshot below is for (Sales/CSMs and Trainers only — see PA Algo). Not a Worry Index signal, not exposed directly on the dashboard — PA Algo's salary-multiple criteria only.
   net_payable_details TEXT,       -- JSON: raw Koenig "Net Payable Details" row for that month (Leave_BF, Leave_Granted, Payable_Days, PayScale, PF, TDS, Salary, ...)
-  common_index_points REAL        -- Koenig "Common Index" TotalPoint (All teams). Shown plainly in every dept table — not a Worry Index signal.
+  common_index_points REAL,       -- Koenig "Common Index" TotalPoint (All teams). Shown plainly in every dept table — not a Worry Index signal.
+  country TEXT,                   -- from Koenig "Get Employee Details (PMS)" (Sales/CSMs and Trainers — see PA Algo). Used to scope PA Algo's salary-multiple criteria to India-based CSMs first. NULL = not yet synced.
+  emp_city TEXT,                  -- same feed, same scope — informational only.
+  emp_state TEXT,                 -- same feed, same scope — informational only.
+  is_overseas INTEGER,            -- same feed's Is_oversease flag, same scope — cross-check against country, not authoritative on its own.
+  designation TEXT,               -- same feed's designation_name, same scope — informational only.
+  util_monthly_details TEXT       -- JSON array of {month: 'MMM YYYY', hours, util} (Trainer only), oldest to newest, full ~14-month history from the Koenig Utilization feed (metric1-6 only ever kept the trailing 6 months as display strings). Powers the Trainer PA Algo's 180/270/360-day trailing-utilization windows (approximated as 6/9/12 trailing calendar months).
 );
 
 CREATE TABLE IF NOT EXISTS pip_status (

@@ -82,10 +82,16 @@ export async function resolveOnlineMeeting(organizerId, joinUrl) {
 
 // A recurring/reconvened meeting can produce more than one report — callers
 // match their own participant across all of them.
+//
+// Graph silently ignores $expand=attendanceRecords on the *list* endpoint
+// (reports come back with no attendanceRecords field at all, no error) —
+// it only honors the expand when fetching a single report by id. So list
+// first, then fetch each report individually with the expand.
 export async function getAttendanceReports(organizerId, meetingId) {
-  const url = `${GRAPH_BASE}/users/${organizerId}/onlineMeetings/${meetingId}/attendanceReports?$expand=attendanceRecords`;
-  const json = await graphJson(url);
-  return json.value || [];
+  const base = `${GRAPH_BASE}/users/${organizerId}/onlineMeetings/${meetingId}/attendanceReports`;
+  const list = await graphJson(base);
+  const reports = list.value || [];
+  return Promise.all(reports.map((r) => graphJson(`${base}/${r.id}?$expand=attendanceRecords`)));
 }
 
 // callRecord.organizer only exposes an AAD object id (no email/UPN), while

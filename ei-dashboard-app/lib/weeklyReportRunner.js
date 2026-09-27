@@ -87,6 +87,36 @@ async function sendCheckIns({ db, week, employees, questionsByTeam, baseUrl, sub
   return { sent, total: employees.length, skippedSent, skippedNoEmail, skippedNoQuestions };
 }
 
+// Trainer-only — a trainer scheduled for 40+ 'SC' (Scheduled Class) hours
+// this week is mid-batch, not sitting idle, so they're skipped from this
+// week's check-in rather than asked to fill out a report while delivering.
+// Sales/PT Team have no RC (Resource Chart) schedule concept in Koenig, so
+// they pass through untouched. Fails open per employee — an RC lookup
+// error sends the check-in anyway rather than going quiet for everyone if
+// Koenig's API hiccups.
+const FULLY_BOOKED_SC_HOURS = 40;
+async function excludeFullyBookedTrainers(employees, week) {
+  const { weekDateRange, istDateKey } = await import('./weekUtils.js');
+  const { getTrainerRcSchedule, totalScHours } = await import('./koenigTrainerRcApi.js');
+  const { start, end } = weekDateRange(week);
+  const fromDate = istDateKey(start);
+  const toDate = istDateKey(end);
+
+  const kept = [];
+  let skippedFullyBooked = 0;
+  for (const emp of employees) {
+    if (emp.team !== 'Trainer' || !emp.email) { kept.push(emp); continue; }
+    try {
+      const rows = await getTrainerRcSchedule(emp.email, fromDate, toDate);
+      if (totalScHours(rows) >= FULLY_BOOKED_SC_HOURS) { skippedFullyBooked++; continue; }
+    } catch (err) {
+      console.error(`RC schedule lookup failed for ${emp.id}, sending check-in anyway:`, err.message);
+    }
+    kept.push(emp);
+  }
+  return { employees: kept, skippedFullyBooked };
+}
+
 // Batch send — per-employee questions come from NJ_QUESTIONS in lib/data.js
 // (a plain constants module, no 'use client', safe to import server-side —
 // same as lib/queries.js already does for computeSignalReport etc).
@@ -106,14 +136,15 @@ export async function sendWeeklyReports() {
   const baseUrl = process.env.APP_BASE_URL;
 
   const employees = await db.execute("SELECT id, name, email, team, manager FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team') AND active = 1 AND tenure_days < 182");
+  const { employees: eligible, skippedFullyBooked } = await excludeFullyBookedTrainers(employees.rows, week);
 
   const r = await sendCheckIns({
-    db, week, employees: employees.rows, questionsByTeam, baseUrl, getManagerEmail, sendMail,
+    db, week, employees: eligible, questionsByTeam, baseUrl, getManagerEmail, sendMail,
     subjectFor: (emp) => `Weekly NJ Check-In - ${emp.name}`,
     htmlFor: initialEmailHtml,
   });
 
-  return { message: `Sent ${r.sent} of ${r.total} eligible active NJs for ${week} (${r.skippedSent} already sent, ${r.skippedNoEmail} no email on file${r.skippedNoQuestions ? `, ${r.skippedNoQuestions} no questions for team` : ''}).` };
+  return { message: `Sent ${r.sent} of ${r.total} eligible active NJs for ${week} (${r.skippedSent} already sent, ${r.skippedNoEmail} no email on file${r.skippedNoQuestions ? `, ${r.skippedNoQuestions} no questions for team` : ''}, ${skippedFullyBooked} Trainers skipped — 40+ SC hours scheduled this week).` };
 }
 
 // A PA/PIP case counts as "ongoing" only if today falls inside its own
@@ -173,11 +204,12 @@ export async function sendPaPipWeeklyCheckIns() {
   // Only the employees whose current status type actually has an ongoing
   // (not lapsed, not future) window get the check-in — this is what "active
   // PA/PIP" is supposed to mean, not just an unclosed Koenig flag.
-  const employees = candidates.rows.filter((e) => {
+  const ongoing = candidates.rows.filter((e) => {
     const wantType = e.status === 'PIP Issued' ? 'PIP' : 'PA';
     return hasOngoingPipWindow(pipByEmp.get(e.id) || [], wantType, today);
   });
-  const skippedLapsed = candidates.rows.length - employees.length;
+  const skippedLapsed = candidates.rows.length - ongoing.length;
+  const { employees, skippedFullyBooked } = await excludeFullyBookedTrainers(ongoing, week);
 
   const r = await sendCheckIns({
     db, week, employees, questionsByTeam, baseUrl, getManagerEmail, sendMail,
@@ -185,5 +217,5 @@ export async function sendPaPipWeeklyCheckIns() {
     htmlFor: paPipEmailHtml,
   });
 
-  return { message: `Sent ${r.sent} of ${r.total} employees with an ongoing PA/PIP window for ${week} (${r.skippedSent} already sent, ${r.skippedNoEmail} no email on file${r.skippedNoQuestions ? `, ${r.skippedNoQuestions} no questions for team` : ''}, ${skippedLapsed} excluded — PA/PIP flagged active in Koenig but window already lapsed).` };
+  return { message: `Sent ${r.sent} of ${r.total} employees with an ongoing PA/PIP window for ${week} (${r.skippedSent} already sent, ${r.skippedNoEmail} no email on file${r.skippedNoQuestions ? `, ${r.skippedNoQuestions} no questions for team` : ''}, ${skippedLapsed} excluded — PA/PIP flagged active in Koenig but window already lapsed, ${skippedFullyBooked} Trainers skipped — 40+ SC hours scheduled this week).` };
 }

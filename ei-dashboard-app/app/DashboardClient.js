@@ -7,6 +7,7 @@ import {
   computeSignalReport, computeWorryScore, trendNoteFor, WORRY_WINDOWS, windowSince,
 } from '../lib/data';
 import { JOB_LABELS } from '../lib/jobLabels';
+import { TRAINER_SALARY_TIERS } from '../lib/paAlgo';
 
 const card = { border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 16 };
 
@@ -326,7 +327,7 @@ export default function DashboardClient({ employees, responses, week, newJoiners
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex' }}>
-      <Sidebar screen={screen} dept={dept} go={go} njCount={newJoiners.length} deptCounts={deptCounts} graphCallsCount={graphMeetings.length} />
+      <Sidebar screen={screen} dept={dept} go={go} njCount={newJoiners.length} deptCounts={deptCounts} graphCallsCount={graphMeetings.length} paAlgoCount={employees.filter((e) => e.trainerPaAlgo?.status === 'fired').length} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <Topbar screen={screen} dept={dept} />
         <JobFailureBanner failedJobs={failedJobs} />
@@ -334,6 +335,7 @@ export default function DashboardClient({ employees, responses, week, newJoiners
           {screen === 'overview' && <Overview employees={employees} newJoiners={newJoiners} deptCounts={deptCounts} go={go} setModal={setModal} />}
           {screen === 'dept' && <Dept key={dept} employees={employees} dept={dept} filter={filter} setFilter={setFilter} setModal={setModal} />}
           {screen === 'papip' && <PaPip employees={employees} filter={filter} setFilter={setFilter} setModal={setModal} />}
+          {screen === 'paalgo' && <PaAlgo employees={employees} filter={filter} setFilter={setFilter} setModal={setModal} />}
           {screen === 'worryindex' && <WorryIndex employees={employees} filter={filter} setFilter={setFilter} setModal={setModal} />}
           {screen === 'graphcalls' && <GraphCalls meetings={graphMeetings} employees={employees} filter={filter} setFilter={setFilter} />}
           {screen === 'reports' && <Reports employees={employees} responses={responses} week={week} filter={filter} setFilter={setFilter} />}
@@ -370,7 +372,7 @@ function JobFailureBanner({ failedJobs }) {
   );
 }
 
-function Sidebar({ screen, dept, go, njCount, deptCounts, graphCallsCount }) {
+function Sidebar({ screen, dept, go, njCount, deptCounts, graphCallsCount, paAlgoCount }) {
   return (
     <div style={{ width: 240, flex: 'none', background: 'linear-gradient(180deg,rgba(99,102,241,0.10),rgba(168,85,247,0.04))', borderRight: '1px solid rgba(255,255,255,0.07)', padding: '22px 14px', display: 'flex', flexDirection: 'column', gap: 26, position: 'sticky', top: 0, height: '100vh' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 8px' }}>
@@ -381,7 +383,7 @@ function Sidebar({ screen, dept, go, njCount, deptCounts, graphCallsCount }) {
         <div className="mono" style={{ fontSize: 9.5, letterSpacing: '.16em', color: '#5C6178', padding: '0 10px 8px' }}>MONITOR</div>
         {NAV.map((n) => {
           const active = screen === n.screen && (!n.dept || n.dept === dept);
-          const count = n.screen === 'overview' ? njCount : n.screen === 'graphcalls' ? graphCallsCount : n.dept && deptCounts[n.dept] !== undefined ? deptCounts[n.dept] : n.count;
+          const count = n.screen === 'overview' ? njCount : n.screen === 'graphcalls' ? graphCallsCount : n.screen === 'paalgo' ? paAlgoCount : n.dept && deptCounts[n.dept] !== undefined ? deptCounts[n.dept] : n.count;
           return (
             <div key={n.label} onClick={() => go(n.screen, n.dept)}
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 10px', borderRadius: 9, cursor: 'pointer', fontSize: 13.5, background: active ? 'rgba(99,102,241,0.22)' : 'transparent', color: active ? '#FFFFFF' : '#9BA1B8', fontWeight: active ? 600 : 400, borderLeft: `2px solid ${active ? '#6366F1' : 'transparent'}` }}>
@@ -1364,6 +1366,103 @@ function PaPip({ employees, filter, setFilter, setModal }) {
   );
 }
 
+const PA_ALGO_TIER_LABELS = {
+  [TRAINER_SALARY_TIERS.UNDER_125K]: '< 1.25L',
+  [TRAINER_SALARY_TIERS.BETWEEN_125K_200K]: '1.25L - 2L',
+  [TRAINER_SALARY_TIERS.OVER_200K]: '> 2L (K11)',
+};
+const PA_ALGO_STATUS_STYLE = {
+  fired: { label: 'Fired', bg: 'rgba(244,63,94,0.12)', color: '#F87171', border: 'rgba(244,63,94,0.3)' },
+  clear: { label: 'Clear', bg: 'rgba(20,184,166,0.12)', color: '#5EEAD4', border: 'rgba(20,184,166,0.3)' },
+  'no-data': { label: 'No data', bg: 'rgba(245,158,11,0.12)', color: '#F59E0B', border: 'rgba(245,158,11,0.3)' },
+  'no-salary-data': { label: 'No salary data', bg: 'rgba(255,255,255,0.05)', color: '#6E7488', border: 'rgba(255,255,255,0.12)' },
+};
+
+function FiredOnlyToggle({ value, onChange }) {
+  return (
+    <div onClick={() => onChange(!value)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, border: `1px solid ${value ? 'rgba(244,63,94,0.45)' : 'rgba(255,255,255,0.1)'}`, background: value ? 'rgba(244,63,94,0.14)' : 'rgba(255,255,255,0.03)', color: value ? '#FFFFFF' : '#9BA1B8', borderRadius: 10, padding: '10px 14px', fontSize: 13, flex: 'none' }}>
+      <span style={{ width: 14, height: 14, borderRadius: 4, border: `1px solid ${value ? '#F87171' : 'rgba(255,255,255,0.25)'}`, background: value ? '#F43F5E' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#fff' }}>{value ? '✓' : ''}</span>
+      {value ? 'Fired only' : 'All Trainers'}
+    </div>
+  );
+}
+
+// Trainer-only for now — Sales/CSM's own salary-multiple criteria isn't
+// built yet (see lib/paAlgo.js). Proposed candidacy from delivery numbers
+// vs salary tier, entirely separate from the real HR-issued PA/PIP records
+// on the PA/PIP Detection screen — nothing here writes to pip_status.
+function PaAlgo({ employees, filter, setFilter, setModal }) {
+  const [search, setSearch] = useState('');
+  const [includeInactive, setIncludeInactive] = useState(false);
+  const [firedOnly, setFiredOnly] = useState(true);
+
+  const trainers = employees.filter((e) => e.team === 'Trainer' && e.trainerPaAlgo && (includeInactive || e.active !== false));
+  const firedCount = trainers.filter((e) => e.trainerPaAlgo.status === 'fired').length;
+  const clearCount = trainers.filter((e) => e.trainerPaAlgo.status === 'clear').length;
+  const noDataCount = trainers.filter((e) => e.trainerPaAlgo.status === 'no-data' || e.trainerPaAlgo.status === 'no-salary-data').length;
+
+  const tabs = [['All Tiers', null], ...Object.entries(PA_ALGO_TIER_LABELS).map(([val, label]) => [label, val])].map(([label, val]) => ({
+    label, val, active: filter === val || (!filter && !val),
+    count: val ? trainers.filter((e) => e.trainerPaAlgo.tier === val).length : trainers.length,
+  }));
+
+  const q = search.trim().toLowerCase();
+  const rows = trainers
+    .filter((e) => !filter || e.trainerPaAlgo.tier === filter)
+    .filter((e) => !firedOnly || e.trainerPaAlgo.status === 'fired')
+    .filter((e) => !q || e.name.toLowerCase().includes(q) || String(e.id).toLowerCase().includes(q))
+    .map(decorate)
+    .sort((a, b) => {
+      const order = { fired: 0, 'no-data': 1, 'no-salary-data': 2, clear: 3 };
+      return order[a.trainerPaAlgo.status] - order[b.trainerPaAlgo.status] || a.name.localeCompare(b.name);
+    });
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16 }}>
+        <div style={{ border: '1px solid rgba(244,63,94,0.28)', background: 'linear-gradient(150deg,rgba(244,63,94,0.13),rgba(244,63,94,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>Fired</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6, color: '#F43F5E' }}>{firedCount}</div></div>
+        <div style={{ border: '1px solid rgba(20,184,166,0.28)', background: 'linear-gradient(150deg,rgba(20,184,166,0.13),rgba(20,184,166,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>Clear</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6, color: '#5EEAD4' }}>{clearCount}</div></div>
+        <div style={{ border: '1px solid rgba(245,158,11,0.28)', background: 'linear-gradient(150deg,rgba(245,158,11,0.13),rgba(245,158,11,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>Missing data</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6, color: '#F59E0B' }}>{noDataCount}</div></div>
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {tabs.map((t) => (
+          <div key={t.label} onClick={() => setFilter(t.val)} style={{ cursor: 'pointer', border: `1px solid ${t.active ? 'rgba(99,102,241,0.45)' : 'rgba(255,255,255,0.1)'}`, background: t.active ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.03)', color: t.active ? '#FFFFFF' : '#9BA1B8', borderRadius: 999, padding: '8px 16px', fontSize: 13, display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span>{t.label}</span><span className="mono" style={{ fontSize: 11, opacity: 0.75 }}>{t.count}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <input
+          value={search}
+          onChange={(ev) => setSearch(ev.target.value)}
+          placeholder="Search by name or employee ID…"
+          style={{ flex: 1, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#E4E6F0', outline: 'none' }}
+        />
+        <FiredOnlyToggle value={firedOnly} onChange={setFiredOnly} />
+        <IncludeInactiveToggle value={includeInactive} onChange={setIncludeInactive} />
+      </div>
+      <div style={{ ...card, overflow: 'hidden' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr .9fr 1fr 2fr .9fr', padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <span>Employee</span><span>Salary tier</span><span>Tenure band</span><span>Rule</span><span style={{ textAlign: 'right' }}>Status</span>
+        </div>
+        {rows.map((e) => {
+          const st = PA_ALGO_STATUS_STYLE[e.trainerPaAlgo.status];
+          return (
+            <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: '1.4fr .9fr 1fr 2fr .9fr', padding: '14px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontWeight: 600 }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id}{e.inactive ? ' · Inactive' : ''}</span></div>
+              <span style={{ fontSize: 12, color: '#A8AEC4' }}>{PA_ALGO_TIER_LABELS[e.trainerPaAlgo.tier] || '—'}</span>
+              <span style={{ fontSize: 12, color: '#A8AEC4' }}>{e.trainerPaAlgo.band || '—'}</span>
+              <span style={{ fontSize: 12, color: '#A8AEC4' }}>{e.trainerPaAlgo.rule || '—'}</span>
+              <span style={{ justifySelf: 'end', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: st.bg, color: st.color, border: `1px solid ${st.border}` }}>{st.label}</span>
+            </div>
+          );
+        })}
+        {!rows.length && <div style={{ padding: '18px', fontSize: 12.5, color: '#6E7488' }}>No Trainers match this filter.</div>}
+      </div>
+    </div>
+  );
+}
+
 function WorryIndex({ employees, filter, setFilter, setModal }) {
   const [search, setSearch] = useState('');
   const [includeInactive, setIncludeInactive] = useState(false);
@@ -1637,7 +1736,7 @@ function GraphCalls({ meetings, employees, filter, setFilter }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ border: '1px solid rgba(99,102,241,0.25)', background: 'rgba(99,102,241,0.06)', borderRadius: 12, padding: '12px 16px', fontSize: 12.5, color: '#A8AEC4', lineHeight: 1.5 }}>
-        Sourced from each Sales rep's Outlook calendar and Teams attendance reports via Microsoft Graph. Audio/video quality only appears once a callRecords webhook notification arrives for that meeting — "No Data" there just means none has landed yet, not a clean call. Roster is a separate feed (Koenig's Get CSM Roster) — click it to see that rep's on-file shift history. This screen doesn't feed the Worry Index score yet.
+        Sourced from each Sales rep's Outlook calendar and Teams attendance reports via Microsoft Graph — meetings organized by Gunjan Setia (recurring internal briefings) are excluded, everything else stays in, internal and external alike. Audio/video quality only appears once a callRecords webhook notification arrives for that meeting — "No Data" there just means none has landed yet, not a clean call. Roster is a separate feed (Koenig's Get CSM Roster) — click it to see that rep's on-file shift history. This screen doesn't feed the Worry Index score yet.
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10 }}>

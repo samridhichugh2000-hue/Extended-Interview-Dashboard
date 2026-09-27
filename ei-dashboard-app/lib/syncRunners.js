@@ -378,6 +378,15 @@ export async function syncUtil() {
     return out;
   }
 
+  // Chronological (oldest first) so trailing-N-month windows (Trainer PA
+  // Algo) can just slice off the end — the API's ~14-month history is more
+  // than the 6 display months kept in metric1-6.
+  function fullHistory(months) {
+    return Object.entries(months)
+      .map(([month, rec]) => ({ month, hours: rec.hours, util: rec.util }))
+      .sort((a, b) => new Date(a.month) - new Date(b.month));
+  }
+
   const trainerEmployees = await db.execute("SELECT id, tenure_days FROM employees WHERE team = 'Trainer'");
 
   let updated = 0;
@@ -389,8 +398,8 @@ export async function syncUtil() {
 
     const values = lastSixMonths(data.months);
     await db.execute({
-      sql: 'UPDATE employees SET metric1 = ?, metric2 = ?, metric3 = ?, metric4 = ?, metric5 = ?, metric6 = ? WHERE id = ?',
-      args: [...values, emp.id],
+      sql: 'UPDATE employees SET metric1 = ?, metric2 = ?, metric3 = ?, metric4 = ?, metric5 = ?, metric6 = ?, util_monthly_details = ? WHERE id = ?',
+      args: [...values, JSON.stringify(fullHistory(data.months)), emp.id],
     });
     updated++;
   }
@@ -493,6 +502,52 @@ export async function syncAssignments() {
   if (statements.length) await db.batch(statements, 'write');
 
   return { message: `Synced assignments — ${updated} Trainer employees have at least one (${unmatched} have none).` };
+}
+
+// Distinct assignments each Trainer was Main Trainer on, from the Trainer RC
+// Schedule feed (koenigTrainerRcApi.js) — unlike syncAssignments above, this
+// feed's TrainerRole field tells a lead trainer apart from a co/backup
+// trainer on the same batch, which the plain Trainer Assignment feed can't.
+// Feeds the PA Algo's "zero assignments as main trainer" check only — not a
+// replacement for assignments_count/assignments_details, which several
+// other screens/signals still read. Per-employee API (no bulk mode), like
+// syncUtil/syncEmployeeDetails — see mapWithConcurrency above. Same
+// recycled-emp-code/2-year lookback guard as syncAssignments, and stops at
+// today rather than reaching into the future — a scheduled-but-undelivered
+// batch shouldn't count as "has delivered a main assignment" yet.
+export async function syncTrainerRc() {
+  const db = getDb();
+  const { getTrainerRcSchedule, distinctMainTrainerAssignments } = await import('./koenigTrainerRcApi.js');
+  const { istDateKey } = await import('./weekUtils.js');
+
+  const trainerEmployees = await db.execute("SELECT id, email, tenure_days FROM employees WHERE team = 'Trainer' AND active = 1");
+  const today = istDateKey(new Date());
+
+  const statements = [];
+  let updated = 0;
+  let unmatched = 0;
+  let skippedNoEmail = 0;
+  let apiErrors = 0;
+  await mapWithConcurrency(trainerEmployees.rows, SYNC_CONCURRENCY, async (emp) => {
+    if (!emp.email) { skippedNoEmail++; return; }
+    try {
+      const since = sinceDate(emp.tenure_days, 730);
+      const rows = await getTrainerRcSchedule(emp.email, istDateKey(since), today);
+      const assignments = distinctMainTrainerAssignments(rows);
+      statements.push({
+        sql: 'UPDATE employees SET rc_main_assignments_count = ?, rc_main_assignments_details = ? WHERE id = ?',
+        args: [assignments.length, JSON.stringify(assignments), emp.id],
+      });
+      if (assignments.length) updated++; else unmatched++;
+    } catch (err) {
+      console.error(`Trainer RC sync failed for ${emp.id}:`, err.message);
+      apiErrors++;
+    }
+  });
+
+  if (statements.length) await db.batch(statements, 'write');
+
+  return { message: `Synced Main Trainer assignments for ${updated} Trainer employees (${unmatched} have none, ${skippedNoEmail} no email on file, ${apiErrors} API errors).` };
 }
 
 export async function syncSkills() {
@@ -992,11 +1047,13 @@ function monthRange(monthsAgo) {
   };
 }
 
+// Sales/CSMs and Trainers only — per instruction not to populate salary for
+// anyone else (PA Algo's salary-multiple criteria; see PA_ALGO notes).
 export async function syncNetPayable() {
   const db = getDb();
   const { getNetPayable } = await import('./koenigNetPayableApi.js');
 
-  const allEmployees = await db.execute("SELECT id FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team') AND active = 1");
+  const allEmployees = await db.execute("SELECT id FROM employees WHERE team IN ('Sales', 'Trainer') AND active = 1");
 
   const statements = [];
   let updated = 0;
@@ -1024,6 +1081,44 @@ export async function syncNetPayable() {
   if (statements.length) await db.batch(statements, 'write');
 
   return { message: `Synced net payable details for ${updated} employees (${unmatched} had no payroll record for this or last month, ${apiErrors} API errors).` };
+}
+
+// Sales/CSMs and Trainers — Koenig "Get Employee Details (PMS)" per-employee
+// lookup, used to identify India-based CSMs for PA Algo's salary-multiple
+// criteria (country), and Trainer K11 designations for the Trainer PA Algo
+// criteria (designation). city/state are stored alongside since they come
+// back for free, but nothing else from the raw response (bank account,
+// IFSC, UAN, personal phone, home address) is kept — this dashboard has no
+// use for it and storing it would be needless PII exposure.
+export async function syncEmployeeDetails() {
+  const db = getDb();
+  const { getEmployeeDetails } = await import('./koenigEmployeeDetailsApi.js');
+
+  const allEmployees = await db.execute("SELECT id FROM employees WHERE team IN ('Sales', 'Trainer') AND active = 1");
+
+  const statements = [];
+  let updated = 0;
+  let unmatched = 0;
+  let apiErrors = 0;
+  await mapWithConcurrency(allEmployees.rows, SYNC_CONCURRENCY, async (emp) => {
+    const empCode = emp.id.replace('EMP', '');
+    try {
+      const details = await getEmployeeDetails(empCode);
+      if (!details) { unmatched++; return; }
+      statements.push({
+        sql: 'UPDATE employees SET country = ?, emp_city = ?, emp_state = ?, is_overseas = ?, designation = ? WHERE id = ?',
+        args: [details.countryName, details.cityName, details.stateName, details.isOverseas ? 1 : 0, details.designationName, emp.id],
+      });
+      updated++;
+    } catch (err) {
+      console.error(`Employee details sync failed for ${emp.id}:`, err.message);
+      apiErrors++;
+    }
+  });
+
+  if (statements.length) await db.batch(statements, 'write');
+
+  return { message: `Synced employee details for ${updated} employees (${unmatched} had no record, ${apiErrors} API errors).` };
 }
 
 // Common Index — All teams. Per-employee lookup only (no bulk mode); see
@@ -1114,6 +1209,7 @@ export const SYNC_RUNNERS = {
   exam: syncExam,
   negfeedback: syncNegFeedback,
   assignments: syncAssignments,
+  trainerrc: syncTrainerRc,
   skills: syncSkills,
   inhouseskills: syncInHouseSkills,
   techcalls: syncTechCalls,
@@ -1125,6 +1221,7 @@ export const SYNC_RUNNERS = {
   mgrfeedback: syncMgrFeedback,
   ideas: syncIdeas,
   netpayable: syncNetPayable,
+  empdetails: syncEmployeeDetails,
   commonindex: syncCommonIndex,
   graphmeetings: syncGraphMeetings,
   graphsubscription: syncGraphSubscription,

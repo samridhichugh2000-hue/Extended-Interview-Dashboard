@@ -1,5 +1,6 @@
 // Syncs Net Payable Details (payroll) from Koenig into employees.
-// net_payable_month / net_payable_details, across all three teams.
+// net_payable_month / net_payable_details, Sales/CSMs and Trainers only
+// (per instruction not to populate salary for anyone else — see PA Algo).
 // StartDate/EndDate must fall within the same calendar month (undocumented
 // API constraint — see lib/koenigNetPayableApi.js), so this tries the
 // current month first and falls back one month if payroll for the current
@@ -38,7 +39,7 @@ function monthRange(monthsAgo) {
   };
 }
 
-const allEmployees = await db.execute("SELECT id FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team') AND active = 1");
+const allEmployees = await db.execute("SELECT id FROM employees WHERE team IN ('Sales', 'Trainer') AND active = 1");
 
 let updated = 0;
 let unmatched = 0;

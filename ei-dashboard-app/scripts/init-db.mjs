@@ -173,4 +173,35 @@ try {
   if (!String(err.message).includes('duplicate column')) throw err;
 }
 
+for (const stmt of [
+  'ALTER TABLE employees ADD COLUMN country TEXT',
+  'ALTER TABLE employees ADD COLUMN emp_city TEXT',
+  'ALTER TABLE employees ADD COLUMN emp_state TEXT',
+  'ALTER TABLE employees ADD COLUMN is_overseas INTEGER',
+  'ALTER TABLE employees ADD COLUMN designation TEXT',
+]) {
+  try {
+    await db.execute(stmt);
+  } catch (err) {
+    if (!String(err.message).includes('duplicate column')) throw err;
+  }
+}
+
+try {
+  await db.execute('ALTER TABLE employees ADD COLUMN util_monthly_details TEXT');
+} catch (err) {
+  if (!String(err.message).includes('duplicate column')) throw err;
+}
+
+for (const stmt of [
+  'ALTER TABLE employees ADD COLUMN rc_main_assignments_count INTEGER',
+  'ALTER TABLE employees ADD COLUMN rc_main_assignments_details TEXT',
+]) {
+  try {
+    await db.execute(stmt);
+  } catch (err) {
+    if (!String(err.message).includes('duplicate column')) throw err;
+  }
+}
+
 console.log('Done. Run `npm run sync:koenig` to populate employees from the live API.');
