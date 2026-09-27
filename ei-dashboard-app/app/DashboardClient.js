@@ -1377,6 +1377,13 @@ const PA_ALGO_STATUS_STYLE = {
   'no-data': { label: 'No data', bg: 'rgba(245,158,11,0.12)', color: '#F59E0B', border: 'rgba(245,158,11,0.3)' },
   'no-salary-data': { label: 'No salary data', bg: 'rgba(255,255,255,0.05)', color: '#6E7488', border: 'rgba(255,255,255,0.12)' },
 };
+// Negative-feedback escalation ladder (lib/paAlgo.js's negativeFeedbackSuggestion)
+// — independent of the tenure/salary-tier status above, shown alongside it.
+const NEG_FEEDBACK_SUGGESTION_STYLE = {
+  PA: { label: 'Suggested PA', bg: 'rgba(245,158,11,0.12)', color: '#F59E0B', border: 'rgba(245,158,11,0.3)' },
+  PIP: { label: 'Suggested PIP', bg: 'rgba(244,63,94,0.12)', color: '#F87171', border: 'rgba(244,63,94,0.3)' },
+  Exit: { label: 'Suggested Exit', bg: 'rgba(190,18,60,0.2)', color: '#FCA5A5', border: 'rgba(190,18,60,0.45)' },
+};
 
 function FiredOnlyToggle({ value, onChange }) {
   return (
@@ -1409,10 +1416,14 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
   const q = search.trim().toLowerCase();
   const rows = trainers
     .filter((e) => !filter || e.trainerPaAlgo.tier === filter)
-    .filter((e) => !firedOnly || e.trainerPaAlgo.status === 'fired')
+    .filter((e) => !firedOnly || e.trainerPaAlgo.status === 'fired' || e.trainerPaAlgo.negFeedbackSuggestion)
     .filter((e) => !q || e.name.toLowerCase().includes(q) || String(e.id).toLowerCase().includes(q))
     .map(decorate)
     .sort((a, b) => {
+      const suggestionOrder = { Exit: 0, PIP: 1, PA: 2 };
+      const aSuggestion = a.trainerPaAlgo.negFeedbackSuggestion ? suggestionOrder[a.trainerPaAlgo.negFeedbackSuggestion] : 99;
+      const bSuggestion = b.trainerPaAlgo.negFeedbackSuggestion ? suggestionOrder[b.trainerPaAlgo.negFeedbackSuggestion] : 99;
+      if (aSuggestion !== bSuggestion) return aSuggestion - bSuggestion;
       const order = { fired: 0, 'no-data': 1, 'no-salary-data': 2, clear: 3 };
       return order[a.trainerPaAlgo.status] - order[b.trainerPaAlgo.status] || a.name.localeCompare(b.name);
     });
@@ -1442,18 +1453,22 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
         <IncludeInactiveToggle value={includeInactive} onChange={setIncludeInactive} />
       </div>
       <div style={{ ...card, overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr .9fr 1fr 2fr .9fr', padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <span>Employee</span><span>Salary tier</span><span>Tenure band</span><span>Rule</span><span style={{ textAlign: 'right' }}>Status</span>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.3fr .8fr .9fr 1.7fr .8fr .9fr', padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <span>Employee</span><span>Salary tier</span><span>Tenure band</span><span>Rule</span><span>Status</span><span style={{ textAlign: 'right' }}>Neg. feedback (7d)</span>
         </div>
         {rows.map((e) => {
           const st = PA_ALGO_STATUS_STYLE[e.trainerPaAlgo.status];
+          const sugg = e.trainerPaAlgo.negFeedbackSuggestion ? NEG_FEEDBACK_SUGGESTION_STYLE[e.trainerPaAlgo.negFeedbackSuggestion] : null;
           return (
-            <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: '1.4fr .9fr 1fr 2fr .9fr', padding: '14px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
+            <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: '1.3fr .8fr .9fr 1.7fr .8fr .9fr', padding: '14px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontWeight: 600 }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id}{e.inactive ? ' · Inactive' : ''}</span></div>
               <span style={{ fontSize: 12, color: '#A8AEC4' }}>{PA_ALGO_TIER_LABELS[e.trainerPaAlgo.tier] || '—'}</span>
               <span style={{ fontSize: 12, color: '#A8AEC4' }}>{e.trainerPaAlgo.band || '—'}</span>
               <span style={{ fontSize: 12, color: '#A8AEC4' }}>{e.trainerPaAlgo.rule || '—'}</span>
-              <span style={{ justifySelf: 'end', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: st.bg, color: st.color, border: `1px solid ${st.border}` }}>{st.label}</span>
+              <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: st.bg, color: st.color, border: `1px solid ${st.border}` }}>{st.label}</span>
+              {sugg
+                ? <span style={{ justifySelf: 'end', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: sugg.bg, color: sugg.color, border: `1px solid ${sugg.border}` }}>{sugg.label}</span>
+                : <span style={{ justifySelf: 'end', fontSize: 12, color: '#6E7488' }}>—</span>}
             </div>
           );
         })}

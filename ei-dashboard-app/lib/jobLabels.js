@@ -4,4 +4,5 @@ export const JOB_LABELS = {
   weeklyreport: 'Weekly NJ Check-In email (daily 9AM IST)',
   weeklyresponsereport: 'Weekly NJ Response Report + Shoddy auto-mark (Wed 6PM IST)',
   report15: '15-Day Report',
+  trainerrc: 'Trainer RC Schedule sync (external cron)',
 };

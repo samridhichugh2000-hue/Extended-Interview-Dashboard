@@ -103,15 +103,63 @@ const BANDS_BY_TIER = {
   [TRAINER_SALARY_TIERS.OVER_200K]: OVER_200K_BANDS,
 };
 
-// Returns:
-//   { status: 'no-salary-data' }               — net_payable_details not synced for this employee yet
-//   { status: 'no-data', tier, band, rule }     — matched a band, but it needs data (assignments/utilization) we don't have
-//   { status: 'clear', tier, band, rule }       — matched a band, condition did not fire
-//   { status: 'fired', tier, band, rule }       — matched a band, condition fired — PA Algo candidate
+// feedbackDate comes back as "26-Feb-2025 17:06 PM" — the HH:MM is already
+// 24-hour, so the trailing AM/PM is redundant/malformed and V8's Date
+// parser rejects the full string. Only day-level granularity matters for a
+// 7-day window, so just the date prefix is parsed.
+function parseFeedbackDate(raw) {
+  if (!raw) return null;
+  const d = new Date(String(raw).split(' ')[0]);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// By explicit instruction, "1st/2nd/3rd negative" resets on a trailing
+// 7-day window (a trainer "receiving" a negative counts only if it landed
+// this week) — this rarely reaches PIP/Exit in practice, confirmed intended
+// despite that.
+const NEG_FEEDBACK_WINDOW_DAYS = 7;
+
+// neg_feedback_details has one row per (assignment × CSM × question) the
+// Koenig feed returned, not one row per negative assignment — the same
+// assignment can show up dozens of times (one real case had 606 raw rows
+// across just 10 actual assignments). "1st/2nd/3rd negative" means distinct
+// assignments within the window, so this counts unique assignmentIds whose
+// feedbackDate falls in the trailing NEG_FEEDBACK_WINDOW_DAYS, rather than
+// trusting neg_feedback_details.length (or the equally-inflated neg_feedback
+// field) over all time.
+export function distinctNegativeFeedbackAssignments(negFeedbackDetails, now = new Date()) {
+  const cutoff = now.getTime() - NEG_FEEDBACK_WINDOW_DAYS * 86400000;
+  const ids = new Set();
+  for (const f of negFeedbackDetails || []) {
+    const d = parseFeedbackDate(f.feedbackDate);
+    if (d && d.getTime() >= cutoff) ids.add(f.assignmentId);
+  }
+  return ids.size;
+}
+
+// Negative-feedback escalation ladder — independent of salary tier/tenure
+// band above: 1st negative-feedback assignment this week suggests PA, 2nd
+// suggests PIP, 3rd+ suggests exit.
+export function negativeFeedbackSuggestion(distinctAssignmentCount) {
+  if (!distinctAssignmentCount) return null;
+  if (distinctAssignmentCount === 1) return 'PA';
+  if (distinctAssignmentCount === 2) return 'PIP';
+  return 'Exit';
+}
+
+// Returns (always includes negFeedbackSuggestion, computed independently of
+// the tier/band result below — a trainer can have no salary data yet and
+// still carry a negative-feedback suggestion):
+//   { status: 'no-salary-data', negFeedbackSuggestion }               — net_payable_details not synced for this employee yet
+//   { status: 'no-data', tier, band, rule, negFeedbackSuggestion }     — matched a band, but it needs data (assignments/utilization) we don't have
+//   { status: 'clear', tier, band, rule, negFeedbackSuggestion }       — matched a band, condition did not fire
+//   { status: 'fired', tier, band, rule, negFeedbackSuggestion }       — matched a band, condition fired — PA Algo candidate
 export function computeTrainerPaAlgoFlag(employee) {
+  const negFeedbackSuggestion = negativeFeedbackSuggestion(distinctNegativeFeedbackAssignments(employee.negFeedbackDetails));
+
   const payScale = employee.netPayableDetails?.PayScale != null ? Number(employee.netPayableDetails.PayScale) : null;
   const tier = trainerSalaryTier(payScale);
-  if (tier == null) return { status: 'no-salary-data' };
+  if (tier == null) return { status: 'no-salary-data', negFeedbackSuggestion };
 
   const bands = BANDS_BY_TIER[tier];
   const tenureDays = employee.tenure ?? 0;
@@ -119,5 +167,5 @@ export function computeTrainerPaAlgoFlag(employee) {
   // ascending, so this is the most specific match.
   const band = [...bands].reverse().find((b) => tenureDays >= b.minDays);
 
-  return { status: band.check(employee), tier, band: band.label, rule: band.rule };
+  return { status: band.check(employee), tier, band: band.label, rule: band.rule, negFeedbackSuggestion };
 }

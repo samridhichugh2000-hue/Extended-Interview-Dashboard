@@ -5,10 +5,14 @@ import { recordJobRun } from '../../../../lib/jobStatus';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-// Only these two are surfaced on the dashboard's failure banner — the other
-// 12 data-sync feeds aren't email jobs and aren't what "did the report send"
-// is asking about.
-const TRACKED_JOBS = new Set(['weeklyreport', 'weeklyresponsereport']);
+// Only these are surfaced on the dashboard's failure banner. weeklyreport/
+// weeklyresponsereport are email jobs; trainerrc is tracked too since it
+// runs on an external cron-job.org schedule (no native Vercel Cron slot
+// left — see the comment below) with no other visibility into whether it
+// succeeded, and its ~320 per-employee API calls risk the 60s function
+// limit. The other 11 data-sync feeds aren't tracked — they're not what
+// "did the report send" is asking about.
+const TRACKED_JOBS = new Set(['weeklyreport', 'weeklyresponsereport', 'trainerrc']);
 
 // Each feed is meant to complete comfortably under Vercel Hobby's 60s
 // function limit on its own — that's why this is one route per feed instead
