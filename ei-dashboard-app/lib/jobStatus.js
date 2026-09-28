@@ -35,13 +35,51 @@ export async function recordJobRun(job, ok, message) {
   }
 }
 
-// Only the failed ones — that's all the dashboard banner needs.
+// Written right before a tracked job's real work starts, so a hard kill
+// (Vercel's 60s function timeout, an OOM kill, anything that ends the
+// process outright) leaves this row behind instead of nothing at all. A
+// timeout doesn't run application code — it never reaches the route's own
+// try/catch, so recordJobRun(false, ...) never fires and job_runs silently
+// keeps showing whatever the last *completed* run said (2026-09-28's
+// weeklyreport timeout left the dashboard showing the previous day's
+// harmless "skipped, not Monday" as if nothing were wrong). getFailedJobRuns
+// below treats a 'started' row that's stuck well past how long these jobs
+// normally take as a probable timeout/crash.
+export async function recordJobStarted(job) {
+  try {
+    const db = getDb();
+    await ensureTable(db);
+    await db.execute({
+      sql: `INSERT INTO job_runs (job, status, message, ran_at) VALUES (?, 'started', NULL, ?)
+            ON CONFLICT(job) DO UPDATE SET status = 'started', message = NULL, ran_at = excluded.ran_at`,
+      args: [job, new Date().toISOString()],
+    });
+  } catch (err) {
+    console.error(`recordJobStarted(${job}) failed:`, err.message);
+  }
+}
+
+// These jobs normally finish in low single-digit to low tens of seconds —
+// well under Vercel's 60s function limit — so a row still sitting at
+// 'started' this long after it began almost certainly means the run never
+// reached its own recordJobRun(ok/error) call at all.
+const STALE_STARTED_MINUTES = 5;
+
+// The failed ones, plus any 'started' row stuck past STALE_STARTED_MINUTES
+// (a likely timeout/crash the route's own try/catch never got to record) —
+// that's everything the dashboard banner needs to not go silent on a hard
+// kill.
 export async function getFailedJobRuns() {
   try {
     const db = getDb();
     await ensureTable(db);
-    const res = await db.execute("SELECT job, status, message, ran_at FROM job_runs WHERE status = 'error'");
-    return res.rows;
+    const res = await db.execute("SELECT job, status, message, ran_at FROM job_runs WHERE status = 'error' OR status = 'started'");
+    const staleCutoff = Date.now() - STALE_STARTED_MINUTES * 60000;
+    return res.rows
+      .filter((r) => r.status === 'error' || new Date(r.ran_at).getTime() < staleCutoff)
+      .map((r) => (r.status === 'started'
+        ? { ...r, message: `Started at ${r.ran_at} but never finished — likely timed out or crashed mid-run.` }
+        : r));
   } catch (err) {
     console.error('getFailedJobRuns failed:', err.message);
     return [];

@@ -184,8 +184,8 @@ CREATE TABLE IF NOT EXISTS graph_subscriptions (
 -- trigger failed" for weeklyreport / weeklyresponsereport / report15
 -- without a separate monitoring system.
 CREATE TABLE IF NOT EXISTS job_runs (
-  job TEXT PRIMARY KEY,         -- weeklyreport | weeklyresponsereport | report15
-  status TEXT NOT NULL,         -- ok | error
+  job TEXT PRIMARY KEY,         -- weeklyreport | weeklyresponsereport | report15 | trainerrc | rcfullybooked
+  status TEXT NOT NULL,         -- ok | error | started (written before the real work begins — see recordJobStarted in lib/jobStatus.js — so a hard kill like a 60s function timeout leaves a trace instead of nothing; getFailedJobRuns treats one stuck at 'started' past a few minutes as a probable timeout/crash)
   message TEXT,
   ran_at TEXT NOT NULL          -- ISO timestamp of the last attempt
 );

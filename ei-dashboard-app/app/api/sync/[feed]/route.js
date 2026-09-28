@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { SYNC_RUNNERS } from '../../../../lib/syncRunners';
-import { recordJobRun } from '../../../../lib/jobStatus';
+import { recordJobRun, recordJobStarted } from '../../../../lib/jobStatus';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -48,6 +48,7 @@ async function handle(request, { params }) {
   }
 
   const startedAt = new Date().toISOString();
+  if (TRACKED_JOBS.has(feed)) await recordJobStarted(feed);
   try {
     const result = await runner();
     if (TRACKED_JOBS.has(feed)) await recordJobRun(feed, true, result?.message);

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { sendWeeklyReports } from '../../../../lib/weeklyReportRunner';
-import { recordJobRun } from '../../../../lib/jobStatus';
+import { recordJobRun, recordJobStarted } from '../../../../lib/jobStatus';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -15,6 +15,7 @@ export const maxDuration = 60;
 // Shares job_runs's 'weeklyreport' row with that cron path — "last run"
 // status doesn't care which trigger it came from.
 export async function POST() {
+  await recordJobStarted('weeklyreport');
   try {
     const result = await sendWeeklyReports();
     await recordJobRun('weeklyreport', true, result?.message);
