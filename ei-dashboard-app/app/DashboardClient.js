@@ -1517,7 +1517,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
     // each tier's own differently-worded band labels.
     .sort((a, b) => (a.tenure ?? 0) - (b.tenure ?? 0) || a.name.localeCompare(b.name));
 
-  const gridCols = isTrainer ? '1.2fr .6fr .7fr .8fr 1.5fr .8fr .8fr 26px' : '1.5fr .9fr .9fr 2.3fr .9fr 26px';
+  const gridCols = isTrainer ? '1.2fr .6fr .7fr .8fr 1.5fr .8fr .8fr 26px' : '1.5fr .9fr .9fr .9fr 2fr .9fr 26px';
   // Current calendar month's utilization, read off the same trailing
   // history the PA Algo evidence panel uses — falls back to the most
   // recent month on file (labelled) if this month hasn't synced yet.
@@ -1530,6 +1530,15 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
     if (current?.util != null) return { label: `${current.util}%`, isCurrent: true };
     const latest = [...details].reverse().find((m) => m.util != null);
     return latest ? { label: `${latest.util}% (${latest.month})`, isCurrent: false } : null;
+  }
+  // Most recent quarter's target achievement on file (lib/syncRunners.js's
+  // syncTargetAchievement already picked the latest quarter per employee at
+  // sync time — this just formats it, with the quarter/year alongside so a
+  // stale (last quarter's) figure isn't mistaken for the current one).
+  function quarterTargetLabel(e) {
+    if (e.quarterTargetPct == null) return null;
+    const q = [e.quarterTargetName, e.quarterTargetYear].filter(Boolean).join(' ');
+    return { pct: `${e.quarterTargetPct}%`, period: q || null };
   }
 
   return (
@@ -1567,7 +1576,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
         <div style={{ display: 'grid', gridTemplateColumns: gridCols, padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           {isTrainer
             ? <><span>Employee</span><span>This month</span><span>Salary tier</span><span>Tenure band</span><span>Rule</span><span>Status</span><span style={{ textAlign: 'right' }}>Neg. feedback (7d)</span><span /></>
-            : <><span>Employee</span><span>Region</span><span>Tenure band</span><span>Rule</span><span style={{ textAlign: 'right' }}>Status</span><span /></>}
+            : <><span>Employee</span><span>Region</span><span>Quarter target</span><span>Tenure band</span><span>Rule</span><span style={{ textAlign: 'right' }}>Status</span><span /></>}
         </div>
         {rows.map((e) => {
           const algo = e[algoKey];
@@ -1576,6 +1585,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
           const hasEvidence = algo.evidence?.length > 0;
           const isExpanded = expandedId === e.id;
           const util = isTrainer ? thisMonthUtil(e) : null;
+          const target = !isTrainer ? quarterTargetLabel(e) : null;
           return (
             <Fragment key={e.id}>
               <div className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: gridCols, padding: '14px 18px', alignItems: 'center', borderBottom: isExpanded ? 'none' : '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
@@ -1586,6 +1596,11 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
                 </div>
                 {isTrainer && <span style={{ fontSize: 12, color: util?.isCurrent ? '#A8AEC4' : '#6E7488' }}>{util?.label || '—'}</span>}
                 <span style={{ fontSize: 12, color: '#A8AEC4' }}>{isTrainer ? (PA_ALGO_TIER_LABELS[algo.tier] || '—') : (PA_ALGO_REGION_LABELS[algo.region] || '—')}</span>
+                {!isTrainer && (
+                  <span style={{ fontSize: 12, color: '#A8AEC4' }}>
+                    {target ? <>{target.pct}{target.period && <span style={{ color: '#6E7488' }}> ({target.period})</span>}</> : '—'}
+                  </span>
+                )}
                 <span style={{ fontSize: 12, color: '#A8AEC4' }}>{algo.band || '—'}</span>
                 <span style={{ fontSize: 12, color: '#A8AEC4' }}>{algo.rule || '—'}</span>
                 {isTrainer

@@ -130,6 +130,10 @@ export async function getEmployees() {
       designation: e.designation,
       utilMonthlyDetails: e.util_monthly_details ? JSON.parse(e.util_monthly_details) : [],
       nrMonthlyDetails: e.nr_monthly_details ? JSON.parse(e.nr_monthly_details) : [],
+      quarterTargetPct: e.quarter_target_pct,
+      quarterTargetName: e.quarter_target_name,
+      quarterTargetYear: e.quarter_target_year,
+      quarterTargetRemarks: e.quarter_target_remarks,
       // null = no weekly_responses row yet for this week (e.g. feature hasn't
       // been run for them this week) — distinct from a confirmed Pending/Overdue.
       weeklyReportState: (weeksByEmp.get(e.id) || []).find((w) => w.week === currentWeek)?.state ?? null,

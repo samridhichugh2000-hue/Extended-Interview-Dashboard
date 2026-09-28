@@ -377,6 +377,61 @@ export async function syncCsmRoster() {
   return { message: `Synced CSM Roster data for ${updated} Sales employees (${unmatched} unmatched).` };
 }
 
+export async function syncTargetAchievement() {
+  const db = getDb();
+  const { getTargetAchievement } = await import('./koenigTargetApi.js');
+
+  // Koenig's own QuarterName isn't a fixed vocabulary we can trust to sort
+  // lexically ("Q10" < "Q2" as strings) — pull the leading number out of it
+  // and compare (year, quarter number) pairs so "most recent" is always the
+  // latest quarter actually on file, regardless of naming.
+  function quarterNum(name) {
+    const m = String(name || '').match(/(\d+)/);
+    return m ? parseInt(m[1], 10) : 0;
+  }
+  function isNewer(a, b) {
+    if (!b) return true;
+    const ay = parseInt(a.quarterYear, 10) || 0;
+    const by = parseInt(b.quarterYear, 10) || 0;
+    if (ay !== by) return ay > by;
+    return quarterNum(a.quarterName) > quarterNum(b.quarterName);
+  }
+
+  const rows = await getTargetAchievement();
+  const latestByEmpId = new Map();
+  for (const r of rows) {
+    const current = latestByEmpId.get(r.empId);
+    if (isNewer(r, current)) latestByEmpId.set(r.empId, r);
+  }
+
+  const salesEmployees = await db.execute("SELECT id FROM employees WHERE team = 'Sales'");
+
+  const statements = [];
+  let updated = 0;
+  let unmatched = 0;
+  for (const emp of salesEmployees.rows) {
+    const empId = parseInt(emp.id.replace('EMP', ''), 10);
+    const target = latestByEmpId.get(empId);
+    if (!target) { unmatched++; continue; }
+
+    statements.push({
+      sql: 'UPDATE employees SET quarter_target_pct = ?, quarter_target_name = ?, quarter_target_year = ?, quarter_target_remarks = ? WHERE id = ?',
+      args: [
+        target.achievedPct != null ? parseFloat(target.achievedPct) : null,
+        target.quarterName || null,
+        target.quarterYear || null,
+        target.remarks || null,
+        emp.id,
+      ],
+    });
+    updated++;
+  }
+
+  if (statements.length) await db.batch(statements, 'write');
+
+  return { message: `Synced quarter target achievement for ${updated} Sales employees (${unmatched} unmatched).` };
+}
+
 export async function syncUtil() {
   const db = getDb();
   const { getMonthlyUtilization } = await import('./koenigUtilApi.js');
@@ -1283,6 +1338,7 @@ export const SYNC_RUNNERS = {
   audit: syncAudit,
   sc: syncSc,
   csmroster: syncCsmRoster,
+  target: syncTargetAchievement,
   util: syncUtil,
   exam: syncExam,
   negfeedback: syncNegFeedback,
