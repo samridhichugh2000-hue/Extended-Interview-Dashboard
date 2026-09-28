@@ -46,7 +46,7 @@ function normalizeEmpId(raw) {
 // live for exam/negfeedback/skills/inhouseskills/tbt/techcalls-trainer: only
 // ~57-90 of ~324 active Trainers were ever synced in production). Bounded
 // concurrency keeps every one of these comfortably under that cap.
-async function mapWithConcurrency(items, limit, fn) {
+export async function mapWithConcurrency(items, limit, fn) {
   let i = 0;
   async function worker() {
     while (i < items.length) {

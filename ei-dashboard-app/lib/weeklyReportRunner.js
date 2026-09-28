@@ -47,44 +47,79 @@ export function paPipEmailHtml({ name, q1, q2, link }) {
     </div>`;
 }
 
+// Bounded well below SYNC_CONCURRENCY (20, used elsewhere for plain Koenig
+// GETs) — these all send through the same Graph mailbox (SENDER_EMAIL), and
+// unlike the per-employee Koenig feeds hitting distinct tokens, a burst of
+// concurrent sendMail calls against one mailbox risks Graph's per-mailbox
+// throttling. 5 is comfortably parallel (a ~100-employee batch is ~20 rounds
+// instead of 100 fully sequential DB-insert-then-email round trips) without
+// leaning on that limit.
+const CHECKIN_MAIL_CONCURRENCY = 5;
+
 // Shared by sendWeeklyReports and sendPaPipWeeklyCheckIns — both insert one
 // weekly_responses row per eligible employee (skipping anyone already sent
 // this ISO week) and fire the initial check-in email off the same token/link
 // scheme; they differ only in which employees qualify and the email's
 // subject/copy.
+//
+// Runs the actual insert+send with bounded concurrency (mapWithConcurrency,
+// same helper syncRunners.js's per-employee Koenig feeds use) instead of one
+// employee at a time — a fully sequential loop over ~100 employees, each an
+// awaited DB write plus a Graph API round trip, is what let the PA/PIP half
+// of 2026-09-28's Monday send run past Vercel's 60s function limit even
+// after the RC-lookup bottleneck (excludeFullyBookedTrainers) was fixed.
+// Each employee's insert+send is also now caught individually — one bad
+// email address or a transient Graph error no longer aborts everyone still
+// queued behind it in the batch, unlike before when a single throw here
+// propagated out and failed the whole job.
 async function sendCheckIns({ db, week, employees, questionsByTeam, baseUrl, subjectFor, htmlFor, getManagerEmail, sendMail }) {
+  const { mapWithConcurrency } = await import('./syncRunners.js');
+
   const already = await db.execute({ sql: 'SELECT employee_id FROM weekly_responses WHERE week = ?', args: [week] });
   const alreadySent = new Set(already.rows.map((r) => r.employee_id));
 
-  let sent = 0;
   let skippedSent = 0;
   let skippedNoEmail = 0;
   let skippedNoQuestions = 0;
+  const toSend = [];
   for (const emp of employees) {
     if (alreadySent.has(emp.id)) { skippedSent++; continue; }
     if (!emp.email) { skippedNoEmail++; continue; }
     const q = questionsByTeam.get(emp.team);
     if (!q) { skippedNoQuestions++; continue; }
-
-    const token = genToken();
-    const link = `${baseUrl}/respond/${token}`;
-
-    await db.execute({
-      sql: `INSERT INTO weekly_responses (employee_id, week, sent_at, received_at, state, q1, a1, q2, a2, ai_rating, token)
-            VALUES (?, ?, ?, NULL, 'Pending', ?, NULL, ?, NULL, NULL, ?)`,
-      args: [emp.id, week, new Date().toISOString(), q.q1, q.q2, token],
-    });
-
-    await sendMail({
-      to: emp.email,
-      cc: getManagerEmail(emp.manager),
-      subject: subjectFor(emp),
-      html: htmlFor({ name: emp.name, q1: q.q1, q2: q.q2, link }),
-    });
-    sent++;
+    toSend.push({ emp, q });
   }
 
-  return { sent, total: employees.length, skippedSent, skippedNoEmail, skippedNoQuestions };
+  let sent = 0;
+  let sendErrors = 0;
+  await mapWithConcurrency(toSend, CHECKIN_MAIL_CONCURRENCY, async ({ emp, q }) => {
+    const token = genToken();
+    const link = `${baseUrl}/respond/${token}`;
+    try {
+      // Send first, record second — if sendMail throws, no weekly_responses
+      // row goes in, so this employee is retried (not silently marked
+      // "already sent") the next time this job runs, instead of the row
+      // committing regardless of whether the email actually went out.
+      await sendMail({
+        to: emp.email,
+        cc: getManagerEmail(emp.manager),
+        subject: subjectFor(emp),
+        html: htmlFor({ name: emp.name, q1: q.q1, q2: q.q2, link }),
+      });
+
+      await db.execute({
+        sql: `INSERT INTO weekly_responses (employee_id, week, sent_at, received_at, state, q1, a1, q2, a2, ai_rating, token)
+              VALUES (?, ?, ?, NULL, 'Pending', ?, NULL, ?, NULL, NULL, ?)`,
+        args: [emp.id, week, new Date().toISOString(), q.q1, q.q2, token],
+      });
+      sent++;
+    } catch (err) {
+      console.error(`Check-in send failed for ${emp.id}:`, err.message);
+      sendErrors++;
+    }
+  });
+
+  return { sent, total: employees.length, skippedSent, skippedNoEmail, skippedNoQuestions, sendErrors };
 }
 
 // Trainer-only — a trainer scheduled for 40+ 'SC' (Scheduled Class) hours
@@ -141,7 +176,7 @@ export async function sendWeeklyReports() {
     htmlFor: initialEmailHtml,
   });
 
-  return { message: `Sent ${r.sent} of ${r.total} eligible active NJs for ${week} (${r.skippedSent} already sent, ${r.skippedNoEmail} no email on file${r.skippedNoQuestions ? `, ${r.skippedNoQuestions} no questions for team` : ''}, ${skippedFullyBooked} Trainers skipped — 40+ SC hours scheduled this week).` };
+  return { message: `Sent ${r.sent} of ${r.total} eligible active NJs for ${week} (${r.skippedSent} already sent, ${r.skippedNoEmail} no email on file${r.skippedNoQuestions ? `, ${r.skippedNoQuestions} no questions for team` : ''}, ${skippedFullyBooked} Trainers skipped — 40+ SC hours scheduled this week${r.sendErrors ? `, ${r.sendErrors} send errors — will retry next run` : ''}).` };
 }
 
 // A PA/PIP case counts as "ongoing" only if today falls inside its own
@@ -214,5 +249,5 @@ export async function sendPaPipWeeklyCheckIns() {
     htmlFor: paPipEmailHtml,
   });
 
-  return { message: `Sent ${r.sent} of ${r.total} employees with an ongoing PA/PIP window for ${week} (${r.skippedSent} already sent, ${r.skippedNoEmail} no email on file${r.skippedNoQuestions ? `, ${r.skippedNoQuestions} no questions for team` : ''}, ${skippedLapsed} excluded — PA/PIP flagged active in Koenig but window already lapsed, ${skippedFullyBooked} Trainers skipped — 40+ SC hours scheduled this week).` };
+  return { message: `Sent ${r.sent} of ${r.total} employees with an ongoing PA/PIP window for ${week} (${r.skippedSent} already sent, ${r.skippedNoEmail} no email on file${r.skippedNoQuestions ? `, ${r.skippedNoQuestions} no questions for team` : ''}, ${skippedLapsed} excluded — PA/PIP flagged active in Koenig but window already lapsed, ${skippedFullyBooked} Trainers skipped — 40+ SC hours scheduled this week${r.sendErrors ? `, ${r.sendErrors} send errors — will retry next run` : ''}).` };
 }
