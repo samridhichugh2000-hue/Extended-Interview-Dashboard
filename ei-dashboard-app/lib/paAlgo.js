@@ -147,23 +147,37 @@ export function negativeFeedbackSuggestion(distinctAssignmentCount) {
   return 'Exit';
 }
 
+// Human-readable reason for a negFeedbackSuggestion firing, e.g. "2 distinct
+// negative-feedback assignments in the last 7 days → Suggested PIP" — shown
+// in the dashboard's Rule column (appended to the band's own rule, if any)
+// so a row that fired via the negative-feedback override doesn't just show
+// the tier/band's rule text, which may not be why it actually fired (e.g.
+// utilization was fine, but a fresh negative-feedback assignment came in).
+function negFeedbackReason(distinctAssignmentCount, suggestion) {
+  if (!suggestion) return null;
+  return `${distinctAssignmentCount} distinct negative-feedback assignment${distinctAssignmentCount === 1 ? '' : 's'} in the last 7 days → Suggested ${suggestion}`;
+}
+
 // Returns (negFeedbackSuggestion is computed independently of the tier/band
 // check below, but a truthy one *overrides* status to 'fired' — a fresh
 // negative-feedback assignment is itself a firing condition, not just an
 // informational side badge, so a trainer with one never reads as "Clear"
 // (or "No data"/"No salary data") just because their utilization or
-// assignment numbers happen to look fine):
-//   { status: 'no-salary-data', negFeedbackSuggestion }               — net_payable_details not synced for this employee yet
+// assignment numbers happen to look fine. `rule` gets negFeedbackReason
+// appended whenever it fires, so the Rule column always explains why):
+//   { status: 'no-salary-data', negFeedbackSuggestion, rule? }         — net_payable_details not synced for this employee yet (rule only set if negFeedbackSuggestion fired)
 //   { status: 'no-data', tier, band, rule, negFeedbackSuggestion }     — matched a band, but it needs data (assignments/utilization) we don't have
 //   { status: 'clear', tier, band, rule, negFeedbackSuggestion }       — matched a band, condition did not fire, and no negative-feedback override
 //   { status: 'fired', tier, band, rule, negFeedbackSuggestion }       — matched a band, condition fired, OR negFeedbackSuggestion overrode it — PA Algo candidate
 export function computeTrainerPaAlgoFlag(employee) {
-  const negFeedbackSuggestion = negativeFeedbackSuggestion(distinctNegativeFeedbackAssignments(employee.negFeedbackDetails));
+  const negFeedbackCount = distinctNegativeFeedbackAssignments(employee.negFeedbackDetails);
+  const negFeedbackSuggestion = negativeFeedbackSuggestion(negFeedbackCount);
   const negFeedbackFires = negFeedbackSuggestion != null;
+  const negReason = negFeedbackReason(negFeedbackCount, negFeedbackSuggestion);
 
   const payScale = employee.netPayableDetails?.PayScale != null ? Number(employee.netPayableDetails.PayScale) : null;
   const tier = trainerSalaryTier(payScale);
-  if (tier == null) return { status: negFeedbackFires ? 'fired' : 'no-salary-data', negFeedbackSuggestion };
+  if (tier == null) return { status: negFeedbackFires ? 'fired' : 'no-salary-data', negFeedbackSuggestion, rule: negReason };
 
   const bands = BANDS_BY_TIER[tier];
   const tenureDays = employee.tenure ?? 0;
@@ -171,5 +185,6 @@ export function computeTrainerPaAlgoFlag(employee) {
   // ascending, so this is the most specific match.
   const band = [...bands].reverse().find((b) => tenureDays >= b.minDays);
 
-  return { status: negFeedbackFires ? 'fired' : band.check(employee), tier, band: band.label, rule: band.rule, negFeedbackSuggestion };
+  const rule = negFeedbackFires ? (band.rule ? `${band.rule}; ${negReason}` : negReason) : band.rule;
+  return { status: negFeedbackFires ? 'fired' : band.check(employee), tier, band: band.label, rule, negFeedbackSuggestion };
 }
