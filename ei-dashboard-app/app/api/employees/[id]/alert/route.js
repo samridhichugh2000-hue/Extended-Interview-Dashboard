@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sendMail } from '../../../../../lib/graphMailer';
 import { getDb } from '../../../../../lib/db';
+import { draftToHtml } from '../../../../../lib/emailDraft';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,19 +16,14 @@ function pipSubject(pipType, name) {
 // Must match TEST_RECIPIENT in app/DashboardClient.js.
 const TEST_RECIPIENT = 'samridhi.chugh@koenig-solutions.com';
 
-function esc(v) {
-  return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
 // `draft` is the ENTIRE email body HR edited directly in AlertPreviewModal's
 // textarea (greeting through sign-off) — plain text (auto-generated from
-// the checked parameters and deadline, then freely editable), not HTML, so
-// it's escaped and newlines converted to <br/> rather than trusted as
-// markup. Nothing is added around it — whatever HR has in the draft when
-// they save is exactly what gets sent.
+// the checked parameters and deadline, then freely editable). draftToHtml
+// (lib/emailDraft.js, shared with the client-side live preview so what HR
+// previews is exactly what gets sent) turns it into real paragraphs/lists/
+// a table rather than one long <br/>-separated blob.
 function alertEmailHtml({ draft }) {
-  const body = esc(draft || '').replace(/\n/g, '<br/>');
-  return `<div style="font-family:system-ui,Segoe UI,Roboto,sans-serif;font-size:14px;color:#1a1a1a;line-height:1.6;">${body}</div>`;
+  return `<div style="font-family:system-ui,Segoe UI,Roboto,sans-serif;font-size:14px;color:#1a1a1a;line-height:1.6;">${draftToHtml(draft)}</div>`;
 }
 
 // Posts an issued PA/PIP to RMS (Koenig's own system of record) — the API

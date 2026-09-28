@@ -8,6 +8,7 @@ import {
 } from '../lib/data';
 import { JOB_LABELS } from '../lib/jobLabels';
 import { TRAINER_SALARY_TIERS, SALES_REGIONS } from '../lib/paAlgo';
+import { draftToHtml } from '../lib/emailDraft';
 
 const card = { border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 16 };
 
@@ -313,10 +314,20 @@ function AlertPreviewModal({ emp, pending, onClose, onSend }) {
               <textarea
                 value={draft}
                 onChange={(ev) => { setDraft(ev.target.value); setDraftEdited(true); }}
-                rows={20}
+                rows={14}
                 style={{ width: '100%', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.15)', borderRadius: 8, padding: '12px 14px', fontSize: 13, color: '#C7CBDA', outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.6 }}
               />
+              <div style={{ fontSize: 11, color: '#5C6178', marginTop: 8 }}>
+                Blank line = new paragraph · a line starting with "- " = bullet list · a "Label:" line followed by "Key: value" lines = a table (like Month-wise NR/Utilization below)
+              </div>
             </div>
+          </div>
+          <div>
+            <div className="mono" style={{ fontSize: 10, letterSpacing: '.12em', color: '#5C6178', textTransform: 'uppercase', marginBottom: 10 }}>How this will actually look</div>
+            <div
+              style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 12, padding: 20, background: '#ffffff', color: '#1a1a1a', fontSize: 14, lineHeight: 1.6, fontFamily: 'system-ui,Segoe UI,Roboto,sans-serif' }}
+              dangerouslySetInnerHTML={{ __html: draftToHtml(draft) }}
+            />
           </div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', border: `1px solid ${testMode ? 'rgba(245,158,11,0.45)' : 'rgba(255,255,255,0.09)'}`, background: testMode ? 'rgba(245,158,11,0.1)' : 'rgba(255,255,255,0.02)', borderRadius: 10, padding: '9px 12px' }}>
             <input type="checkbox" checked={testMode} onChange={(ev) => setTestMode(ev.target.checked)} style={{ width: 15, height: 15, flex: 'none' }} />
