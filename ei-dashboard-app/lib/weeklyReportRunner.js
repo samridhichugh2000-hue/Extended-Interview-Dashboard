@@ -91,29 +91,26 @@ async function sendCheckIns({ db, week, employees, questionsByTeam, baseUrl, sub
 // this week is mid-batch, not sitting idle, so they're skipped from this
 // week's check-in rather than asked to fill out a report while delivering.
 // Sales/PT Team have no RC (Resource Chart) schedule concept in Koenig, so
-// they pass through untouched. Fails open per employee — an RC lookup
-// error sends the check-in anyway rather than going quiet for everyone if
-// Koenig's API hiccups.
+// they pass through untouched.
+//
+// Reads the precomputed rc_fully_booked_week/rc_fully_booked_sc_hours
+// columns (from the 'rcfullybooked' sync feed, run ~8AM IST via its own
+// external cron-job.org schedule — see syncTrainerFullyBooked in
+// lib/syncRunners.js) instead of calling Koenig's RC Schedule API live, per
+// Trainer, inside this request. That inline loop is what timed the whole
+// 2026-09-28 Monday send out at the 60s function limit before any NJ/PA/PIP
+// check-in email went out. Fails open per employee — a missing or stale
+// (not this week) precheck sends the check-in anyway rather than going
+// quiet for everyone if the 8AM job hasn't run yet or hiccuped.
 const FULLY_BOOKED_SC_HOURS = 40;
-async function excludeFullyBookedTrainers(employees, week) {
-  const { weekDateRange, istDateKey } = await import('./weekUtils.js');
-  const { getTrainerRcSchedule, totalScHours } = await import('./koenigTrainerRcApi.js');
-  const { start, end } = weekDateRange(week);
-  const fromDate = istDateKey(start);
-  const toDate = istDateKey(end);
-
-  const kept = [];
+function excludeFullyBookedTrainers(employees, week) {
   let skippedFullyBooked = 0;
-  for (const emp of employees) {
-    if (emp.team !== 'Trainer' || !emp.email) { kept.push(emp); continue; }
-    try {
-      const rows = await getTrainerRcSchedule(emp.email, fromDate, toDate);
-      if (totalScHours(rows) >= FULLY_BOOKED_SC_HOURS) { skippedFullyBooked++; continue; }
-    } catch (err) {
-      console.error(`RC schedule lookup failed for ${emp.id}, sending check-in anyway:`, err.message);
-    }
-    kept.push(emp);
-  }
+  const kept = employees.filter((emp) => {
+    if (emp.team !== 'Trainer' || !emp.email) return true;
+    if (emp.rc_fully_booked_week !== week) return true;
+    if ((emp.rc_fully_booked_sc_hours || 0) >= FULLY_BOOKED_SC_HOURS) { skippedFullyBooked++; return false; }
+    return true;
+  });
   return { employees: kept, skippedFullyBooked };
 }
 
@@ -135,8 +132,8 @@ export async function sendWeeklyReports() {
   const questionsByTeam = new Map(NJ_QUESTIONS.map((q) => [q.team, q]));
   const baseUrl = process.env.APP_BASE_URL;
 
-  const employees = await db.execute("SELECT id, name, email, team, manager FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team') AND active = 1 AND tenure_days < 182");
-  const { employees: eligible, skippedFullyBooked } = await excludeFullyBookedTrainers(employees.rows, week);
+  const employees = await db.execute("SELECT id, name, email, team, manager, rc_fully_booked_week, rc_fully_booked_sc_hours FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team') AND active = 1 AND tenure_days < 182");
+  const { employees: eligible, skippedFullyBooked } = excludeFullyBookedTrainers(employees.rows, week);
 
   const r = await sendCheckIns({
     db, week, employees: eligible, questionsByTeam, baseUrl, getManagerEmail, sendMail,
@@ -188,7 +185,7 @@ export async function sendPaPipWeeklyCheckIns() {
   const today = new Date();
 
   const candidates = await db.execute(
-    "SELECT id, name, email, team, manager, status FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team') AND active = 1 AND tenure_days >= 182 AND status IN ('PA Issued', 'PIP Issued')"
+    "SELECT id, name, email, team, manager, status, rc_fully_booked_week, rc_fully_booked_sc_hours FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team') AND active = 1 AND tenure_days >= 182 AND status IN ('PA Issued', 'PIP Issued')"
   );
 
   const ids = candidates.rows.map((e) => e.id);
@@ -209,7 +206,7 @@ export async function sendPaPipWeeklyCheckIns() {
     return hasOngoingPipWindow(pipByEmp.get(e.id) || [], wantType, today);
   });
   const skippedLapsed = candidates.rows.length - ongoing.length;
-  const { employees, skippedFullyBooked } = await excludeFullyBookedTrainers(ongoing, week);
+  const { employees, skippedFullyBooked } = excludeFullyBookedTrainers(ongoing, week);
 
   const r = await sendCheckIns({
     db, week, employees, questionsByTeam, baseUrl, getManagerEmail, sendMail,

@@ -71,7 +71,9 @@ CREATE TABLE IF NOT EXISTS employees (
   emp_state TEXT,                 -- same feed, same scope — informational only.
   is_overseas INTEGER,            -- same feed's Is_oversease flag, same scope — cross-check against country, not authoritative on its own.
   designation TEXT,               -- same feed's designation_name, same scope — informational only.
-  util_monthly_details TEXT       -- JSON array of {month: 'MMM YYYY', hours, util} (Trainer only), oldest to newest, full ~14-month history from the Koenig Utilization feed (metric1-6 only ever kept the trailing 6 months as display strings). Powers the Trainer PA Algo's 180/270/360-day trailing-utilization windows (approximated as 6/9/12 trailing calendar months).
+  util_monthly_details TEXT,      -- JSON array of {month: 'MMM YYYY', hours, util} (Trainer only), oldest to newest, full ~14-month history from the Koenig Utilization feed (metric1-6 only ever kept the trailing 6 months as display strings). Powers the Trainer PA Algo's 180/270/360-day trailing-utilization windows (approximated as 6/9/12 trailing calendar months).
+  rc_fully_booked_week TEXT,      -- ISO week (e.g. '2026-W40') the two columns below were last computed for, from the 'rcfullybooked' sync feed (Trainer only). weeklyReportRunner's Monday check-in send only trusts rc_fully_booked_sc_hours when this matches the current week — otherwise it fails open (sends the check-in) rather than trusting stale/missing data.
+  rc_fully_booked_sc_hours REAL   -- total 'SC' (Scheduled Class) hours this Trainer is booked for in the week named above. >= 40 means they're skipped from that week's check-in send (see FULLY_BOOKED_SC_HOURS in lib/weeklyReportRunner.js). Precomputed by its own ~8AM IST cron so the 9AM weeklyreport cron doesn't have to call Koenig's RC Schedule API live, per Trainer, inside its own 60s function limit (that inline loop timed the whole send out on 2026-09-28).
 );
 
 CREATE TABLE IF NOT EXISTS pip_status (

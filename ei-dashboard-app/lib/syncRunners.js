@@ -550,6 +550,61 @@ export async function syncTrainerRc() {
   return { message: `Synced Main Trainer assignments for ${updated} Trainer employees (${unmatched} have none, ${skippedNoEmail} no email on file, ${apiErrors} API errors).` };
 }
 
+// Precomputes whether each active Trainer is "fully booked" (40+ Scheduled
+// Class hours) for the current ISO week, so weeklyReportRunner's Monday
+// check-in send (excludeFullyBookedTrainers) can just read the result off
+// the employees row instead of calling Koenig's RC Schedule API live, once
+// per Trainer, inside its own 60s-limited request — that inline loop is what
+// timed the whole 2026-09-28 Monday send out before any NJ/PA/PIP check-in
+// email went out. Meant to run on its own external cron-job.org schedule
+// ~8AM IST, ahead of weeklyreport's 9AM IST native-Vercel-Cron send (Hobby's
+// 2-cron cap is already spent on weeklyreport + weeklyresponsereport — see
+// vercel.json). Same Monday-only gate as the sends themselves — a no-op the
+// other six days, so there's nothing to fail open on.
+export async function syncTrainerFullyBooked() {
+  const { getIsoWeek, weekDateRange, istDateKey, isMondayIst } = await import('./weekUtils.js');
+  if (!isMondayIst()) {
+    return { message: 'Skipped — RC fully-booked check only runs Monday (IST), ahead of the weekly check-in send.' };
+  }
+
+  const db = getDb();
+  const { getTrainerRcSchedule, totalScHours } = await import('./koenigTrainerRcApi.js');
+
+  const week = getIsoWeek(new Date());
+  const { start, end } = weekDateRange(week);
+  const fromDate = istDateKey(start);
+  const toDate = istDateKey(end);
+
+  const trainerEmployees = await db.execute("SELECT id, email FROM employees WHERE team = 'Trainer' AND active = 1");
+
+  const statements = [];
+  let checked = 0;
+  let skippedNoEmail = 0;
+  let apiErrors = 0;
+  await mapWithConcurrency(trainerEmployees.rows, SYNC_CONCURRENCY, async (emp) => {
+    if (!emp.email) { skippedNoEmail++; return; }
+    try {
+      const rows = await getTrainerRcSchedule(emp.email, fromDate, toDate);
+      const hours = totalScHours(rows);
+      statements.push({
+        sql: 'UPDATE employees SET rc_fully_booked_week = ?, rc_fully_booked_sc_hours = ? WHERE id = ?',
+        args: [week, hours, emp.id],
+      });
+      checked++;
+    } catch (err) {
+      // Leaves this employee's rc_fully_booked_week stale (not this week) —
+      // weeklyReportRunner treats that as "no data" and fails open (sends
+      // the check-in anyway) rather than silently going quiet on them.
+      console.error(`RC fully-booked check failed for ${emp.id}, leaving stale:`, err.message);
+      apiErrors++;
+    }
+  });
+
+  if (statements.length) await db.batch(statements, 'write');
+
+  return { message: `Checked RC schedule for ${checked} active Trainers for ${week} (${skippedNoEmail} no email on file, ${apiErrors} API errors — those fail open in Monday's check-in send).` };
+}
+
 export async function syncSkills() {
   const db = getDb();
   const { getTrainerSkills } = await import('./koenigSkillsApi.js');
@@ -1210,6 +1265,7 @@ export const SYNC_RUNNERS = {
   negfeedback: syncNegFeedback,
   assignments: syncAssignments,
   trainerrc: syncTrainerRc,
+  rcfullybooked: syncTrainerFullyBooked,
   skills: syncSkills,
   inhouseskills: syncInHouseSkills,
   techcalls: syncTechCalls,

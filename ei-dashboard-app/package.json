@@ -20,6 +20,7 @@
     "sync:negfeedback": "node scripts/sync-negfeedback.mjs",
     "sync:assignments": "node scripts/sync-assignments.mjs",
     "sync:trainerrc": "node scripts/sync-trainerrc.mjs",
+    "sync:rcfullybooked": "node scripts/sync-rcfullybooked.mjs",
     "sync:skills": "node scripts/sync-skills.mjs",
     "sync:inhouseskills": "node scripts/sync-inhouse-skills.mjs",
     "sync:techcalls": "node scripts/sync-techcalls.mjs",

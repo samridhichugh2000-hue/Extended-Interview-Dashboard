@@ -204,4 +204,15 @@ for (const stmt of [
   }
 }
 
+for (const stmt of [
+  'ALTER TABLE employees ADD COLUMN rc_fully_booked_week TEXT',
+  'ALTER TABLE employees ADD COLUMN rc_fully_booked_sc_hours REAL',
+]) {
+  try {
+    await db.execute(stmt);
+  } catch (err) {
+    if (!String(err.message).includes('duplicate column')) throw err;
+  }
+}
+
 console.log('Done. Run `npm run sync:koenig` to populate employees from the live API.');
