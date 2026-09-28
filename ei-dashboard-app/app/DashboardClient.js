@@ -7,7 +7,7 @@ import {
   computeSignalReport, computeWorryScore, trendNoteFor, WORRY_WINDOWS, windowSince,
 } from '../lib/data';
 import { JOB_LABELS } from '../lib/jobLabels';
-import { TRAINER_SALARY_TIERS } from '../lib/paAlgo';
+import { TRAINER_SALARY_TIERS, SALES_REGIONS } from '../lib/paAlgo';
 
 const card = { border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 16 };
 
@@ -327,7 +327,7 @@ export default function DashboardClient({ employees, responses, week, newJoiners
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex' }}>
-      <Sidebar screen={screen} dept={dept} go={go} njCount={newJoiners.length} deptCounts={deptCounts} graphCallsCount={graphMeetings.length} paAlgoCount={employees.filter((e) => e.trainerPaAlgo?.status === 'fired').length} />
+      <Sidebar screen={screen} dept={dept} go={go} njCount={newJoiners.length} deptCounts={deptCounts} graphCallsCount={graphMeetings.length} paAlgoCount={employees.filter((e) => e.trainerPaAlgo?.status === 'fired' || e.salesPaAlgo?.status === 'fired').length} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <Topbar screen={screen} dept={dept} />
         <JobFailureBanner failedJobs={failedJobs} />
@@ -1376,6 +1376,11 @@ const PA_ALGO_STATUS_STYLE = {
   clear: { label: 'Clear', bg: 'rgba(20,184,166,0.12)', color: '#5EEAD4', border: 'rgba(20,184,166,0.3)' },
   'no-data': { label: 'No data', bg: 'rgba(245,158,11,0.12)', color: '#F59E0B', border: 'rgba(245,158,11,0.3)' },
   'no-salary-data': { label: 'No salary data', bg: 'rgba(255,255,255,0.05)', color: '#6E7488', border: 'rgba(255,255,255,0.12)' },
+  'no-country-data': { label: 'No country data', bg: 'rgba(255,255,255,0.05)', color: '#6E7488', border: 'rgba(255,255,255,0.12)' },
+};
+const PA_ALGO_REGION_LABELS = {
+  [SALES_REGIONS.INDIA]: 'India',
+  [SALES_REGIONS.OVERSEAS]: 'Overseas',
 };
 // Negative-feedback escalation ladder (lib/paAlgo.js's negativeFeedbackSuggestion)
 // — independent of the tenure/salary-tier status above, shown alongside it.
@@ -1394,42 +1399,65 @@ function FiredOnlyToggle({ value, onChange }) {
   );
 }
 
-// Trainer-only for now — Sales/CSM's own salary-multiple criteria isn't
-// built yet (see lib/paAlgo.js). Proposed candidacy from delivery numbers
-// vs salary tier, entirely separate from the real HR-issued PA/PIP records
-// on the PA/PIP Detection screen — nothing here writes to pip_status.
+// Proposed candidacy from delivery numbers vs salary tier (Trainer) or Net
+// Revenue vs salary/an absolute bar (Sales) — see lib/paAlgo.js. Entirely
+// separate from the real HR-issued PA/PIP records on the PA/PIP Detection
+// screen — nothing here writes to pip_status.
+const PA_ALGO_MISSING_STATUSES = ['no-data', 'no-salary-data', 'no-country-data'];
 function PaAlgo({ employees, filter, setFilter, setModal }) {
+  const [team, setTeam] = useState('Trainer');
   const [search, setSearch] = useState('');
   const [includeInactive, setIncludeInactive] = useState(false);
   const [firedOnly, setFiredOnly] = useState(true);
 
-  const trainers = employees.filter((e) => e.team === 'Trainer' && e.trainerPaAlgo && (includeInactive || e.active !== false));
-  const firedCount = trainers.filter((e) => e.trainerPaAlgo.status === 'fired').length;
-  const clearCount = trainers.filter((e) => e.trainerPaAlgo.status === 'clear').length;
-  const noDataCount = trainers.filter((e) => e.trainerPaAlgo.status === 'no-data' || e.trainerPaAlgo.status === 'no-salary-data').length;
+  const isTrainer = team === 'Trainer';
+  const algoKey = isTrainer ? 'trainerPaAlgo' : 'salesPaAlgo';
+  const tabKey = isTrainer ? 'tier' : 'region';
 
-  const tabs = [['All Tiers', null], ...Object.entries(PA_ALGO_TIER_LABELS).map(([val, label]) => [label, val])].map(([label, val]) => ({
+  const pool = employees.filter((e) => e.team === team && e[algoKey] && (includeInactive || e.active !== false));
+  const firedCount = pool.filter((e) => e[algoKey].status === 'fired').length;
+  const clearCount = pool.filter((e) => e[algoKey].status === 'clear').length;
+  const noDataCount = pool.filter((e) => PA_ALGO_MISSING_STATUSES.includes(e[algoKey].status)).length;
+
+  // Object.entries gives [value, label] pairs (both maps are keyed by the
+  // underlying tier/region value) — swapped to [label, value] to match the
+  // [label, val] destructuring below.
+  const tabDefs = isTrainer
+    ? [['All Tiers', null], ...Object.entries(PA_ALGO_TIER_LABELS).map(([val, label]) => [label, val])]
+    : [['All Regions', null], ...Object.entries(PA_ALGO_REGION_LABELS).map(([val, label]) => [label, val])];
+  const tabs = tabDefs.map(([label, val]) => ({
     label, val, active: filter === val || (!filter && !val),
-    count: val ? trainers.filter((e) => e.trainerPaAlgo.tier === val).length : trainers.length,
+    count: val ? pool.filter((e) => e[algoKey][tabKey] === val).length : pool.length,
   }));
 
   const q = search.trim().toLowerCase();
-  const rows = trainers
-    .filter((e) => !filter || e.trainerPaAlgo.tier === filter)
-    .filter((e) => !firedOnly || e.trainerPaAlgo.status === 'fired' || e.trainerPaAlgo.negFeedbackSuggestion)
+  const rows = pool
+    .filter((e) => !filter || e[algoKey][tabKey] === filter)
+    .filter((e) => !firedOnly || e[algoKey].status === 'fired' || e[algoKey].negFeedbackSuggestion)
     .filter((e) => !q || e.name.toLowerCase().includes(q) || String(e.id).toLowerCase().includes(q))
     .map(decorate)
     .sort((a, b) => {
-      const suggestionOrder = { Exit: 0, PIP: 1, PA: 2 };
-      const aSuggestion = a.trainerPaAlgo.negFeedbackSuggestion ? suggestionOrder[a.trainerPaAlgo.negFeedbackSuggestion] : 99;
-      const bSuggestion = b.trainerPaAlgo.negFeedbackSuggestion ? suggestionOrder[b.trainerPaAlgo.negFeedbackSuggestion] : 99;
-      if (aSuggestion !== bSuggestion) return aSuggestion - bSuggestion;
-      const order = { fired: 0, 'no-data': 1, 'no-salary-data': 2, clear: 3 };
-      return order[a.trainerPaAlgo.status] - order[b.trainerPaAlgo.status] || a.name.localeCompare(b.name);
+      if (isTrainer) {
+        const suggestionOrder = { Exit: 0, PIP: 1, PA: 2 };
+        const aSuggestion = a.trainerPaAlgo.negFeedbackSuggestion ? suggestionOrder[a.trainerPaAlgo.negFeedbackSuggestion] : 99;
+        const bSuggestion = b.trainerPaAlgo.negFeedbackSuggestion ? suggestionOrder[b.trainerPaAlgo.negFeedbackSuggestion] : 99;
+        if (aSuggestion !== bSuggestion) return aSuggestion - bSuggestion;
+      }
+      const order = { fired: 0, 'no-data': 1, 'no-salary-data': 2, 'no-country-data': 2, clear: 3 };
+      return (order[a[algoKey].status] ?? 9) - (order[b[algoKey].status] ?? 9) || a.name.localeCompare(b.name);
     });
+
+  const gridCols = isTrainer ? '1.3fr .8fr .9fr 1.7fr .8fr .9fr' : '1.5fr .9fr .9fr 2.3fr .9fr';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div style={{ display: 'flex', gap: 8 }}>
+        {['Trainer', 'Sales'].map((t) => (
+          <div key={t} onClick={() => { setTeam(t); setFilter(null); }} style={{ cursor: 'pointer', border: `1px solid ${team === t ? 'rgba(99,102,241,0.45)' : 'rgba(255,255,255,0.1)'}`, background: team === t ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.03)', color: team === t ? '#FFFFFF' : '#9BA1B8', borderRadius: 10, padding: '8px 16px', fontSize: 13, fontWeight: 600 }}>
+            {t}
+          </div>
+        ))}
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16 }}>
         <div style={{ border: '1px solid rgba(244,63,94,0.28)', background: 'linear-gradient(150deg,rgba(244,63,94,0.13),rgba(244,63,94,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>Fired</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6, color: '#F43F5E' }}>{firedCount}</div></div>
         <div style={{ border: '1px solid rgba(20,184,166,0.28)', background: 'linear-gradient(150deg,rgba(20,184,166,0.13),rgba(20,184,166,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>Clear</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6, color: '#5EEAD4' }}>{clearCount}</div></div>
@@ -1453,26 +1481,31 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
         <IncludeInactiveToggle value={includeInactive} onChange={setIncludeInactive} />
       </div>
       <div style={{ ...card, overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1.3fr .8fr .9fr 1.7fr .8fr .9fr', padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <span>Employee</span><span>Salary tier</span><span>Tenure band</span><span>Rule</span><span>Status</span><span style={{ textAlign: 'right' }}>Neg. feedback (7d)</span>
+        <div style={{ display: 'grid', gridTemplateColumns: gridCols, padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          {isTrainer
+            ? <><span>Employee</span><span>Salary tier</span><span>Tenure band</span><span>Rule</span><span>Status</span><span style={{ textAlign: 'right' }}>Neg. feedback (7d)</span></>
+            : <><span>Employee</span><span>Region</span><span>Tenure band</span><span>Rule</span><span style={{ textAlign: 'right' }}>Status</span></>}
         </div>
         {rows.map((e) => {
-          const st = PA_ALGO_STATUS_STYLE[e.trainerPaAlgo.status];
-          const sugg = e.trainerPaAlgo.negFeedbackSuggestion ? NEG_FEEDBACK_SUGGESTION_STYLE[e.trainerPaAlgo.negFeedbackSuggestion] : null;
+          const algo = e[algoKey];
+          const st = PA_ALGO_STATUS_STYLE[algo.status] || PA_ALGO_STATUS_STYLE['no-data'];
+          const sugg = isTrainer && algo.negFeedbackSuggestion ? NEG_FEEDBACK_SUGGESTION_STYLE[algo.negFeedbackSuggestion] : null;
           return (
-            <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: '1.3fr .8fr .9fr 1.7fr .8fr .9fr', padding: '14px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
+            <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: gridCols, padding: '14px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontWeight: 600 }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id}{e.inactive ? ' · Inactive' : ''}</span></div>
-              <span style={{ fontSize: 12, color: '#A8AEC4' }}>{PA_ALGO_TIER_LABELS[e.trainerPaAlgo.tier] || '—'}</span>
-              <span style={{ fontSize: 12, color: '#A8AEC4' }}>{e.trainerPaAlgo.band || '—'}</span>
-              <span style={{ fontSize: 12, color: '#A8AEC4' }}>{e.trainerPaAlgo.rule || '—'}</span>
-              <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: st.bg, color: st.color, border: `1px solid ${st.border}` }}>{st.label}</span>
-              {sugg
+              <span style={{ fontSize: 12, color: '#A8AEC4' }}>{isTrainer ? (PA_ALGO_TIER_LABELS[algo.tier] || '—') : (PA_ALGO_REGION_LABELS[algo.region] || '—')}</span>
+              <span style={{ fontSize: 12, color: '#A8AEC4' }}>{algo.band || '—'}</span>
+              <span style={{ fontSize: 12, color: '#A8AEC4' }}>{algo.rule || '—'}</span>
+              {isTrainer
+                ? <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: st.bg, color: st.color, border: `1px solid ${st.border}` }}>{st.label}</span>
+                : <span style={{ justifySelf: 'end', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: st.bg, color: st.color, border: `1px solid ${st.border}` }}>{st.label}</span>}
+              {isTrainer && (sugg
                 ? <span style={{ justifySelf: 'end', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: sugg.bg, color: sugg.color, border: `1px solid ${sugg.border}` }}>{sugg.label}</span>
-                : <span style={{ justifySelf: 'end', fontSize: 12, color: '#6E7488' }}>—</span>}
+                : <span style={{ justifySelf: 'end', fontSize: 12, color: '#6E7488' }}>—</span>)}
             </div>
           );
         })}
-        {!rows.length && <div style={{ padding: '18px', fontSize: 12.5, color: '#6E7488' }}>No Trainers match this filter.</div>}
+        {!rows.length && <div style={{ padding: '18px', fontSize: 12.5, color: '#6E7488' }}>No {isTrainer ? 'Trainers' : 'Sales reps'} match this filter.</div>}
       </div>
     </div>
   );

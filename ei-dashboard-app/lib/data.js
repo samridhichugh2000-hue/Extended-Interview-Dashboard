@@ -77,7 +77,7 @@ export const TITLES = {
   overview: ['Overview', 'God view of every new joiner under Extended Interview'],
   dept: [null, 'Department view · status filters, revenue and feedback columns'],
   papip: ['PA / PIP Detection', 'Every open case, grouped by department'],
-  paalgo: ['PA Algo', 'Salary-tier and delivery-based PA/PIP candidacy — proposed, not issued. Trainer only for now.'],
+  paalgo: ['PA Algo', 'Proposed PA/PIP candidacy, not issued — Trainer (salary-tier and delivery-based) or Sales (Net Revenue-based).'],
   worryindex: ['Worry Index', 'How every signal is scored, and where every NJ lands · 2026-W30'],
   graphcalls: ['Graph API Calls', "Sales' Teams meetings via Microsoft Graph — join timing and audio/video quality. Not yet feeding the Worry Index."],
   reports: ['Reports', 'Weekly and 15-day reporting'],
@@ -103,9 +103,10 @@ export const NOTES_BY = {
     { tag: 'BREACHES', text: 'The parameters that actually caused the case are shown on the row — no drilling required to know why.' },
   ],
   paalgo: [
-    { tag: 'SALARY TIERS', text: '<1.25L, 1.25L-2L, and >2L (K11) each carry their own tenure-banded thresholds.' },
+    { tag: 'TRAINER', text: 'Salary tier (<1.25L, 1.25L-2L, >2L K11) and tenure band set the delivery bar — plus an independent negative-feedback escalation ladder.' },
+    { tag: 'SALES', text: 'India-based reps are judged on Net Revenue as a multiple of salary; Overseas reps against a flat NR bar — both tenure-banded.' },
     { tag: 'PROPOSED, NOT ISSUED', text: 'A fired row means this employee\'s numbers meet the PA Algo bar — it does not create or change a real PA/PIP case.' },
-    { tag: 'DATA GAPS SHOWN', text: 'Missing payroll or utilization/assignment data is called out separately from a genuine "clear" result.' },
+    { tag: 'DATA GAPS SHOWN', text: 'Missing payroll or NR/utilization/assignment data is called out separately from a genuine "clear" result.' },
   ],
   worryindex: [
     { tag: 'BANDS', text: 'Critical, Low, Medium and Good come straight from the cumulative credit score for the week.' },

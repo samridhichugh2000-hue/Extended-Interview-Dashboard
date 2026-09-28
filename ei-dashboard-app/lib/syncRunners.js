@@ -201,16 +201,38 @@ export async function syncPms() {
     }
     return out;
   }
-  function eightMonthsAgo() {
+  // Widened from the original 8 months to comfortably cover a full
+  // trailing-12-calendar-month window regardless of where "today" falls
+  // inside the current month — the Sales PA Algo's "avg NR of last 12
+  // months" check (lib/paAlgo.js's computeSalesPaAlgoFlag) needs a full 12,
+  // not whatever's left after an 8-month fetch.
+  const NR_LOOKBACK_MONTHS = 13;
+  function lookbackStart() {
     const d = new Date();
-    d.setMonth(d.getMonth() - 8);
+    d.setMonth(d.getMonth() - NR_LOOKBACK_MONTHS);
+    d.setDate(1);
     return d.toISOString().slice(0, 10);
   }
   function today() {
     return new Date().toISOString().slice(0, 10);
   }
+  function parseNR(raw) {
+    const n = parseFloat(raw);
+    return Number.isFinite(n) ? n : 0;
+  }
+  // Chronological (oldest first) so trailing-N-month windows (Sales PA Algo)
+  // can just slice off the end — same fullHistory pattern as syncUtil's
+  // util_monthly_details. Koenig's own MonthlyRevenue keys ("Jul-2026") sort
+  // correctly via new Date(key) without needing separate parsing, and since
+  // Koenig only ever returns months from DOJ onward, "every month on file"
+  // already means "every month since joining" with no separate filtering.
+  function fullHistory(monthlyRevenue) {
+    return Object.entries(monthlyRevenue)
+      .map(([month, raw]) => ({ month, nr: parseNR(raw) }))
+      .sort((a, b) => new Date(a.month) - new Date(b.month));
+  }
 
-  const nrRows = await getCCENRData(eightMonthsAgo(), today());
+  const nrRows = await getCCENRData(lookbackStart(), today());
   const nrByEmpId = new Map(nrRows.map((r) => [r.empId, r]));
   const salesEmployees = await db.execute("SELECT id FROM employees WHERE team = 'Sales'");
 
@@ -222,9 +244,10 @@ export async function syncPms() {
     if (!nr) { unmatched++; continue; }
 
     const months = lastSixMonths(nr.monthlyRevenue);
+    const history = fullHistory(nr.monthlyRevenue);
     await db.execute({
-      sql: 'UPDATE employees SET metric1 = ?, metric2 = ?, metric3 = ?, metric4 = ?, metric5 = ?, metric6 = ? WHERE id = ?',
-      args: [...months, row.id],
+      sql: 'UPDATE employees SET metric1 = ?, metric2 = ?, metric3 = ?, metric4 = ?, metric5 = ?, metric6 = ?, nr_monthly_details = ? WHERE id = ?',
+      args: [...months, JSON.stringify(history), row.id],
     });
     updated++;
   }

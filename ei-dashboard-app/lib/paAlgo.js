@@ -188,3 +188,133 @@ export function computeTrainerPaAlgoFlag(employee) {
   const rule = negFeedbackFires ? (band.rule ? `${band.rule}; ${negReason}` : negReason) : band.rule;
   return { status: negFeedbackFires ? 'fired' : band.check(employee), tier, band: band.label, rule, negFeedbackSuggestion };
 }
+
+// --- Sales PA Algo -----------------------------------------------------
+// Flags Sales reps (CCEs) whose Net Revenue (NR) falls below the bar
+// expected for their tenure, per HR's spec — split by India-based vs
+// Overseas-based (employees.is_overseas, from syncEmployeeDetails), since
+// the two use entirely different measures: India compares average monthly
+// NR as a *multiple* of monthly salary; Overseas compares average monthly
+// NR against a flat INR-per-month bar. Same "proposed flag, doesn't write
+// anything" contract as the Trainer version above — this never touches
+// pip_status.
+
+export const SALES_REGIONS = {
+  INDIA: 'india',
+  OVERSEAS: 'overseas',
+};
+
+// nrMonthlyDetails is chronological oldest-first (see syncPms's fullHistory
+// in lib/syncRunners.js) — Koenig only ever returns months from DOJ onward,
+// so "every month on file" already means "every month since joining", with
+// no separate since-DOJ filtering needed.
+function totalNR(nrMonthlyDetails) {
+  if (!nrMonthlyDetails?.length) return null;
+  return nrMonthlyDetails.reduce((sum, m) => sum + (m.nr ?? 0), 0);
+}
+
+// True average over the trailing `months` calendar months on file (fewer,
+// for a rep with under `months` months of tenure — or, with `months` left
+// null/undefined, every month on file, used by the 6-11 month band since a
+// rep that young can never have a full 12-month window to average over
+// anyway). NOT filtered to skip zero-revenue months the way Trainer's
+// trailingUtilization skips "no data" months above: a real ₹0 month here is
+// a real data point that should pull the average down, not get treated as
+// missing data.
+function avgNR(nrMonthlyDetails, months) {
+  if (!nrMonthlyDetails?.length) return null;
+  const window = months ? nrMonthlyDetails.slice(-months) : nrMonthlyDetails;
+  if (!window.length) return null;
+  return window.reduce((sum, m) => sum + (m.nr ?? 0), 0) / window.length;
+}
+
+// Each check receives { total, nrMonthlyDetails, payScale } (total NR since
+// joining, the raw monthly history for avgNR to window, and payScale from
+// net_payable_details.PayScale) and returns 'fired' | 'clear' | 'no-data'.
+// `months` (undefined = every month on file) picks the averaging window —
+// see avgNR above.
+function roiCheck(threshold) {
+  return ({ total }) => (total == null ? 'no-data' : total < threshold ? 'fired' : 'clear');
+}
+function salaryMultipleCheck(multiple, months) {
+  return ({ nrMonthlyDetails, payScale }) => {
+    const avg = avgNR(nrMonthlyDetails, months);
+    if (avg == null || payScale == null) return 'no-data';
+    return avg / payScale < multiple ? 'fired' : 'clear';
+  };
+}
+function avgThresholdCheck(threshold, months) {
+  return ({ nrMonthlyDetails }) => {
+    const avg = avgNR(nrMonthlyDetails, months);
+    return avg == null ? 'no-data' : avg < threshold ? 'fired' : 'clear';
+  };
+}
+
+const INR = (n) => '₹' + n.toLocaleString('en-IN');
+
+// Tenure bands, oldest first, per HR's spec. 0-3 months has no applicable
+// rule at all (the spec's table starts at 3-6 months) — always 'no-data'
+// there rather than a silent pass.
+const SALES_BANDS = [
+  {
+    minDays: 0, label: '0-3 months',
+    india: { rule: 'No PA Algo criteria for under 3 months tenure', check: () => 'no-data' },
+    overseas: { rule: 'No PA Algo criteria for under 3 months tenure', check: () => 'no-data' },
+  },
+  {
+    minDays: 3 * MONTH_DAYS, label: '3-6 months',
+    india: { rule: '-ve ROI (total NR since joining)', check: roiCheck(0) },
+    overseas: { rule: `ROI (total NR since joining) < -${INR(500000)}`, check: roiCheck(-500000) },
+  },
+  {
+    // No 12-month window is possible yet at this tenure — averages over
+    // every month on file (since joining) instead of a trailing-12 slice.
+    minDays: 6 * MONTH_DAYS, label: '6-11 months',
+    india: { rule: 'Avg NR (all months since joining) / salary < 1.25x', check: salaryMultipleCheck(1.25) },
+    overseas: { rule: `Avg NR (all months since joining) < ${INR(100000)}/month`, check: avgThresholdCheck(100000) },
+  },
+  {
+    minDays: YEAR_DAYS, label: '1-2 years',
+    india: { rule: 'Avg NR (trailing 12mo) / salary < 2.75x', check: salaryMultipleCheck(2.75, 12) },
+    overseas: { rule: `Avg NR (trailing 12mo) < ${INR(500000)}/month`, check: avgThresholdCheck(500000, 12) },
+  },
+  {
+    minDays: 2 * YEAR_DAYS, label: '2-3 years',
+    india: { rule: 'Avg NR (trailing 12mo) / salary < 5x', check: salaryMultipleCheck(5, 12) },
+    overseas: { rule: `Avg NR (trailing 12mo) < ${INR(1000000)}/month`, check: avgThresholdCheck(1000000, 12) },
+  },
+  {
+    minDays: 3 * YEAR_DAYS, label: '3-4 years',
+    india: { rule: 'Avg NR (trailing 12mo) / salary < 7.5x', check: salaryMultipleCheck(7.5, 12) },
+    overseas: { rule: `Avg NR (trailing 12mo) < ${INR(1500000)}/month`, check: avgThresholdCheck(1500000, 12) },
+  },
+  {
+    minDays: 4 * YEAR_DAYS, label: '4 years plus',
+    india: { rule: 'Avg NR (trailing 12mo) / salary < 9x', check: salaryMultipleCheck(9, 12) },
+    overseas: { rule: `Avg NR (trailing 12mo) < ${INR(2000000)}/month`, check: avgThresholdCheck(2000000, 12) },
+  },
+];
+
+// Returns:
+//   { status: 'no-country-data' }                        — is_overseas not synced yet (syncEmployeeDetails), can't tell which column of the spec applies
+//   { status: 'no-data', band, rule, region }             — matched a band, but it needs NR/salary data we don't have
+//   { status: 'clear', band, rule, region }                — matched a band, condition did not fire
+//   { status: 'fired', band, rule, region }                — matched a band, condition fired — PA Algo candidate
+export function computeSalesPaAlgoFlag(employee) {
+  if (employee.isOverseas == null) return { status: 'no-country-data' };
+  const isOverseas = employee.isOverseas === true || employee.isOverseas === 1;
+
+  const tenureDays = employee.tenure ?? 0;
+  const band = [...SALES_BANDS].reverse().find((b) => tenureDays >= b.minDays);
+  const spec = isOverseas ? band.overseas : band.india;
+
+  const total = totalNR(employee.nrMonthlyDetails);
+  const payScale = employee.netPayableDetails?.PayScale != null ? Number(employee.netPayableDetails.PayScale) : null;
+
+  return {
+    status: spec.check({ total, nrMonthlyDetails: employee.nrMonthlyDetails, payScale }),
+    band: band.label,
+    rule: spec.rule,
+    region: isOverseas ? SALES_REGIONS.OVERSEAS : SALES_REGIONS.INDIA,
+  };
+}

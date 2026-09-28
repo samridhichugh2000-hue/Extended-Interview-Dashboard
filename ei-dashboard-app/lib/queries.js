@@ -2,7 +2,7 @@ import { getDb } from './db.js';
 import { computeSignalReport, computeWorryScore, trendNoteFor, isScoredEmployee } from './data.js';
 import { getIsoWeek, isWeekOver } from './weekUtils.js';
 import { getManagerEmail } from './managerDirectory.js';
-import { computeTrainerPaAlgoFlag } from './paAlgo.js';
+import { computeTrainerPaAlgoFlag, computeSalesPaAlgoFlag } from './paAlgo.js';
 
 // A 'Pending' response for a week that has fully passed reads as 'Overdue' —
 // derived live at read time rather than stored, same "derive, don't
@@ -127,8 +127,10 @@ export async function getEmployees() {
       netPayableMonth: e.net_payable_month,
       netPayableDetails: e.net_payable_details ? JSON.parse(e.net_payable_details) : null,
       country: e.country,
+      isOverseas: e.is_overseas == null ? null : !!e.is_overseas,
       designation: e.designation,
       utilMonthlyDetails: e.util_monthly_details ? JSON.parse(e.util_monthly_details) : [],
+      nrMonthlyDetails: e.nr_monthly_details ? JSON.parse(e.nr_monthly_details) : [],
       // null = no weekly_responses row yet for this week (e.g. feature hasn't
       // been run for them this week) — distinct from a confirmed Pending/Overdue.
       weeklyReportState: (weeksByEmp.get(e.id) || []).find((w) => w.week === currentWeek)?.state ?? null,
@@ -156,9 +158,10 @@ export async function getEmployees() {
       score: scored ? computeWorryScore(signals) : null,
       trendNote: scored ? trendNoteFor(signals) : 'Not scored — outside the New Joiner / active PA-PIP window.',
       // Proposed PA/PIP candidacy from delivery numbers (assignments/
-      // utilization) vs salary tier — see lib/paAlgo.js. Trainer only for
-      // now; Sales/CSM's own salary-multiple criteria isn't built yet.
+      // utilization) vs salary tier, or (Sales) Net Revenue vs salary/an
+      // absolute bar — see lib/paAlgo.js. Neither writes to pip_status.
       trainerPaAlgo: base.team === 'Trainer' ? computeTrainerPaAlgoFlag(base) : null,
+      salesPaAlgo: base.team === 'Sales' ? computeSalesPaAlgoFlag(base) : null,
     };
   });
 }
