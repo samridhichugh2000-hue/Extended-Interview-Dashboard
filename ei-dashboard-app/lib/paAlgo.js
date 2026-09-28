@@ -147,19 +147,23 @@ export function negativeFeedbackSuggestion(distinctAssignmentCount) {
   return 'Exit';
 }
 
-// Returns (always includes negFeedbackSuggestion, computed independently of
-// the tier/band result below — a trainer can have no salary data yet and
-// still carry a negative-feedback suggestion):
+// Returns (negFeedbackSuggestion is computed independently of the tier/band
+// check below, but a truthy one *overrides* status to 'fired' — a fresh
+// negative-feedback assignment is itself a firing condition, not just an
+// informational side badge, so a trainer with one never reads as "Clear"
+// (or "No data"/"No salary data") just because their utilization or
+// assignment numbers happen to look fine):
 //   { status: 'no-salary-data', negFeedbackSuggestion }               — net_payable_details not synced for this employee yet
 //   { status: 'no-data', tier, band, rule, negFeedbackSuggestion }     — matched a band, but it needs data (assignments/utilization) we don't have
-//   { status: 'clear', tier, band, rule, negFeedbackSuggestion }       — matched a band, condition did not fire
-//   { status: 'fired', tier, band, rule, negFeedbackSuggestion }       — matched a band, condition fired — PA Algo candidate
+//   { status: 'clear', tier, band, rule, negFeedbackSuggestion }       — matched a band, condition did not fire, and no negative-feedback override
+//   { status: 'fired', tier, band, rule, negFeedbackSuggestion }       — matched a band, condition fired, OR negFeedbackSuggestion overrode it — PA Algo candidate
 export function computeTrainerPaAlgoFlag(employee) {
   const negFeedbackSuggestion = negativeFeedbackSuggestion(distinctNegativeFeedbackAssignments(employee.negFeedbackDetails));
+  const negFeedbackFires = negFeedbackSuggestion != null;
 
   const payScale = employee.netPayableDetails?.PayScale != null ? Number(employee.netPayableDetails.PayScale) : null;
   const tier = trainerSalaryTier(payScale);
-  if (tier == null) return { status: 'no-salary-data', negFeedbackSuggestion };
+  if (tier == null) return { status: negFeedbackFires ? 'fired' : 'no-salary-data', negFeedbackSuggestion };
 
   const bands = BANDS_BY_TIER[tier];
   const tenureDays = employee.tenure ?? 0;
@@ -167,5 +171,5 @@ export function computeTrainerPaAlgoFlag(employee) {
   // ascending, so this is the most specific match.
   const band = [...bands].reverse().find((b) => tenureDays >= b.minDays);
 
-  return { status: band.check(employee), tier, band: band.label, rule: band.rule, negFeedbackSuggestion };
+  return { status: negFeedbackFires ? 'fired' : band.check(employee), tier, band: band.label, rule: band.rule, negFeedbackSuggestion };
 }
