@@ -91,7 +91,7 @@ function useEmployeeActions() {
     setAlertOnDone(() => onDone || null);
   };
 
-  const confirmSendAlert = async ({ signals, metric, pipType, deadline }) => {
+  const confirmSendAlert = async ({ signals, metric, pipType, deadline, note }) => {
     const emp = alertTarget;
     if (!emp || pending) return;
     setPending(`alert:${emp.id}`);
@@ -99,7 +99,7 @@ function useEmployeeActions() {
       const res = await fetch(`/api/employees/${emp.id}/alert`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: emp.name, email: emp.email, score: emp.scoreStr, bandLabel: emp.bandLabel, signals, metric, pipType, deadline }),
+        body: JSON.stringify({ name: emp.name, email: emp.email, managerEmail: emp.managerEmail, score: emp.scoreStr, bandLabel: emp.bandLabel, signals, metric, pipType, deadline, note }),
       });
       const json = await res.json();
       window.alert(json.ok ? `${pipType} saved and alert email sent.` : `Failed: ${json.error}`);
@@ -190,6 +190,13 @@ function AlertPreviewModal({ emp, pending, onClose, onSend }) {
   const [deadline, setDeadline] = useState('');
   const deadlineStr = deadline ? new Date(deadline + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
   const canSave = !!pipType && !!deadline;
+  // Free-text addition to the generated draft — the checklist above covers
+  // which tracked parameters to cite, this covers anything HR needs to say
+  // that isn't one of those (context, a specific incident, tone). Optional;
+  // rendered as its own paragraph right after the parameter list/table if
+  // non-empty, both in the preview and the actual sent email.
+  const [note, setNote] = useState('');
+  const ccLine = ['HR@koenig-solutions.com', emp.managerEmail].filter(Boolean).join(', ');
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 70 }}>
@@ -197,7 +204,7 @@ function AlertPreviewModal({ emp, pending, onClose, onSend }) {
         <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — alert preview</div>
-            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>Worry Index {emp.scoreStr} · {emp.bandLabel} · to {emp.email}, Cc HR@koenig-solutions.com</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>Worry Index {emp.scoreStr} · {emp.bandLabel} · to {emp.email}, Cc {ccLine}{!emp.managerEmail && ' (no manager email resolved — see lib/managerDirectory.js)'}</div>
           </div>
           <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
         </div>
@@ -237,6 +244,16 @@ function AlertPreviewModal({ emp, pending, onClose, onSend }) {
             </div>
           )}
           <div>
+            <div className="mono" style={{ fontSize: 10, letterSpacing: '.12em', color: '#5C6178', textTransform: 'uppercase', marginBottom: 10 }}>Additional note (optional — added to the draft below)</div>
+            <textarea
+              value={note}
+              onChange={(ev) => setNote(ev.target.value)}
+              placeholder="Any context, specific incident, or wording HR wants to add beyond the checked parameters above…"
+              rows={3}
+              style={{ width: '100%', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#E4E6F0', outline: 'none', resize: 'vertical', fontFamily: 'inherit' }}
+            />
+          </div>
+          <div>
             <div className="mono" style={{ fontSize: 10, letterSpacing: '.12em', color: '#5C6178', textTransform: 'uppercase', marginBottom: 10 }}>Email preview</div>
             <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 12, padding: 18, background: 'rgba(255,255,255,0.02)', fontSize: 13, color: '#C7CBDA', lineHeight: 1.6 }}>
               <p style={{ margin: '0 0 12px', fontSize: 11.5, color: '#5C6178' }}>Subject: {pipType ? PIP_SUBJECTS[pipType] : '[choose PA or PIP above]'}</p>
@@ -256,6 +273,7 @@ function AlertPreviewModal({ emp, pending, onClose, onSend }) {
                   </tbody>
                 </table>
               )}
+              {note.trim() && <p style={{ whiteSpace: 'pre-wrap' }}>{note.trim()}</p>}
               <p>You are expected to demonstrate immediate and sustained improvement in the above areas.</p>
               <p>The required improvement is expected to be demonstrated by <b>{deadlineStr || '[Deadline Date]'}</b>.</p>
               <p>Your performance will be reviewed during this period, and further action may be taken based on the outcome of the review.</p>
@@ -265,7 +283,7 @@ function AlertPreviewModal({ emp, pending, onClose, onSend }) {
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <span onClick={onClose} className="hoverbtn" style={{ border: '1px solid rgba(255,255,255,0.12)', color: '#C7CBDA', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>Cancel</span>
             <span
-              onClick={() => canSave && !pending && onSend({ signals: chosenSignals, metric: chosenMetric ? { label: chosenMetric.label, months: chosenMetric.months, isCurrency: chosenMetric.isCurrency } : null, pipType, deadline })}
+              onClick={() => canSave && !pending && onSend({ signals: chosenSignals, metric: chosenMetric ? { label: chosenMetric.label, months: chosenMetric.months, isCurrency: chosenMetric.isCurrency } : null, pipType, deadline, note: note.trim() || null })}
               className="hoverbtn"
               style={{ border: '1px solid rgba(244,63,94,0.45)', color: '#F87171', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: (pending || !canSave) ? 'default' : 'pointer', opacity: (pending || !canSave) ? 0.5 : 1 }}
             >
@@ -2465,7 +2483,11 @@ function EmployeeModal({ emp, onClose }) {
                   Send feedback alert
                 </span>
               )}
-              <span style={{ border: '1px solid rgba(244,63,94,0.45)', color: '#F87171', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, cursor: 'pointer' }}>Issue PIP</span>
+              {!d.inactive && (
+                <span onClick={() => openAlertPreview(d, { onDone: onClose })} style={{ border: '1px solid rgba(244,63,94,0.45)', color: '#F87171', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, cursor: 'pointer' }}>
+                  Issue PA/PIP
+                </span>
+              )}
               {!d.inactive && (d.status === 'Confirmed'
                 ? <span style={{ border: '1px solid rgba(255,255,255,0.14)', color: '#6E7488', borderRadius: 8, padding: '7px 13px', fontSize: 12.5 }}>Closed</span>
                 : <span onClick={() => closeEmployee(d, { onDone: onClose })} style={{ border: '1px solid rgba(20,184,166,0.45)', color: '#5EEAD4', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, cursor: pending === `close:${d.id}` ? 'default' : 'pointer', opacity: pending === `close:${d.id}` ? 0.6 : 1 }}>
