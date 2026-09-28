@@ -75,7 +75,13 @@ export async function getFailedJobRuns() {
     await ensureTable(db);
     const res = await db.execute("SELECT job, status, message, ran_at FROM job_runs WHERE status = 'error' OR status = 'started'");
     const staleCutoff = Date.now() - STALE_STARTED_MINUTES * 60000;
-    return res.rows
+    // libsql's res.rows are Proxy-backed Row objects, not plain objects —
+    // passed straight through to the DashboardClient Client Component prop,
+    // Next.js's RSC serialization silently breaks and hydration never
+    // completes (no click/state update anywhere on the page works). Map to
+    // real plain objects immediately, before any filtering/derivation.
+    const plainRows = res.rows.map((r) => ({ job: r.job, status: r.status, message: r.message, ran_at: r.ran_at }));
+    return plainRows
       .filter((r) => r.status === 'error' || new Date(r.ran_at).getTime() < staleCutoff)
       .map((r) => (r.status === 'started'
         ? { ...r, message: `Started at ${r.ran_at} but never finished — likely timed out or crashed mid-run.` }
