@@ -20,28 +20,18 @@ function fmtDeadline(deadline) {
   return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-function alertEmailHtml({ name, signals, metric, deadline, note }) {
-  const list = (signals || []).map((s) => `<li>${esc(s.label)}: ${esc(s.value)}</li>`).join('');
-  const table = metric
-    ? `<table style="border-collapse:collapse;margin:0 0 12px;font-size:13px;">
-        <thead><tr>${metric.months.map((m) => `<th style="border:1px solid #ccc;padding:5px 9px;background:#f5f5f5;">${esc(m.head)}</th>`).join('')}</tr></thead>
-        <tbody><tr>${metric.months.map((m) => `<td style="border:1px solid #ccc;padding:5px 9px;">${metric.isCurrency && m.value !== '—' && m.value != null ? '₹' + esc(m.value) : esc(m.value)}</td>`).join('')}</tr></tbody>
-      </table>`
-    : '';
-  // note is a free-text addition HR typed into the draft (AlertPreviewModal)
-  // for anything the checked parameters above don't cover — whitespace
-  // (including line breaks) preserved via white-space:pre-wrap since it's
-  // plain text, not HTML, from the user.
-  const noteBlock = note ? `<p style="white-space:pre-wrap;">${esc(note)}</p>` : '';
+// `draft` is the body HR edited directly in AlertPreviewModal's textarea —
+// plain text (auto-generated from the checked parameters, then freely
+// editable), not HTML, so it's escaped and newlines converted to <br/>
+// rather than trusted as markup. The deadline/review-period closing lines
+// stay fixed here (not part of the editable draft) so they always match
+// the deadline picker exactly, regardless of how much HR has edited above.
+function alertEmailHtml({ name, draft, deadline }) {
+  const body = esc(draft || '').replace(/\n/g, '<br/>');
   return `
     <div style="font-family:system-ui,Segoe UI,Roboto,sans-serif;font-size:14px;color:#1a1a1a;line-height:1.6;">
       <p>Hi ${esc(name)},</p>
-      <p>This is to formally bring to your attention certain performance related concerns that require immediate attention.</p>
-      <p style="margin-bottom:4px;">The following concerns have been noted:</p>
-      ${list ? `<ul>${list}</ul>` : '<p>None selected.</p>'}
-      ${table}
-      ${noteBlock}
-      <p>You are expected to demonstrate immediate and sustained improvement in the above areas.</p>
+      <p>${body}</p>
       <p>The required improvement is expected to be demonstrated by <b>${esc(fmtDeadline(deadline))}</b>.</p>
       <p>Your performance will be reviewed during this period, and further action may be taken based on the outcome of the review.</p>
       <p>Regards,<br/>Team HR</p>
@@ -51,8 +41,8 @@ function alertEmailHtml({ name, signals, metric, deadline, note }) {
 // Posts an issued PA/PIP to RMS (Koenig's own system of record) — the API
 // endpoint for this hasn't been provided yet. No-op stub until then; once
 // it exists, replace the body with the real call using this exact payload
-// (employee id/name, pipType, deadline, the parameters HR actually chose to
-// cite, and any free-text note) — everything RMS would need is already
+// (employee id/name, pipType, deadline, the parameters HR chose to cite,
+// and the final edited draft) — everything RMS would need is already
 // assembled right here. Called for every PA/PIP issued from this route,
 // which is the single path both the Worry Index "Send feedback alert" flow
 // and the PA Algo screen's "Issue PA/PIP" button go through (both open the
@@ -70,10 +60,10 @@ async function postPaPipToRms(payload) {
 // Worry Index band — this is how PA Algo candidates get issued in
 // practice). All three open the same preview (AlertPreviewModal in
 // DashboardClient.js) where HR picks a PA or PIP, a deadline, which tracked
-// parameters/month-wise metric to cite, and an optional free-text note,
-// before saving — `signals` is [{label, value}] (real occurrence counts,
-// not points), `metric` is the Month-wise NR/Utilization table if kept
-// checked, `note` is HR's own added text (plain, not HTML).
+// parameters/month-wise metric to cite, and edits the resulting draft
+// directly before saving — `signals`/`metric` are the checked parameters
+// (kept for the RMS payload below; no longer used to render the email
+// itself), `draft` is the actual body text HR ends up with.
 // Sent from the app's default sender mailbox (GRAPH_SENDER_EMAIL, currently
 // samridhi.chugh@koenig-solutions.com), CC'd to HR@koenig-solutions.com and
 // the employee's manager (resolved client-side via lib/managerDirectory.js,
@@ -99,7 +89,7 @@ async function postPaPipToRms(payload) {
 export async function POST(request, { params }) {
   const { id } = params;
   const body = await request.json().catch(() => null);
-  const { name, email, managerEmail, signals, metric, pipType, deadline, note, testMode } = body || {};
+  const { name, email, managerEmail, signals, metric, pipType, deadline, draft, testMode } = body || {};
   if (!email) {
     return NextResponse.json({ ok: false, error: 'No email on file for this employee.' }, { status: 400 });
   }
@@ -114,7 +104,7 @@ export async function POST(request, { params }) {
       to: testMode ? TEST_RECIPIENT : email,
       cc: testMode ? [] : [HR_CC, managerEmail].filter(Boolean),
       subject: (testMode ? '[TEST] ' : '') + PIP_SUBJECT[pipType],
-      html: alertEmailHtml({ name, signals, metric, deadline, note }),
+      html: alertEmailHtml({ name, draft, deadline }),
     });
 
     if (testMode) {
@@ -129,7 +119,7 @@ export async function POST(request, { params }) {
     // Best-effort — see postPaPipToRms's own comment. Never let this fail
     // the request; the email's already sent and status already updated.
     try {
-      await postPaPipToRms({ employeeId: id, name, pipType, deadline, signals, metric, note });
+      await postPaPipToRms({ employeeId: id, name, pipType, deadline, signals, metric, draft });
     } catch (err) {
       console.error(`postPaPipToRms(${id}) failed:`, err.message);
     }

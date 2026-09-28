@@ -1,5 +1,5 @@
 'use client';
-import { useState, Fragment } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   STATUS, decorate, band, isNewJoiner, NAV, TITLES, PATHS, METRIC_HEADS,
@@ -91,7 +91,7 @@ function useEmployeeActions() {
     setAlertOnDone(() => onDone || null);
   };
 
-  const confirmSendAlert = async ({ signals, metric, pipType, deadline, note, testMode }) => {
+  const confirmSendAlert = async ({ signals, metric, pipType, deadline, draft, testMode }) => {
     const emp = alertTarget;
     if (!emp || pending) return;
     setPending(`alert:${emp.id}`);
@@ -99,7 +99,7 @@ function useEmployeeActions() {
       const res = await fetch(`/api/employees/${emp.id}/alert`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: emp.name, email: emp.email, managerEmail: emp.managerEmail, score: emp.scoreStr, bandLabel: emp.bandLabel, signals, metric, pipType, deadline, note, testMode }),
+        body: JSON.stringify({ name: emp.name, email: emp.email, managerEmail: emp.managerEmail, score: emp.scoreStr, bandLabel: emp.bandLabel, signals, metric, pipType, deadline, draft, testMode }),
       });
       const json = await res.json();
       window.alert(json.ok
@@ -136,6 +136,30 @@ const PIP_TYPES = {
 // Fixed test-mode recipient — see AlertPreviewModal's testMode. Must match
 // TEST_RECIPIENT in app/api/employees/[id]/alert/route.js.
 const TEST_RECIPIENT = 'samridhi.chugh@koenig-solutions.com';
+
+// Plain-text starting draft for the editable body (AlertPreviewModal) —
+// regenerated from the checklist whenever it changes, until the user
+// starts editing by hand. Deliberately plain text, not HTML: HR edits this
+// directly in a textarea, so no markup to fight with.
+function autoDraftText(chosenSignals, chosenMetric) {
+  const lines = ['This is to formally bring to your attention certain performance related concerns that require immediate attention.', '', 'The following concerns have been noted:'];
+  if (chosenSignals.length) {
+    for (const s of chosenSignals) lines.push(`- ${s.label}: ${s.value}`);
+  } else {
+    lines.push('None selected.');
+  }
+  if (chosenMetric) {
+    // m.value (metric1-6) already comes pre-formatted for display — "₹12.3L"
+    // for Sales NR, "72%" for Trainer utilization — so it's used as-is here,
+    // not re-prefixed with ₹ (that would double it up into "₹₹12.3L").
+    lines.push('', `${chosenMetric.label}:`);
+    for (const m of chosenMetric.months) {
+      lines.push(`${m.head}: ${m.value ?? '—'}`);
+    }
+  }
+  lines.push('', 'You are expected to demonstrate immediate and sustained improvement in the above areas.');
+  return lines.join('\n');
+}
 // Must match PIP_SUBJECT in app/api/employees/[id]/alert/route.js.
 const PIP_SUBJECTS = {
   PA: 'Performance Alert – Extended Interview',
@@ -184,7 +208,6 @@ function AlertPreviewModal({ emp, pending, onClose, onSend }) {
   const chosenItems = items.filter((s) => selected.has(s.label));
   const chosenSignals = chosenItems.filter((s) => !s.isMetric).map((s) => ({ label: s.label, value: displayVal(s) }));
   const chosenMetric = chosenItems.find((s) => s.isMetric) || null;
-  const fmtMonth = (v) => (metric?.isCurrency && v !== '—' && v != null ? `₹${v}` : String(v ?? '—'));
 
   // Issuing a PA or PIP is what actually triggers this alert — HR picks one,
   // then a deadline, before Save is enabled. Selecting either also flips the
@@ -195,12 +218,19 @@ function AlertPreviewModal({ emp, pending, onClose, onSend }) {
   const [deadline, setDeadline] = useState('');
   const deadlineStr = deadline ? new Date(deadline + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
   const canSave = !!pipType && !!deadline;
-  // Free-text addition to the generated draft — the checklist above covers
-  // which tracked parameters to cite, this covers anything HR needs to say
-  // that isn't one of those (context, a specific incident, tone). Optional;
-  // rendered as its own paragraph right after the parameter list/table if
-  // non-empty, both in the preview and the actual sent email.
-  const [note, setNote] = useState('');
+  // The actual email body — HR edits this directly rather than a separate
+  // note tacked onto a read-only preview. Auto-populated from the checked
+  // parameters above (autoDraftText) and kept in sync with checklist
+  // changes UNTIL the user types in it by hand (draftEdited) — after that,
+  // their edits are authoritative and checklist changes no longer overwrite
+  // them; "reset to auto-generated" opts back into auto-sync.
+  const autoDraft = autoDraftText(chosenSignals, chosenMetric);
+  const [draft, setDraft] = useState(autoDraft);
+  const [draftEdited, setDraftEdited] = useState(false);
+  useEffect(() => {
+    if (!draftEdited) setDraft(autoDraft);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoDraft, draftEdited]);
   const ccLine = ['HR@koenig-solutions.com', emp.managerEmail].filter(Boolean).join(', ');
   // Lets HR safely verify the actual send (subject/body/formatting, real
   // Graph delivery) before ever issuing for real — redirects the whole
@@ -258,38 +288,24 @@ function AlertPreviewModal({ emp, pending, onClose, onSend }) {
             </div>
           )}
           <div>
-            <div className="mono" style={{ fontSize: 10, letterSpacing: '.12em', color: '#5C6178', textTransform: 'uppercase', marginBottom: 10 }}>Additional note (optional — added to the draft below)</div>
-            <textarea
-              value={note}
-              onChange={(ev) => setNote(ev.target.value)}
-              placeholder="Any context, specific incident, or wording HR wants to add beyond the checked parameters above…"
-              rows={3}
-              style={{ width: '100%', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#E4E6F0', outline: 'none', resize: 'vertical', fontFamily: 'inherit' }}
-            />
-          </div>
-          <div>
-            <div className="mono" style={{ fontSize: 10, letterSpacing: '.12em', color: '#5C6178', textTransform: 'uppercase', marginBottom: 10 }}>Email preview</div>
+            <div className="mono" style={{ fontSize: 10, letterSpacing: '.12em', color: '#5C6178', textTransform: 'uppercase', marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>Email draft (editable)</span>
+              {draftEdited && (
+                <span onClick={() => setDraftEdited(false)} style={{ textTransform: 'none', letterSpacing: 0, color: '#A5A7FA', cursor: 'pointer', fontWeight: 400 }}>
+                  Reset to auto-generated
+                </span>
+              )}
+            </div>
             <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 12, padding: 18, background: 'rgba(255,255,255,0.02)', fontSize: 13, color: '#C7CBDA', lineHeight: 1.6 }}>
               <p style={{ margin: '0 0 12px', fontSize: 11.5, color: '#5C6178' }}>Subject: {pipType ? PIP_SUBJECTS[pipType] : '[choose PA or PIP above]'}</p>
-              <p>Hi {emp.name},</p>
-              <p>This is to formally bring to your attention certain performance related concerns that require immediate attention.</p>
-              <p style={{ marginBottom: 4 }}>The following concerns have been noted:</p>
-              {chosenSignals.length
-                ? <ul style={{ margin: '0 0 12px', paddingLeft: 18 }}>{chosenSignals.map((s) => <li key={s.label}>{s.label}: {s.value}</li>)}</ul>
-                : <p style={{ margin: '0 0 12px', color: '#6E7488' }}>None selected.</p>}
-              {chosenMetric && (
-                <table style={{ borderCollapse: 'collapse', margin: '0 0 12px', fontSize: 12.5 }}>
-                  <thead>
-                    <tr>{chosenMetric.months.map((m) => <th key={m.head} style={{ border: '1px solid rgba(255,255,255,0.15)', padding: '5px 9px', color: '#8A90A8', fontWeight: 600 }}>{m.head}</th>)}</tr>
-                  </thead>
-                  <tbody>
-                    <tr>{chosenMetric.months.map((m) => <td key={m.head} style={{ border: '1px solid rgba(255,255,255,0.15)', padding: '5px 9px' }}>{fmtMonth(m.value)}</td>)}</tr>
-                  </tbody>
-                </table>
-              )}
-              {note.trim() && <p style={{ whiteSpace: 'pre-wrap' }}>{note.trim()}</p>}
-              <p>You are expected to demonstrate immediate and sustained improvement in the above areas.</p>
-              <p>The required improvement is expected to be demonstrated by <b>{deadlineStr || '[Deadline Date]'}</b>.</p>
+              <p style={{ margin: '0 0 10px' }}>Hi {emp.name},</p>
+              <textarea
+                value={draft}
+                onChange={(ev) => { setDraft(ev.target.value); setDraftEdited(true); }}
+                rows={12}
+                style={{ width: '100%', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.15)', borderRadius: 8, padding: '10px 12px', fontSize: 13, color: '#C7CBDA', outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.6 }}
+              />
+              <p style={{ margin: '12px 0 0' }}>The required improvement is expected to be demonstrated by <b>{deadlineStr || '[Deadline Date]'}</b>.</p>
               <p>Your performance will be reviewed during this period, and further action may be taken based on the outcome of the review.</p>
               <p style={{ marginBottom: 0 }}>Regards,<br />Team HR</p>
             </div>
@@ -301,7 +317,7 @@ function AlertPreviewModal({ emp, pending, onClose, onSend }) {
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <span onClick={onClose} className="hoverbtn" style={{ border: '1px solid rgba(255,255,255,0.12)', color: '#C7CBDA', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>Cancel</span>
             <span
-              onClick={() => canSave && !pending && onSend({ signals: chosenSignals, metric: chosenMetric ? { label: chosenMetric.label, months: chosenMetric.months, isCurrency: chosenMetric.isCurrency } : null, pipType, deadline, note: note.trim() || null, testMode })}
+              onClick={() => canSave && !pending && onSend({ signals: chosenSignals, metric: chosenMetric ? { label: chosenMetric.label, months: chosenMetric.months, isCurrency: chosenMetric.isCurrency } : null, pipType, deadline, draft, testMode })}
               className="hoverbtn"
               style={{ border: `1px solid ${testMode ? 'rgba(245,158,11,0.5)' : 'rgba(244,63,94,0.45)'}`, color: testMode ? '#F59E0B' : '#F87171', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: (pending || !canSave) ? 'default' : 'pointer', opacity: (pending || !canSave) ? 0.5 : 1 }}
             >
