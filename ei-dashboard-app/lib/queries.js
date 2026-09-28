@@ -127,7 +127,6 @@ export async function getEmployees() {
       netPayableMonth: e.net_payable_month,
       netPayableDetails: e.net_payable_details ? JSON.parse(e.net_payable_details) : null,
       country: e.country,
-      isOverseas: e.is_overseas == null ? null : !!e.is_overseas,
       designation: e.designation,
       utilMonthlyDetails: e.util_monthly_details ? JSON.parse(e.util_monthly_details) : [],
       nrMonthlyDetails: e.nr_monthly_details ? JSON.parse(e.nr_monthly_details) : [],

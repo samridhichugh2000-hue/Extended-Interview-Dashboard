@@ -130,6 +130,17 @@ function parseFeedbackDate(raw) {
   return isNaN(d.getTime()) ? null : d;
 }
 
+// Human-readable date for evidence tables — handles both ISO datetimes (SC
+// createdOn, e.g. "2026-08-24T10:33:52.983") and Koenig's malformed
+// "DD-Mon-YYYY HH:MM AM/PM" strings (feedbackDate, see parseFeedbackDate
+// above) by only ever parsing the date portion, splitting on whichever of
+// 'T'/space appears first.
+function formatDate(raw) {
+  if (!raw) return '—';
+  const d = new Date(String(raw).split(/[T ]/)[0]);
+  return isNaN(d.getTime()) ? String(raw) : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 // By explicit instruction, "1st/2nd/3rd negative" resets on a trailing
 // 7-day window (a trainer "receiving" a negative counts only if it landed
 // this week) — this rarely reaches PIP/Exit in practice, confirmed intended
@@ -207,7 +218,7 @@ export function computeTrainerPaAlgoFlag(employee) {
   const negFeedbackEvidence = negFeedbackFires ? {
     label: `Negative-feedback assignments — trailing ${NEG_FEEDBACK_WINDOW_DAYS} days`,
     columns: ['Assignment', 'Feedback date', 'Client'],
-    rows: negFeedbackEntries.map((f) => [f.assignmentId, f.feedbackDate, f.clientName || '—']),
+    rows: negFeedbackEntries.map((f) => [f.assignmentId, formatDate(f.feedbackDate), f.clientName || '—']),
     summary: `${negFeedbackEntries.length} distinct assignment(s) → Suggested ${negFeedbackSuggestion}`,
   } : null;
 
@@ -243,8 +254,9 @@ export function computeTrainerPaAlgoFlag(employee) {
 // --- Sales PA Algo -----------------------------------------------------
 // Flags Sales reps (CCEs) whose Net Revenue (NR) falls below the bar
 // expected for their tenure, per HR's spec — split by India-based vs
-// Overseas-based (employees.is_overseas, from syncEmployeeDetails), since
-// the two use entirely different measures: India compares average monthly
+// Overseas-based (employees.country, from syncEmployeeDetails — NOT
+// is_overseas, which Koenig's own feed sets inconsistently; see the region
+// derivation below), since the two use entirely different measures: India compares average monthly
 // NR as a *multiple* of monthly salary; Overseas compares average monthly
 // NR against a flat INR-per-month bar. Same "proposed flag, doesn't write
 // anything" contract as the Trainer version above — this never touches
@@ -356,8 +368,8 @@ function zeroScCheck(employee) {
     evidence: {
       label: `Most recent SCs on file (0 in trailing ${ZERO_SC_WINDOW_DAYS} days)`,
       columns: ['SC ID', 'Created on', 'Status'],
-      rows: lastFew.map((s) => [s.scId, s.createdOn, s.status]),
-      summary: lastFew.length ? `Most recent SC: ${lastFew[0].createdOn}` : 'No SCs on file at all',
+      rows: lastFew.map((s) => [s.scId, formatDate(s.createdOn), s.status || '—']),
+      summary: lastFew.length ? `Most recent SC: ${formatDate(lastFew[0].createdOn)}` : 'No SCs on file at all',
     },
   };
 }
@@ -435,7 +447,7 @@ const SALES_BANDS = [
 // and gets its reason appended to `rule`. `evidence` is an array of
 // { label, columns, rows, summary } blocks, the full backing data for
 // every condition that actually contributed):
-//   { status: 'no-country-data', rule?, evidence }        — is_overseas not synced yet (syncEmployeeDetails), can't tell which column of the base table applies — (ii)/(iii) still checked since they don't need region
+//   { status: 'no-country-data', rule?, evidence }        — country not synced yet (syncEmployeeDetails), can't tell which column of the base table applies — (ii)/(iii) still checked since they don't need region
 //   { status: 'no-data', band, rule, region, evidence }    — matched a band, but it needs NR/salary data we don't have, and no override fired
 //   { status: 'clear', band, rule, region, evidence }      — matched a band, condition did not fire, and no override fired
 //   { status: 'fired', band, rule, region, evidence }      — matched a band, condition fired, OR (ii)/(iii) overrode it — PA Algo candidate
@@ -446,14 +458,19 @@ export function computeSalesPaAlgoFlag(employee) {
   const overrideReason = overrides.map((o) => o.reason).join('; ') || null;
   const overrideEvidence = overrides.map((o) => o.evidence);
 
-  if (employee.isOverseas == null) {
+  if (employee.country == null) {
     return {
       status: overrides.length ? 'fired' : 'no-country-data',
       rule: overrideReason,
       evidence: overrideEvidence,
     };
   }
-  const isOverseas = employee.isOverseas === true || employee.isOverseas === 1;
+  // Region comes from country, not the raw is_overseas flag — Koenig's own
+  // Is_oversease flag is unreliable (confirmed live: Egypt/Germany/Nigeria/
+  // Oman/Singapore/South Africa/UAE/US/Canada employees all have it set to
+  // 0/false despite being clearly non-India), so trusting it misclassified
+  // real Overseas reps as India. country itself is consistent.
+  const isOverseas = employee.country !== 'India';
 
   const tenureDays = employee.tenure ?? 0;
   const band = [...SALES_BANDS].reverse().find((b) => tenureDays >= b.minDays);
