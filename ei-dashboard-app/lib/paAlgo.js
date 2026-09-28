@@ -55,22 +55,39 @@ export function hasCleanAssignment(rcMainAssignmentsDetails, negFeedbackDetails)
   return rcMainAssignmentsDetails.some((a) => !negAssignmentIds.has(a.assignmentId));
 }
 
-// Each band's `check` returns 'fired' | 'clear' | 'no-data' — a missing
-// utilization window is NOT the same as "clear" (utilization >= threshold),
-// so it gets its own status rather than silently reading as a pass.
+// Each band's `check` returns { status, evidence } — status is
+// 'fired' | 'clear' | 'no-data' (a missing utilization window is NOT the
+// same as "clear", so it gets its own status rather than silently reading
+// as a pass); evidence is the exact data behind that status, e.g. the
+// trailing months' utilization figures or the assignment list, so the
+// dashboard can show the full backing data for a fired row without the
+// user having to go dig it up in another screen.
 function utilCheck(days, threshold) {
+  const monthCount = Math.round(days / MONTH_DAYS);
   return (e) => {
+    const window = (e.utilMonthlyDetails || []).slice(-monthCount);
     const u = trailingUtilization(e.utilMonthlyDetails, days);
-    if (u == null) return 'no-data';
-    return u < threshold ? 'fired' : 'clear';
+    const evidence = {
+      label: `Utilization — trailing ${days} days`,
+      columns: ['Month', 'Utilization'],
+      rows: window.map((m) => [m.month, m.util != null ? `${m.util}%` : '—']),
+      summary: u != null ? `Average ${u.toFixed(1)}% (threshold ${threshold}%)` : 'No utilization data synced yet',
+    };
+    return { status: u == null ? 'no-data' : u < threshold ? 'fired' : 'clear', evidence };
   };
 }
 // rcMainAssignmentsCount is null until syncTrainerRc has run for this
 // employee — distinct from a confirmed 0 (genuinely zero Main Trainer
 // assignments in the lookback window), which really does fire.
 const assignmentCheck = (e) => {
-  if (e.rcMainAssignmentsCount == null) return 'no-data';
-  return hasCleanAssignment(e.rcMainAssignmentsDetails, e.negFeedbackDetails) ? 'clear' : 'fired';
+  const evidence = {
+    label: 'Main Trainer assignments (excluding negative-feedback ones)',
+    columns: ['Assignment', 'Course', 'Start date'],
+    rows: (e.rcMainAssignmentsDetails || []).map((a) => [a.assignmentId, a.courseName, a.startDate]),
+    summary: e.rcMainAssignmentsCount == null ? 'No RC schedule data synced yet' : `${e.rcMainAssignmentsCount} Main Trainer assignment(s) on file`,
+  };
+  if (e.rcMainAssignmentsCount == null) return { status: 'no-data', evidence };
+  return { status: hasCleanAssignment(e.rcMainAssignmentsDetails, e.negFeedbackDetails) ? 'clear' : 'fired', evidence };
 };
 
 // Tenure bands, oldest first, per salary tier.
@@ -128,13 +145,23 @@ const NEG_FEEDBACK_WINDOW_DAYS = 7;
 // trusting neg_feedback_details.length (or the equally-inflated neg_feedback
 // field) over all time.
 export function distinctNegativeFeedbackAssignments(negFeedbackDetails, now = new Date()) {
+  return distinctRecentNegativeFeedbackEntries(negFeedbackDetails, now).length;
+}
+
+// The actual distinct assignments behind distinctNegativeFeedbackAssignments'
+// count — one entry per assignmentId (first occurrence within the window
+// kept), so the dashboard can show exactly which assignment(s) and when,
+// not just a number.
+export function distinctRecentNegativeFeedbackEntries(negFeedbackDetails, now = new Date()) {
   const cutoff = now.getTime() - NEG_FEEDBACK_WINDOW_DAYS * 86400000;
-  const ids = new Set();
+  const seen = new Map();
   for (const f of negFeedbackDetails || []) {
     const d = parseFeedbackDate(f.feedbackDate);
-    if (d && d.getTime() >= cutoff) ids.add(f.assignmentId);
+    if (d && d.getTime() >= cutoff && !seen.has(f.assignmentId)) {
+      seen.set(f.assignmentId, { assignmentId: f.assignmentId, feedbackDate: f.feedbackDate, clientName: f.clientName });
+    }
   }
-  return ids.size;
+  return [...seen.values()];
 }
 
 // Negative-feedback escalation ladder — independent of salary tier/tenure
@@ -164,29 +191,53 @@ function negFeedbackReason(distinctAssignmentCount, suggestion) {
 // informational side badge, so a trainer with one never reads as "Clear"
 // (or "No data"/"No salary data") just because their utilization or
 // assignment numbers happen to look fine. `rule` gets negFeedbackReason
-// appended whenever it fires, so the Rule column always explains why):
-//   { status: 'no-salary-data', negFeedbackSuggestion, rule? }         — net_payable_details not synced for this employee yet (rule only set if negFeedbackSuggestion fired)
-//   { status: 'no-data', tier, band, rule, negFeedbackSuggestion }     — matched a band, but it needs data (assignments/utilization) we don't have
-//   { status: 'clear', tier, band, rule, negFeedbackSuggestion }       — matched a band, condition did not fire, and no negative-feedback override
-//   { status: 'fired', tier, band, rule, negFeedbackSuggestion }       — matched a band, condition fired, OR negFeedbackSuggestion overrode it — PA Algo candidate
+// appended whenever it fires, so the Rule column always explains why.
+// `evidence` is an array of { label, columns, rows, summary } blocks — the
+// full backing data for every condition that actually contributed to the
+// status, so the dashboard can show it inline without another screen):
+//   { status: 'no-salary-data', negFeedbackSuggestion, rule?, evidence }  — net_payable_details not synced for this employee yet (rule/evidence only set if negFeedbackSuggestion fired)
+//   { status: 'no-data', tier, band, rule, negFeedbackSuggestion, evidence }  — matched a band, but it needs data (assignments/utilization) we don't have
+//   { status: 'clear', tier, band, rule, negFeedbackSuggestion, evidence }    — matched a band, condition did not fire, and no negative-feedback override
+//   { status: 'fired', tier, band, rule, negFeedbackSuggestion, evidence }    — matched a band, condition fired, OR negFeedbackSuggestion overrode it — PA Algo candidate
 export function computeTrainerPaAlgoFlag(employee) {
-  const negFeedbackCount = distinctNegativeFeedbackAssignments(employee.negFeedbackDetails);
-  const negFeedbackSuggestion = negativeFeedbackSuggestion(negFeedbackCount);
+  const negFeedbackEntries = distinctRecentNegativeFeedbackEntries(employee.negFeedbackDetails);
+  const negFeedbackSuggestion = negativeFeedbackSuggestion(negFeedbackEntries.length);
   const negFeedbackFires = negFeedbackSuggestion != null;
-  const negReason = negFeedbackReason(negFeedbackCount, negFeedbackSuggestion);
+  const negReason = negFeedbackReason(negFeedbackEntries.length, negFeedbackSuggestion);
+  const negFeedbackEvidence = negFeedbackFires ? {
+    label: `Negative-feedback assignments — trailing ${NEG_FEEDBACK_WINDOW_DAYS} days`,
+    columns: ['Assignment', 'Feedback date', 'Client'],
+    rows: negFeedbackEntries.map((f) => [f.assignmentId, f.feedbackDate, f.clientName || '—']),
+    summary: `${negFeedbackEntries.length} distinct assignment(s) → Suggested ${negFeedbackSuggestion}`,
+  } : null;
 
   const payScale = employee.netPayableDetails?.PayScale != null ? Number(employee.netPayableDetails.PayScale) : null;
   const tier = trainerSalaryTier(payScale);
-  if (tier == null) return { status: negFeedbackFires ? 'fired' : 'no-salary-data', negFeedbackSuggestion, rule: negReason };
+  if (tier == null) {
+    return {
+      status: negFeedbackFires ? 'fired' : 'no-salary-data',
+      negFeedbackSuggestion,
+      rule: negReason,
+      evidence: [negFeedbackEvidence].filter(Boolean),
+    };
+  }
 
   const bands = BANDS_BY_TIER[tier];
   const tenureDays = employee.tenure ?? 0;
   // Last band whose minDays the employee has reached — bands are ordered
   // ascending, so this is the most specific match.
   const band = [...bands].reverse().find((b) => tenureDays >= b.minDays);
+  const { status: bandStatus, evidence: bandEvidence } = band.check(employee);
 
   const rule = negFeedbackFires ? (band.rule ? `${band.rule}; ${negReason}` : negReason) : band.rule;
-  return { status: negFeedbackFires ? 'fired' : band.check(employee), tier, band: band.label, rule, negFeedbackSuggestion };
+  return {
+    status: negFeedbackFires ? 'fired' : bandStatus,
+    tier,
+    band: band.label,
+    rule,
+    negFeedbackSuggestion,
+    evidence: [bandEvidence, negFeedbackEvidence].filter(Boolean),
+  };
 }
 
 // --- Sales PA Algo -----------------------------------------------------
@@ -228,29 +279,112 @@ function avgNR(nrMonthlyDetails, months) {
   return window.reduce((sum, m) => sum + (m.nr ?? 0), 0) / window.length;
 }
 
+const INR = (n) => '₹' + n.toLocaleString('en-IN');
+
 // Each check receives { total, nrMonthlyDetails, payScale } (total NR since
 // joining, the raw monthly history for avgNR to window, and payScale from
-// net_payable_details.PayScale) and returns 'fired' | 'clear' | 'no-data'.
-// `months` (undefined = every month on file) picks the averaging window —
-// see avgNR above.
+// net_payable_details.PayScale) and returns { status, evidence } —
+// status is 'fired' | 'clear' | 'no-data'; evidence is the month-by-month
+// NR behind that number, so a fired row can show exactly which months and
+// figures drove it. `months` (undefined = every month on file) picks the
+// averaging window — see avgNR above.
 function roiCheck(threshold) {
-  return ({ total }) => (total == null ? 'no-data' : total < threshold ? 'fired' : 'clear');
+  return ({ total, nrMonthlyDetails }) => {
+    const evidence = {
+      label: 'NR since joining (ROI)',
+      columns: ['Month', 'NR'],
+      rows: (nrMonthlyDetails || []).map((m) => [m.month, INR(m.nr)]),
+      summary: total != null ? `Total: ${INR(total)} (threshold ${INR(threshold)})` : 'No NR data synced yet',
+    };
+    return { status: total == null ? 'no-data' : total < threshold ? 'fired' : 'clear', evidence };
+  };
 }
 function salaryMultipleCheck(multiple, months) {
   return ({ nrMonthlyDetails, payScale }) => {
+    const window = months ? (nrMonthlyDetails || []).slice(-months) : (nrMonthlyDetails || []);
     const avg = avgNR(nrMonthlyDetails, months);
-    if (avg == null || payScale == null) return 'no-data';
-    return avg / payScale < multiple ? 'fired' : 'clear';
+    const evidence = {
+      label: `NR — ${months ? `trailing ${months} months` : 'all months since joining'}`,
+      columns: ['Month', 'NR'],
+      rows: window.map((m) => [m.month, INR(m.nr)]),
+      summary: avg != null && payScale != null
+        ? `Average ${INR(Math.round(avg))}/mo ÷ salary ${INR(payScale)} = ${(avg / payScale).toFixed(2)}x (threshold ${multiple}x)`
+        : 'Missing NR or salary data',
+    };
+    if (avg == null || payScale == null) return { status: 'no-data', evidence };
+    return { status: avg / payScale < multiple ? 'fired' : 'clear', evidence };
   };
 }
 function avgThresholdCheck(threshold, months) {
   return ({ nrMonthlyDetails }) => {
+    const window = months ? (nrMonthlyDetails || []).slice(-months) : (nrMonthlyDetails || []);
     const avg = avgNR(nrMonthlyDetails, months);
-    return avg == null ? 'no-data' : avg < threshold ? 'fired' : 'clear';
+    const evidence = {
+      label: `NR — ${months ? `trailing ${months} months` : 'all months since joining'}`,
+      columns: ['Month', 'NR'],
+      rows: window.map((m) => [m.month, INR(m.nr)]),
+      summary: avg != null ? `Average ${INR(Math.round(avg))}/mo (threshold ${INR(threshold)}/mo)` : 'No NR data synced yet',
+    };
+    return { status: avg == null ? 'no-data' : avg < threshold ? 'fired' : 'clear', evidence };
   };
 }
 
-const INR = (n) => '₹' + n.toLocaleString('en-IN');
+// --- Independent overriding conditions (ii)/(iii) — apply regardless of
+// region/band, same pattern as Trainer's negative-feedback ladder. Each
+// returns null if not applicable/not fired, or { reason, evidence } if it
+// fires.
+
+// (ii) Zero SC (Service Contract) raised in the trailing 30 days. Needs a
+// full 30-day window to mean anything — exempts anyone under 30 days
+// tenure, who would otherwise trivially fire this on day one.
+const ZERO_SC_MIN_TENURE_DAYS = 30;
+const ZERO_SC_WINDOW_DAYS = 30;
+function zeroScCheck(employee) {
+  const tenureDays = employee.tenure ?? 0;
+  if (tenureDays < ZERO_SC_MIN_TENURE_DAYS) return null;
+  const scDetails = employee.scDetails || [];
+  const cutoff = Date.now() - ZERO_SC_WINDOW_DAYS * 86400000;
+  const recentCount = scDetails.filter((s) => {
+    const d = new Date(s.createdOn);
+    return !isNaN(d.getTime()) && d.getTime() >= cutoff;
+  }).length;
+  if (recentCount > 0) return null;
+
+  const lastFew = [...scDetails].sort((a, b) => new Date(b.createdOn) - new Date(a.createdOn)).slice(0, 5);
+  return {
+    reason: `Zero SCs raised in the trailing ${ZERO_SC_WINDOW_DAYS} days`,
+    evidence: {
+      label: `Most recent SCs on file (0 in trailing ${ZERO_SC_WINDOW_DAYS} days)`,
+      columns: ['SC ID', 'Created on', 'Status'],
+      rows: lastFew.map((s) => [s.scId, s.createdOn, s.status]),
+      summary: lastFew.length ? `Most recent SC: ${lastFew[0].createdOn}` : 'No SCs on file at all',
+    },
+  };
+}
+
+// (iii) Negative total NR over the trailing 3 months, for anyone past 6
+// months tenure (the 3-6 month band already has its own since-joining ROI
+// check above — this catches a bad recent quarter for longer-tenured reps
+// whose long-run average/multiple still looks clear).
+const NEG_ROI_3MO_MIN_TENURE_DAYS = 6 * MONTH_DAYS;
+function recentNegRoiCheck(employee) {
+  const tenureDays = employee.tenure ?? 0;
+  if (tenureDays <= NEG_ROI_3MO_MIN_TENURE_DAYS) return null;
+  const window = (employee.nrMonthlyDetails || []).slice(-3);
+  if (!window.length) return null;
+  const total = window.reduce((sum, m) => sum + (m.nr ?? 0), 0);
+  if (total >= 0) return null;
+
+  return {
+    reason: `-ve total NR over trailing 3 months (${INR(total)})`,
+    evidence: {
+      label: 'NR — trailing 3 months',
+      columns: ['Month', 'NR'],
+      rows: window.map((m) => [m.month, INR(m.nr)]),
+      summary: `Total: ${INR(total)}`,
+    },
+  };
+}
 
 // Tenure bands, oldest first, per HR's spec. 0-3 months has no applicable
 // rule at all (the spec's table starts at 3-6 months) — always 'no-data'
@@ -258,8 +392,8 @@ const INR = (n) => '₹' + n.toLocaleString('en-IN');
 const SALES_BANDS = [
   {
     minDays: 0, label: '0-3 months',
-    india: { rule: 'No PA Algo criteria for under 3 months tenure', check: () => 'no-data' },
-    overseas: { rule: 'No PA Algo criteria for under 3 months tenure', check: () => 'no-data' },
+    india: { rule: 'No PA Algo criteria for under 3 months tenure', check: () => ({ status: 'no-data', evidence: null }) },
+    overseas: { rule: 'No PA Algo criteria for under 3 months tenure', check: () => ({ status: 'no-data', evidence: null }) },
   },
   {
     minDays: 3 * MONTH_DAYS, label: '3-6 months',
@@ -295,13 +429,30 @@ const SALES_BANDS = [
   },
 ];
 
-// Returns:
-//   { status: 'no-country-data' }                        — is_overseas not synced yet (syncEmployeeDetails), can't tell which column of the spec applies
-//   { status: 'no-data', band, rule, region }             — matched a band, but it needs NR/salary data we don't have
-//   { status: 'clear', band, rule, region }                — matched a band, condition did not fire
-//   { status: 'fired', band, rule, region }                — matched a band, condition fired — PA Algo candidate
+// Returns (zeroSc/recentNegRoi are independent overriding conditions — (ii)
+// and (iii) — checked regardless of region/band, same pattern as Trainer's
+// negative-feedback ladder: either one firing overrides status to 'fired'
+// and gets its reason appended to `rule`. `evidence` is an array of
+// { label, columns, rows, summary } blocks, the full backing data for
+// every condition that actually contributed):
+//   { status: 'no-country-data', rule?, evidence }        — is_overseas not synced yet (syncEmployeeDetails), can't tell which column of the base table applies — (ii)/(iii) still checked since they don't need region
+//   { status: 'no-data', band, rule, region, evidence }    — matched a band, but it needs NR/salary data we don't have, and no override fired
+//   { status: 'clear', band, rule, region, evidence }      — matched a band, condition did not fire, and no override fired
+//   { status: 'fired', band, rule, region, evidence }      — matched a band, condition fired, OR (ii)/(iii) overrode it — PA Algo candidate
 export function computeSalesPaAlgoFlag(employee) {
-  if (employee.isOverseas == null) return { status: 'no-country-data' };
+  const zeroSc = zeroScCheck(employee);
+  const recentNegRoi = recentNegRoiCheck(employee);
+  const overrides = [zeroSc, recentNegRoi].filter(Boolean);
+  const overrideReason = overrides.map((o) => o.reason).join('; ') || null;
+  const overrideEvidence = overrides.map((o) => o.evidence);
+
+  if (employee.isOverseas == null) {
+    return {
+      status: overrides.length ? 'fired' : 'no-country-data',
+      rule: overrideReason,
+      evidence: overrideEvidence,
+    };
+  }
   const isOverseas = employee.isOverseas === true || employee.isOverseas === 1;
 
   const tenureDays = employee.tenure ?? 0;
@@ -310,11 +461,14 @@ export function computeSalesPaAlgoFlag(employee) {
 
   const total = totalNR(employee.nrMonthlyDetails);
   const payScale = employee.netPayableDetails?.PayScale != null ? Number(employee.netPayableDetails.PayScale) : null;
+  const { status: bandStatus, evidence: bandEvidence } = spec.check({ total, nrMonthlyDetails: employee.nrMonthlyDetails, payScale });
 
+  const rule = overrideReason ? (spec.rule ? `${spec.rule}; ${overrideReason}` : overrideReason) : spec.rule;
   return {
-    status: spec.check({ total, nrMonthlyDetails: employee.nrMonthlyDetails, payScale }),
+    status: overrides.length ? 'fired' : bandStatus,
     band: band.label,
-    rule: spec.rule,
+    rule,
     region: isOverseas ? SALES_REGIONS.OVERSEAS : SALES_REGIONS.INDIA,
+    evidence: [bandEvidence, ...overrideEvidence].filter(Boolean),
   };
 }

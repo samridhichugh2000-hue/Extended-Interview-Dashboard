@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   STATUS, decorate, band, isNewJoiner, NAV, TITLES, PATHS, METRIC_HEADS,
@@ -1390,11 +1390,11 @@ const NEG_FEEDBACK_SUGGESTION_STYLE = {
   Exit: { label: 'Suggested Exit', bg: 'rgba(190,18,60,0.2)', color: '#FCA5A5', border: 'rgba(190,18,60,0.45)' },
 };
 
-function FiredOnlyToggle({ value, onChange }) {
+function FiredOnlyToggle({ value, onChange, allLabel = 'All Trainers' }) {
   return (
     <div onClick={() => onChange(!value)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, border: `1px solid ${value ? 'rgba(244,63,94,0.45)' : 'rgba(255,255,255,0.1)'}`, background: value ? 'rgba(244,63,94,0.14)' : 'rgba(255,255,255,0.03)', color: value ? '#FFFFFF' : '#9BA1B8', borderRadius: 10, padding: '10px 14px', fontSize: 13, flex: 'none' }}>
       <span style={{ width: 14, height: 14, borderRadius: 4, border: `1px solid ${value ? '#F87171' : 'rgba(255,255,255,0.25)'}`, background: value ? '#F43F5E' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#fff' }}>{value ? '✓' : ''}</span>
-      {value ? 'Fired only' : 'All Trainers'}
+      {value ? 'Fired only' : allLabel}
     </div>
   );
 }
@@ -1409,6 +1409,11 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
   const [search, setSearch] = useState('');
   const [includeInactive, setIncludeInactive] = useState(false);
   const [firedOnly, setFiredOnly] = useState(true);
+  // Which row's evidence panel is open — one at a time, keyed by employee
+  // id. Evidence is the raw data behind whatever fired (which months, which
+  // assignment ids, etc.) shown inline so it's visible without opening the
+  // employee modal or another screen.
+  const [expandedId, setExpandedId] = useState(null);
 
   const isTrainer = team === 'Trainer';
   const algoKey = isTrainer ? 'trainerPaAlgo' : 'salesPaAlgo';
@@ -1447,7 +1452,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
       return (order[a[algoKey].status] ?? 9) - (order[b[algoKey].status] ?? 9) || a.name.localeCompare(b.name);
     });
 
-  const gridCols = isTrainer ? '1.3fr .8fr .9fr 1.7fr .8fr .9fr' : '1.5fr .9fr .9fr 2.3fr .9fr';
+  const gridCols = isTrainer ? '1.3fr .8fr .9fr 1.7fr .8fr .9fr 26px' : '1.5fr .9fr .9fr 2.3fr .9fr 26px';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -1477,36 +1482,80 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
           placeholder="Search by name or employee ID…"
           style={{ flex: 1, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#E4E6F0', outline: 'none' }}
         />
-        <FiredOnlyToggle value={firedOnly} onChange={setFiredOnly} />
+        <FiredOnlyToggle value={firedOnly} onChange={setFiredOnly} allLabel={isTrainer ? 'All Trainers' : 'All Sales'} />
         <IncludeInactiveToggle value={includeInactive} onChange={setIncludeInactive} />
       </div>
       <div style={{ ...card, overflow: 'hidden' }}>
         <div style={{ display: 'grid', gridTemplateColumns: gridCols, padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           {isTrainer
-            ? <><span>Employee</span><span>Salary tier</span><span>Tenure band</span><span>Rule</span><span>Status</span><span style={{ textAlign: 'right' }}>Neg. feedback (7d)</span></>
-            : <><span>Employee</span><span>Region</span><span>Tenure band</span><span>Rule</span><span style={{ textAlign: 'right' }}>Status</span></>}
+            ? <><span>Employee</span><span>Salary tier</span><span>Tenure band</span><span>Rule</span><span>Status</span><span style={{ textAlign: 'right' }}>Neg. feedback (7d)</span><span /></>
+            : <><span>Employee</span><span>Region</span><span>Tenure band</span><span>Rule</span><span style={{ textAlign: 'right' }}>Status</span><span /></>}
         </div>
         {rows.map((e) => {
           const algo = e[algoKey];
           const st = PA_ALGO_STATUS_STYLE[algo.status] || PA_ALGO_STATUS_STYLE['no-data'];
           const sugg = isTrainer && algo.negFeedbackSuggestion ? NEG_FEEDBACK_SUGGESTION_STYLE[algo.negFeedbackSuggestion] : null;
+          const hasEvidence = algo.evidence?.length > 0;
+          const isExpanded = expandedId === e.id;
           return (
-            <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: gridCols, padding: '14px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontWeight: 600 }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id}{e.inactive ? ' · Inactive' : ''}</span></div>
-              <span style={{ fontSize: 12, color: '#A8AEC4' }}>{isTrainer ? (PA_ALGO_TIER_LABELS[algo.tier] || '—') : (PA_ALGO_REGION_LABELS[algo.region] || '—')}</span>
-              <span style={{ fontSize: 12, color: '#A8AEC4' }}>{algo.band || '—'}</span>
-              <span style={{ fontSize: 12, color: '#A8AEC4' }}>{algo.rule || '—'}</span>
-              {isTrainer
-                ? <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: st.bg, color: st.color, border: `1px solid ${st.border}` }}>{st.label}</span>
-                : <span style={{ justifySelf: 'end', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: st.bg, color: st.color, border: `1px solid ${st.border}` }}>{st.label}</span>}
-              {isTrainer && (sugg
-                ? <span style={{ justifySelf: 'end', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: sugg.bg, color: sugg.color, border: `1px solid ${sugg.border}` }}>{sugg.label}</span>
-                : <span style={{ justifySelf: 'end', fontSize: 12, color: '#6E7488' }}>—</span>)}
-            </div>
+            <Fragment key={e.id}>
+              <div className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: gridCols, padding: '14px 18px', alignItems: 'center', borderBottom: isExpanded ? 'none' : '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontWeight: 600 }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id}{e.inactive ? ' · Inactive' : ''}</span></div>
+                <span style={{ fontSize: 12, color: '#A8AEC4' }}>{isTrainer ? (PA_ALGO_TIER_LABELS[algo.tier] || '—') : (PA_ALGO_REGION_LABELS[algo.region] || '—')}</span>
+                <span style={{ fontSize: 12, color: '#A8AEC4' }}>{algo.band || '—'}</span>
+                <span style={{ fontSize: 12, color: '#A8AEC4' }}>{algo.rule || '—'}</span>
+                {isTrainer
+                  ? <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: st.bg, color: st.color, border: `1px solid ${st.border}` }}>{st.label}</span>
+                  : <span style={{ justifySelf: 'end', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: st.bg, color: st.color, border: `1px solid ${st.border}` }}>{st.label}</span>}
+                {isTrainer && (sugg
+                  ? <span style={{ justifySelf: 'end', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: sugg.bg, color: sugg.color, border: `1px solid ${sugg.border}` }}>{sugg.label}</span>
+                  : <span style={{ justifySelf: 'end', fontSize: 12, color: '#6E7488' }}>—</span>)}
+                <button
+                  type="button"
+                  title={hasEvidence ? 'Show the data behind this' : undefined}
+                  onClick={(ev) => { ev.stopPropagation(); if (hasEvidence) setExpandedId(isExpanded ? null : e.id); }}
+                  style={{ justifySelf: 'center', background: 'none', border: 'none', padding: 0, fontSize: 12, color: hasEvidence ? '#9BA1B8' : 'transparent', cursor: hasEvidence ? 'pointer' : 'default' }}
+                >
+                  {hasEvidence ? (isExpanded ? '▾' : '▸') : ''}
+                </button>
+              </div>
+              {isExpanded && hasEvidence && <PaAlgoEvidence evidence={algo.evidence} />}
+            </Fragment>
           );
         })}
         {!rows.length && <div style={{ padding: '18px', fontSize: 12.5, color: '#6E7488' }}>No {isTrainer ? 'Trainers' : 'Sales reps'} match this filter.</div>}
       </div>
+    </div>
+  );
+}
+
+// The raw data behind a fired (or any) PA Algo condition — one block per
+// contributing condition (e.g. the band's own utilization/NR check, plus a
+// negative-feedback or zero-SC override if that also fired), each a small
+// table of the exact months/assignments/SCs involved. Shown inline under
+// the row it belongs to so the reason for a flag is fully visible without
+// opening the employee modal or another screen.
+function PaAlgoEvidence({ evidence }) {
+  return (
+    <div style={{ padding: '2px 18px 16px 40px', background: 'rgba(255,255,255,0.015)', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {evidence.map((ev, i) => (
+        <div key={i}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#C7CBDA', textTransform: 'uppercase', letterSpacing: '.04em' }}>{ev.label}</div>
+          {ev.summary && <div style={{ fontSize: 12, color: '#8A90A8', marginTop: 3 }}>{ev.summary}</div>}
+          {ev.rows?.length > 0 && (
+            <table style={{ width: '100%', maxWidth: 560, borderCollapse: 'collapse', fontSize: 12, marginTop: 6 }}>
+              <thead>
+                <tr>{ev.columns.map((c, ci) => <th key={ci} style={{ textAlign: 'left', padding: '3px 10px 3px 0', color: '#5C6178', fontWeight: 500 }}>{c}</th>)}</tr>
+              </thead>
+              <tbody>
+                {ev.rows.map((r, ri) => (
+                  <tr key={ri}>{r.map((cell, ci) => <td key={ci} style={{ padding: '2px 10px 2px 0', color: '#A8AEC4' }}>{cell}</td>)}</tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
