@@ -6,7 +6,12 @@ export const dynamic = 'force-dynamic';
 
 const HR_CC = 'HR@koenig-solutions.com';
 const PIP_STATUS = { PA: 'PA Issued', PIP: 'PIP Issued' };
-const PIP_SUBJECT = { PA: 'Performance Alert – Extended Interview', PIP: 'Performance Improvement Plan – Extended Interview' };
+// Employee name is appended at call time (pipSubject below) — must match
+// pipSubject/PIP_SUBJECT_LABEL in app/DashboardClient.js.
+const PIP_SUBJECT_LABEL = { PA: 'Performance Alert', PIP: 'Performance Improvement Plan' };
+function pipSubject(pipType, name) {
+  return `${PIP_SUBJECT_LABEL[pipType]} - ${name}`;
+}
 // Must match TEST_RECIPIENT in app/DashboardClient.js.
 const TEST_RECIPIENT = 'samridhi.chugh@koenig-solutions.com';
 
@@ -14,28 +19,15 @@ function esc(v) {
   return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function fmtDeadline(deadline) {
-  if (!deadline) return '[Deadline Date]';
-  const d = new Date(`${deadline}T00:00:00`);
-  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-}
-
-// `draft` is the body HR edited directly in AlertPreviewModal's textarea —
-// plain text (auto-generated from the checked parameters, then freely
-// editable), not HTML, so it's escaped and newlines converted to <br/>
-// rather than trusted as markup. The deadline/review-period closing lines
-// stay fixed here (not part of the editable draft) so they always match
-// the deadline picker exactly, regardless of how much HR has edited above.
-function alertEmailHtml({ name, draft, deadline }) {
+// `draft` is the ENTIRE email body HR edited directly in AlertPreviewModal's
+// textarea (greeting through sign-off) — plain text (auto-generated from
+// the checked parameters and deadline, then freely editable), not HTML, so
+// it's escaped and newlines converted to <br/> rather than trusted as
+// markup. Nothing is added around it — whatever HR has in the draft when
+// they save is exactly what gets sent.
+function alertEmailHtml({ draft }) {
   const body = esc(draft || '').replace(/\n/g, '<br/>');
-  return `
-    <div style="font-family:system-ui,Segoe UI,Roboto,sans-serif;font-size:14px;color:#1a1a1a;line-height:1.6;">
-      <p>Hi ${esc(name)},</p>
-      <p>${body}</p>
-      <p>The required improvement is expected to be demonstrated by <b>${esc(fmtDeadline(deadline))}</b>.</p>
-      <p>Your performance will be reviewed during this period, and further action may be taken based on the outcome of the review.</p>
-      <p>Regards,<br/>Team HR</p>
-    </div>`;
+  return `<div style="font-family:system-ui,Segoe UI,Roboto,sans-serif;font-size:14px;color:#1a1a1a;line-height:1.6;">${body}</div>`;
 }
 
 // Posts an issued PA/PIP to RMS (Koenig's own system of record) — the API
@@ -103,8 +95,8 @@ export async function POST(request, { params }) {
     await sendMail({
       to: testMode ? TEST_RECIPIENT : email,
       cc: testMode ? [] : [HR_CC, managerEmail].filter(Boolean),
-      subject: (testMode ? '[TEST] ' : '') + PIP_SUBJECT[pipType],
-      html: alertEmailHtml({ name, draft, deadline }),
+      subject: (testMode ? '[TEST] ' : '') + pipSubject(pipType, name),
+      html: alertEmailHtml({ draft }),
     });
 
     if (testMode) {

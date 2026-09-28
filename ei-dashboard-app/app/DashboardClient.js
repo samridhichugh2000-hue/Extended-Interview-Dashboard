@@ -137,12 +137,14 @@ const PIP_TYPES = {
 // TEST_RECIPIENT in app/api/employees/[id]/alert/route.js.
 const TEST_RECIPIENT = 'samridhi.chugh@koenig-solutions.com';
 
-// Plain-text starting draft for the editable body (AlertPreviewModal) —
-// regenerated from the checklist whenever it changes, until the user
-// starts editing by hand. Deliberately plain text, not HTML: HR edits this
-// directly in a textarea, so no markup to fight with.
-function autoDraftText(chosenSignals, chosenMetric) {
-  const lines = ['This is to formally bring to your attention certain performance related concerns that require immediate attention.', '', 'The following concerns have been noted:'];
+// Plain-text starting draft for the editable body (AlertPreviewModal) — the
+// ENTIRE email, greeting through sign-off, not just the concerns section.
+// Regenerated from the checklist/deadline whenever either changes, until
+// the user starts editing by hand. Deliberately plain text, not HTML: HR
+// edits this directly in a textarea, so no markup to fight with; the route
+// converts it to HTML (escape + newline -> <br/>) only at send time.
+function autoDraftText(name, chosenSignals, chosenMetric, deadlineStr) {
+  const lines = [`Hi ${name},`, '', 'This is to formally bring to your attention certain performance related concerns that require immediate attention.', '', 'The following concerns have been noted:'];
   if (chosenSignals.length) {
     for (const s of chosenSignals) lines.push(`- ${s.label}: ${s.value}`);
   } else {
@@ -157,14 +159,24 @@ function autoDraftText(chosenSignals, chosenMetric) {
       lines.push(`${m.head}: ${m.value ?? '—'}`);
     }
   }
-  lines.push('', 'You are expected to demonstrate immediate and sustained improvement in the above areas.');
+  lines.push(
+    '',
+    'You are expected to demonstrate immediate and sustained improvement in the above areas.',
+    `The required improvement is expected to be demonstrated by ${deadlineStr || '[Deadline Date]'}.`,
+    '',
+    'Your performance will be reviewed during this period, and further action may be taken based on the outcome of the review.',
+    '',
+    'Regards,',
+    'Team HR',
+  );
   return lines.join('\n');
 }
-// Must match PIP_SUBJECT in app/api/employees/[id]/alert/route.js.
-const PIP_SUBJECTS = {
-  PA: 'Performance Alert – Extended Interview',
-  PIP: 'Performance Improvement Plan – Extended Interview',
-};
+// Employee name is appended at render time (pipSubject below) — must match
+// pipSubject in app/api/employees/[id]/alert/route.js.
+const PIP_SUBJECT_LABEL = { PA: 'Performance Alert', PIP: 'Performance Improvement Plan' };
+function pipSubject(pipType, name) {
+  return `${PIP_SUBJECT_LABEL[pipType]} - ${name}`;
+}
 
 function AlertPreviewModal({ emp, pending, onClose, onSend }) {
   // Every actually-tracked parameter for this employee's team, not just the
@@ -224,7 +236,7 @@ function AlertPreviewModal({ emp, pending, onClose, onSend }) {
   // changes UNTIL the user types in it by hand (draftEdited) — after that,
   // their edits are authoritative and checklist changes no longer overwrite
   // them; "reset to auto-generated" opts back into auto-sync.
-  const autoDraft = autoDraftText(chosenSignals, chosenMetric);
+  const autoDraft = autoDraftText(emp.name, chosenSignals, chosenMetric, deadlineStr);
   const [draft, setDraft] = useState(autoDraft);
   const [draftEdited, setDraftEdited] = useState(false);
   useEffect(() => {
@@ -296,18 +308,14 @@ function AlertPreviewModal({ emp, pending, onClose, onSend }) {
                 </span>
               )}
             </div>
-            <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 12, padding: 18, background: 'rgba(255,255,255,0.02)', fontSize: 13, color: '#C7CBDA', lineHeight: 1.6 }}>
-              <p style={{ margin: '0 0 12px', fontSize: 11.5, color: '#5C6178' }}>Subject: {pipType ? PIP_SUBJECTS[pipType] : '[choose PA or PIP above]'}</p>
-              <p style={{ margin: '0 0 10px' }}>Hi {emp.name},</p>
+            <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 12, padding: 18, background: 'rgba(255,255,255,0.02)' }}>
+              <p style={{ margin: '0 0 12px', fontSize: 11.5, color: '#5C6178' }}>Subject: {pipType ? pipSubject(pipType, emp.name) : '[choose PA or PIP above]'}</p>
               <textarea
                 value={draft}
                 onChange={(ev) => { setDraft(ev.target.value); setDraftEdited(true); }}
-                rows={12}
-                style={{ width: '100%', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.15)', borderRadius: 8, padding: '10px 12px', fontSize: 13, color: '#C7CBDA', outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.6 }}
+                rows={20}
+                style={{ width: '100%', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.15)', borderRadius: 8, padding: '12px 14px', fontSize: 13, color: '#C7CBDA', outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.6 }}
               />
-              <p style={{ margin: '12px 0 0' }}>The required improvement is expected to be demonstrated by <b>{deadlineStr || '[Deadline Date]'}</b>.</p>
-              <p>Your performance will be reviewed during this period, and further action may be taken based on the outcome of the review.</p>
-              <p style={{ marginBottom: 0 }}>Regards,<br />Team HR</p>
             </div>
           </div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', border: `1px solid ${testMode ? 'rgba(245,158,11,0.45)' : 'rgba(255,255,255,0.09)'}`, background: testMode ? 'rgba(245,158,11,0.1)' : 'rgba(255,255,255,0.02)', borderRadius: 10, padding: '9px 12px' }}>
