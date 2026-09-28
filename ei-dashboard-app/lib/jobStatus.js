@@ -1,4 +1,4 @@
-import { getDb } from './db';
+import { getDb } from './db.js';
 
 // Self-migrating: TURSO_DATABASE_URL/TURSO_AUTH_TOKEN are Sensitive env vars
 // in Vercel, which are write-only — not even `vercel env pull` can read them

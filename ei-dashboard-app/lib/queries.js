@@ -1,8 +1,8 @@
-import { getDb } from './db';
-import { computeSignalReport, computeWorryScore, trendNoteFor, isScoredEmployee } from './data';
-import { getIsoWeek, isWeekOver } from './weekUtils';
-import { getManagerEmail } from './managerDirectory';
-import { computeTrainerPaAlgoFlag } from './paAlgo';
+import { getDb } from './db.js';
+import { computeSignalReport, computeWorryScore, trendNoteFor, isScoredEmployee } from './data.js';
+import { getIsoWeek, isWeekOver } from './weekUtils.js';
+import { getManagerEmail } from './managerDirectory.js';
+import { computeTrainerPaAlgoFlag } from './paAlgo.js';
 
 // A 'Pending' response for a week that has fully passed reads as 'Overdue' —
 // derived live at read time rather than stored, same "derive, don't

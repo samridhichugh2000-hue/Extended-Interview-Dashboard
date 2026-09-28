@@ -1,4 +1,4 @@
-import { getDb } from './db';
+import { getDb } from './db.js';
 
 const RECIPIENT = 'Samridhi.chugh@koenig-solutions.com';
 

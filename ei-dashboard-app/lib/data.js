@@ -1,4 +1,4 @@
-import { getIsoWeek, isPastWednesdayCheckIn, weekDateRange } from './weekUtils';
+import { getIsoWeek, isPastWednesdayCheckIn, weekDateRange } from './weekUtils.js';
 
 export const C = { rose: '#F43F5E', amber: '#F59E0B', indigo: '#8B8CF6', teal: '#14B8A6', purple: '#A855F7' };
 

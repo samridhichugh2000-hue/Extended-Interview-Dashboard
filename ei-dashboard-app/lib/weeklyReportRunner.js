@@ -1,5 +1,5 @@
 import { randomBytes } from 'crypto';
-import { getDb } from './db';
+import { getDb } from './db.js';
 
 function genToken() {
   return randomBytes(24).toString('base64url');
