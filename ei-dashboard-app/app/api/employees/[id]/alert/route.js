@@ -7,6 +7,8 @@ export const dynamic = 'force-dynamic';
 const HR_CC = 'HR@koenig-solutions.com';
 const PIP_STATUS = { PA: 'PA Issued', PIP: 'PIP Issued' };
 const PIP_SUBJECT = { PA: 'Performance Alert – Extended Interview', PIP: 'Performance Improvement Plan – Extended Interview' };
+// Must match TEST_RECIPIENT in app/DashboardClient.js.
+const TEST_RECIPIENT = 'samridhi.chugh@koenig-solutions.com';
 
 function esc(v) {
   return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -87,10 +89,17 @@ async function postPaPipToRms(payload) {
 // employees.status to match (PA Issued / PIP Issued), same status field the
 // Dept/Overview screens already key off (see close/route.js), and posts to
 // RMS via postPaPipToRms above (currently a no-op stub — see its comment).
+//
+// testMode (AlertPreviewModal's "Test mode" checkbox) lets HR verify the
+// actual send — real subject/body, real Graph delivery — before ever
+// issuing for real: redirects to/cc entirely to TEST_RECIPIENT (no
+// employee, no HR, no manager touched) and skips both the employees.status
+// update and the RMS post, so nothing about the target employee's real
+// record changes.
 export async function POST(request, { params }) {
   const { id } = params;
   const body = await request.json().catch(() => null);
-  const { name, email, managerEmail, signals, metric, pipType, deadline, note } = body || {};
+  const { name, email, managerEmail, signals, metric, pipType, deadline, note, testMode } = body || {};
   if (!email) {
     return NextResponse.json({ ok: false, error: 'No email on file for this employee.' }, { status: 400 });
   }
@@ -102,11 +111,16 @@ export async function POST(request, { params }) {
   }
   try {
     await sendMail({
-      to: email,
-      cc: [HR_CC, managerEmail].filter(Boolean),
-      subject: PIP_SUBJECT[pipType],
+      to: testMode ? TEST_RECIPIENT : email,
+      cc: testMode ? [] : [HR_CC, managerEmail].filter(Boolean),
+      subject: (testMode ? '[TEST] ' : '') + PIP_SUBJECT[pipType],
       html: alertEmailHtml({ name, signals, metric, deadline, note }),
     });
+
+    if (testMode) {
+      return NextResponse.json({ ok: true, test: true });
+    }
+
     const db = getDb();
     const res = await db.execute({ sql: 'UPDATE employees SET status = ? WHERE id = ?', args: [PIP_STATUS[pipType], id] });
     if (res.rowsAffected === 0) {

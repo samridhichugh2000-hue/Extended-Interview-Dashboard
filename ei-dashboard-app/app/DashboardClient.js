@@ -91,7 +91,7 @@ function useEmployeeActions() {
     setAlertOnDone(() => onDone || null);
   };
 
-  const confirmSendAlert = async ({ signals, metric, pipType, deadline, note }) => {
+  const confirmSendAlert = async ({ signals, metric, pipType, deadline, note, testMode }) => {
     const emp = alertTarget;
     if (!emp || pending) return;
     setPending(`alert:${emp.id}`);
@@ -99,10 +99,12 @@ function useEmployeeActions() {
       const res = await fetch(`/api/employees/${emp.id}/alert`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: emp.name, email: emp.email, managerEmail: emp.managerEmail, score: emp.scoreStr, bandLabel: emp.bandLabel, signals, metric, pipType, deadline, note }),
+        body: JSON.stringify({ name: emp.name, email: emp.email, managerEmail: emp.managerEmail, score: emp.scoreStr, bandLabel: emp.bandLabel, signals, metric, pipType, deadline, note, testMode }),
       });
       const json = await res.json();
-      window.alert(json.ok ? `${pipType} saved and alert email sent.` : `Failed: ${json.error}`);
+      window.alert(json.ok
+        ? (testMode ? `Test email sent to ${TEST_RECIPIENT} — ${emp.name}'s status was not changed.` : `${pipType} saved and alert email sent.`)
+        : `Failed: ${json.error}`);
       if (json.ok) {
         setAlertTarget(null);
         alertOnDone?.();
@@ -131,6 +133,9 @@ const PIP_TYPES = {
   PA: { code: 'PA', label: 'Performance Alert (PA)' },
   PIP: { code: 'PIP', label: 'Performance Improvement Plan (PIP)' },
 };
+// Fixed test-mode recipient — see AlertPreviewModal's testMode. Must match
+// TEST_RECIPIENT in app/api/employees/[id]/alert/route.js.
+const TEST_RECIPIENT = 'samridhi.chugh@koenig-solutions.com';
 // Must match PIP_SUBJECT in app/api/employees/[id]/alert/route.js.
 const PIP_SUBJECTS = {
   PA: 'Performance Alert – Extended Interview',
@@ -197,6 +202,11 @@ function AlertPreviewModal({ emp, pending, onClose, onSend }) {
   // non-empty, both in the preview and the actual sent email.
   const [note, setNote] = useState('');
   const ccLine = ['HR@koenig-solutions.com', emp.managerEmail].filter(Boolean).join(', ');
+  // Lets HR safely verify the actual send (subject/body/formatting, real
+  // Graph delivery) before ever issuing for real — redirects the whole
+  // email to TEST_RECIPIENT only (no HR/manager CC) and the route skips
+  // updating employees.status entirely, so no real record is touched.
+  const [testMode, setTestMode] = useState(false);
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 70 }}>
@@ -204,7 +214,11 @@ function AlertPreviewModal({ emp, pending, onClose, onSend }) {
         <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — alert preview</div>
-            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>Worry Index {emp.scoreStr} · {emp.bandLabel} · to {emp.email}, Cc {ccLine}{!emp.managerEmail && ' (no manager email resolved — see lib/managerDirectory.js)'}</div>
+            <div style={{ fontSize: 12, color: testMode ? '#F59E0B' : '#6E7488', marginTop: 3 }}>
+              {testMode
+                ? `TEST MODE — to ${TEST_RECIPIENT} only. No HR/manager CC, no status change, nothing sent to ${emp.name}.`
+                : <>Worry Index {emp.scoreStr} · {emp.bandLabel} · to {emp.email}, Cc {ccLine}{!emp.managerEmail && ' (no manager email resolved — see lib/managerDirectory.js)'}</>}
+            </div>
           </div>
           <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
         </div>
@@ -280,14 +294,18 @@ function AlertPreviewModal({ emp, pending, onClose, onSend }) {
               <p style={{ marginBottom: 0 }}>Regards,<br />Team HR</p>
             </div>
           </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', border: `1px solid ${testMode ? 'rgba(245,158,11,0.45)' : 'rgba(255,255,255,0.09)'}`, background: testMode ? 'rgba(245,158,11,0.1)' : 'rgba(255,255,255,0.02)', borderRadius: 10, padding: '9px 12px' }}>
+            <input type="checkbox" checked={testMode} onChange={(ev) => setTestMode(ev.target.checked)} style={{ width: 15, height: 15, flex: 'none' }} />
+            <span style={{ fontSize: 12.5, color: testMode ? '#F59E0B' : '#9BA1B8' }}>Test mode — send only to {TEST_RECIPIENT}, don't touch this employee's status</span>
+          </label>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <span onClick={onClose} className="hoverbtn" style={{ border: '1px solid rgba(255,255,255,0.12)', color: '#C7CBDA', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>Cancel</span>
             <span
-              onClick={() => canSave && !pending && onSend({ signals: chosenSignals, metric: chosenMetric ? { label: chosenMetric.label, months: chosenMetric.months, isCurrency: chosenMetric.isCurrency } : null, pipType, deadline, note: note.trim() || null })}
+              onClick={() => canSave && !pending && onSend({ signals: chosenSignals, metric: chosenMetric ? { label: chosenMetric.label, months: chosenMetric.months, isCurrency: chosenMetric.isCurrency } : null, pipType, deadline, note: note.trim() || null, testMode })}
               className="hoverbtn"
-              style={{ border: '1px solid rgba(244,63,94,0.45)', color: '#F87171', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: (pending || !canSave) ? 'default' : 'pointer', opacity: (pending || !canSave) ? 0.5 : 1 }}
+              style={{ border: `1px solid ${testMode ? 'rgba(245,158,11,0.5)' : 'rgba(244,63,94,0.45)'}`, color: testMode ? '#F59E0B' : '#F87171', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: (pending || !canSave) ? 'default' : 'pointer', opacity: (pending || !canSave) ? 0.5 : 1 }}
             >
-              {pending ? 'Saving…' : 'Save'}
+              {pending ? 'Sending…' : testMode ? `Send test to ${TEST_RECIPIENT}` : 'Save'}
             </span>
           </div>
         </div>
