@@ -1440,10 +1440,10 @@ function PaPip({ employees, filter, setFilter, setModal }) {
 const PA_ALGO_TIER_LABELS = {
   [TRAINER_SALARY_TIERS.UNDER_125K]: '< 1.25L',
   [TRAINER_SALARY_TIERS.BETWEEN_125K_200K]: '1.25L - 2L',
-  [TRAINER_SALARY_TIERS.OVER_200K]: '> 2L (K11)',
+  [TRAINER_SALARY_TIERS.OVER_200K]: 'K11',
 };
 const PA_ALGO_STATUS_STYLE = {
-  fired: { label: 'Fired', bg: 'rgba(244,63,94,0.12)', color: '#F87171', border: 'rgba(244,63,94,0.3)' },
+  fired: { label: 'Needs Review', bg: 'rgba(244,63,94,0.12)', color: '#F87171', border: 'rgba(244,63,94,0.3)' },
   clear: { label: 'Clear', bg: 'rgba(20,184,166,0.12)', color: '#5EEAD4', border: 'rgba(20,184,166,0.3)' },
   'no-data': { label: 'No data', bg: 'rgba(245,158,11,0.12)', color: '#F59E0B', border: 'rgba(245,158,11,0.3)' },
   'no-salary-data': { label: 'No salary data', bg: 'rgba(255,255,255,0.05)', color: '#6E7488', border: 'rgba(255,255,255,0.12)' },
@@ -1465,7 +1465,7 @@ function FiredOnlyToggle({ value, onChange, allLabel = 'All Trainers' }) {
   return (
     <div onClick={() => onChange(!value)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, border: `1px solid ${value ? 'rgba(244,63,94,0.45)' : 'rgba(255,255,255,0.1)'}`, background: value ? 'rgba(244,63,94,0.14)' : 'rgba(255,255,255,0.03)', color: value ? '#FFFFFF' : '#9BA1B8', borderRadius: 10, padding: '10px 14px', fontSize: 13, flex: 'none' }}>
       <span style={{ width: 14, height: 14, borderRadius: 4, border: `1px solid ${value ? '#F87171' : 'rgba(255,255,255,0.25)'}`, background: value ? '#F43F5E' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#fff' }}>{value ? '✓' : ''}</span>
-      {value ? 'Fired only' : allLabel}
+      {value ? 'Needs review only' : allLabel}
     </div>
   );
 }
@@ -1512,18 +1512,25 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
     .filter((e) => !firedOnly || e[algoKey].status === 'fired' || e[algoKey].negFeedbackSuggestion)
     .filter((e) => !q || e.name.toLowerCase().includes(q) || String(e.id).toLowerCase().includes(q))
     .map(decorate)
-    .sort((a, b) => {
-      if (isTrainer) {
-        const suggestionOrder = { Exit: 0, PIP: 1, PA: 2 };
-        const aSuggestion = a.trainerPaAlgo.negFeedbackSuggestion ? suggestionOrder[a.trainerPaAlgo.negFeedbackSuggestion] : 99;
-        const bSuggestion = b.trainerPaAlgo.negFeedbackSuggestion ? suggestionOrder[b.trainerPaAlgo.negFeedbackSuggestion] : 99;
-        if (aSuggestion !== bSuggestion) return aSuggestion - bSuggestion;
-      }
-      const order = { fired: 0, 'no-data': 1, 'no-salary-data': 2, 'no-country-data': 2, clear: 3 };
-      return (order[a[algoKey].status] ?? 9) - (order[b[algoKey].status] ?? 9) || a.name.localeCompare(b.name);
-    });
+    // Tenure band order — youngest first (0-3 months, then 3-6, etc.),
+    // same for both teams since it's driven by raw tenure_days rather than
+    // each tier's own differently-worded band labels.
+    .sort((a, b) => (a.tenure ?? 0) - (b.tenure ?? 0) || a.name.localeCompare(b.name));
 
-  const gridCols = isTrainer ? '1.3fr .8fr .9fr 1.7fr .8fr .9fr 26px' : '1.5fr .9fr .9fr 2.3fr .9fr 26px';
+  const gridCols = isTrainer ? '1.2fr .6fr .7fr .8fr 1.5fr .8fr .8fr 26px' : '1.5fr .9fr .9fr 2.3fr .9fr 26px';
+  // Current calendar month's utilization, read off the same trailing
+  // history the PA Algo evidence panel uses — falls back to the most
+  // recent month on file (labelled) if this month hasn't synced yet.
+  function thisMonthUtil(e) {
+    const details = e.utilMonthlyDetails;
+    if (!details?.length) return null;
+    const now = new Date();
+    const key = `${now.toLocaleString('en-US', { month: 'short' })} ${now.getFullYear()}`;
+    const current = details.find((m) => m.month === key);
+    if (current?.util != null) return { label: `${current.util}%`, isCurrent: true };
+    const latest = [...details].reverse().find((m) => m.util != null);
+    return latest ? { label: `${latest.util}% (${latest.month})`, isCurrent: false } : null;
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -1535,7 +1542,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
         ))}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16 }}>
-        <div style={{ border: '1px solid rgba(244,63,94,0.28)', background: 'linear-gradient(150deg,rgba(244,63,94,0.13),rgba(244,63,94,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>Fired</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6, color: '#F43F5E' }}>{firedCount}</div></div>
+        <div style={{ border: '1px solid rgba(244,63,94,0.28)', background: 'linear-gradient(150deg,rgba(244,63,94,0.13),rgba(244,63,94,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>Needs Review</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6, color: '#F43F5E' }}>{firedCount}</div></div>
         <div style={{ border: '1px solid rgba(20,184,166,0.28)', background: 'linear-gradient(150deg,rgba(20,184,166,0.13),rgba(20,184,166,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>Clear</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6, color: '#5EEAD4' }}>{clearCount}</div></div>
         <div style={{ border: '1px solid rgba(245,158,11,0.28)', background: 'linear-gradient(150deg,rgba(245,158,11,0.13),rgba(245,158,11,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>Missing data</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6, color: '#F59E0B' }}>{noDataCount}</div></div>
       </div>
@@ -1559,7 +1566,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
       <div style={{ ...card, overflow: 'hidden' }}>
         <div style={{ display: 'grid', gridTemplateColumns: gridCols, padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           {isTrainer
-            ? <><span>Employee</span><span>Salary tier</span><span>Tenure band</span><span>Rule</span><span>Status</span><span style={{ textAlign: 'right' }}>Neg. feedback (7d)</span><span /></>
+            ? <><span>Employee</span><span>This month</span><span>Salary tier</span><span>Tenure band</span><span>Rule</span><span>Status</span><span style={{ textAlign: 'right' }}>Neg. feedback (7d)</span><span /></>
             : <><span>Employee</span><span>Region</span><span>Tenure band</span><span>Rule</span><span style={{ textAlign: 'right' }}>Status</span><span /></>}
         </div>
         {rows.map((e) => {
@@ -1568,10 +1575,16 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
           const sugg = isTrainer && algo.negFeedbackSuggestion ? NEG_FEEDBACK_SUGGESTION_STYLE[algo.negFeedbackSuggestion] : null;
           const hasEvidence = algo.evidence?.length > 0;
           const isExpanded = expandedId === e.id;
+          const util = isTrainer ? thisMonthUtil(e) : null;
           return (
             <Fragment key={e.id}>
               <div className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: gridCols, padding: '14px 18px', alignItems: 'center', borderBottom: isExpanded ? 'none' : '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontWeight: 600 }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id}{e.inactive ? ' · Inactive' : ''}</span></div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <span style={{ fontWeight: 600 }}>{e.name}</span>
+                  <span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id}{e.inactive ? ' · Inactive' : ''}</span>
+                  {e.activePipRange && <span style={{ fontSize: 10, color: '#F59E0B' }}>{e.activePipRange}</span>}
+                </div>
+                {isTrainer && <span style={{ fontSize: 12, color: util?.isCurrent ? '#A8AEC4' : '#6E7488' }}>{util?.label || '—'}</span>}
                 <span style={{ fontSize: 12, color: '#A8AEC4' }}>{isTrainer ? (PA_ALGO_TIER_LABELS[algo.tier] || '—') : (PA_ALGO_REGION_LABELS[algo.region] || '—')}</span>
                 <span style={{ fontSize: 12, color: '#A8AEC4' }}>{algo.band || '—'}</span>
                 <span style={{ fontSize: 12, color: '#A8AEC4' }}>{algo.rule || '—'}</span>
@@ -1751,7 +1764,11 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
         </div>
         {ranked.map((e) => (
           <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: '1.5fr .9fr .7fr .8fr 2fr', padding: '13px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontWeight: 600 }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id}</span></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <span style={{ fontWeight: 600 }}>{e.name}</span>
+              <span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id}</span>
+              {e.activePipRange && <span style={{ fontSize: 10.5, color: '#F59E0B' }}>{e.activePipRange}</span>}
+            </div>
             <span style={{ color: '#A8AEC4', fontSize: 12.5 }}>{e.team}</span>
             <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontWeight: 600, color: e.bandColor }}>{e.scoreStr}</span>
             <span style={{ justifySelf: 'start', fontSize: 11, padding: '4px 9px', borderRadius: 999, background: `${e.bandColor}1F`, color: e.bandColor, border: `1px solid ${e.bandColor}55` }}>{e.bandLabel}</span>

@@ -36,6 +36,26 @@ export function band(s) {
   return { label: 'Good', color: C.teal };
 }
 
+// Real "is this PA/PIP currently inside its own issued_on..review_by
+// window" check — same logic as hasOngoingPipWindow in
+// lib/weeklyReportRunner.js (Koenig's own is_active flag alone isn't
+// enough, since Koenig doesn't auto-close a case just because its review
+// date passed). Only meaningful when e.status itself is PA Issued/PIP
+// Issued; null otherwise, or if pipHistory has no window actually covering
+// today (a lapsed case, even if Koenig still reports the status as issued).
+function activePipWindow(e, today = new Date()) {
+  if (e.status !== 'PA Issued' && e.status !== 'PIP Issued') return null;
+  const wantType = e.status === 'PIP Issued' ? 'PIP' : 'PA';
+  const hit = (e.pipHistory || []).find((p) => {
+    if (p.type !== wantType) return false;
+    const start = p.issuedOn && new Date(p.issuedOn);
+    const end = p.reviewBy && new Date(p.reviewBy);
+    if (!start || isNaN(start) || !end || isNaN(end)) return false;
+    return start <= today && today <= end;
+  });
+  return hit ? { type: wantType, issuedOn: hit.issuedOn, reviewBy: hit.reviewBy } : null;
+}
+
 export function decorate(e) {
   // Status pill only ever shows PA Issued / PIP Issued — In Progress and
   // Confirmed (the "not currently under a formal action" states) render
@@ -46,6 +66,7 @@ export function decorate(e) {
   const st = showStatus ? STATUS[e.status] : { bg: 'rgba(255,255,255,0.03)', color: '#6E7488', border: 'rgba(255,255,255,0.08)' };
   const b = band(e.score);
   const inactive = e.active === false;
+  const activeWindow = activePipWindow(e);
   return {
     ...e,
     statusBg: inactive ? 'rgba(255,255,255,0.06)' : st.bg,
@@ -58,6 +79,10 @@ export function decorate(e) {
     short: e.status === 'PIP Issued' ? 'PIP' : e.status === 'PA Issued' ? 'PA' : '—',
     inactive,
     rowStyle: inactive ? { opacity: 0.45, filter: 'grayscale(0.6)' } : undefined,
+    // Only set when there's a genuinely active (not lapsed) PA/PIP window —
+    // shown under the employee's name on PA Algo/Worry Index so it's clear
+    // at a glance they're already under a real, ongoing case.
+    activePipRange: activeWindow ? `${activeWindow.type} active: ${activeWindow.issuedOn} – ${activeWindow.reviewBy}` : null,
   };
 }
 
