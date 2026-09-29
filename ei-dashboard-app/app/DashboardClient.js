@@ -7,7 +7,7 @@ import {
   computeSignalReport, computeWorryScore, trendNoteFor, WORRY_WINDOWS, windowSince,
 } from '../lib/data';
 import { JOB_LABELS } from '../lib/jobLabels';
-import { TRAINER_SALARY_TIERS, SALES_REGIONS } from '../lib/paAlgo';
+import { TRAINER_SALARY_TIERS, SALES_REGIONS, currentQuarterMonthKeys } from '../lib/paAlgo';
 import { draftToHtml } from '../lib/emailDraft';
 
 const card = { border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 16 };
@@ -1561,14 +1561,21 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
     const latest = [...details].reverse().find((m) => m.util != null);
     return latest ? { label: `${latest.util}% (${latest.month})`, isCurrent: false } : null;
   }
-  // Most recent quarter's target achievement on file (lib/syncRunners.js's
-  // syncTargetAchievement already picked the latest quarter per employee at
-  // sync time — this just formats it, with the quarter/year alongside so a
-  // stale (last quarter's) figure isn't mistaken for the current one).
+  // Current quarter's CSM target (lib/syncRunners.js's syncTargetsData,
+  // quarter_target_amount) against this quarter's synced NR — Koenig's own
+  // achievement-percentage feed (quarter_target_pct, syncTargetAchievement)
+  // has returned zero rows for every query tried, so the % here is computed
+  // directly from NR rather than trusting that feed.
   function quarterTargetLabel(e) {
-    if (e.quarterTargetPct == null) return null;
+    if (e.quarterTargetAmount == null) return null;
+    const months = currentQuarterMonthKeys();
+    const nr = (e.nrMonthlyDetails || [])
+      .filter((m) => months.includes(m.month))
+      .reduce((sum, m) => sum + (m.nr ?? 0), 0);
+    const pct = e.quarterTargetAmount > 0 ? Math.round((nr / e.quarterTargetAmount) * 1000) / 10 : null;
+    const lakhs = (n) => '₹' + (n / 100000).toFixed(1) + 'L';
     const q = [e.quarterTargetName, e.quarterTargetYear].filter(Boolean).join(' ');
-    return { pct: `${e.quarterTargetPct}%`, period: q || null };
+    return { pct: pct != null ? `${pct}%` : '—', nrLabel: lakhs(nr), targetLabel: lakhs(e.quarterTargetAmount), period: q || null };
   }
 
   return (
@@ -1639,9 +1646,14 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
                 {isTrainer && <span style={{ fontSize: 12, color: util?.isCurrent ? '#A8AEC4' : '#6E7488' }}>{util?.label || '—'}</span>}
                 <span style={{ fontSize: 12, color: '#A8AEC4' }}>{isTrainer ? (PA_ALGO_TIER_LABELS[algo.tier] || '—') : (PA_ALGO_REGION_LABELS[algo.region] || '—')}</span>
                 {!isTrainer && (
-                  <span style={{ fontSize: 12, color: '#A8AEC4' }}>
-                    {target ? <>{target.pct}{target.period && <span style={{ color: '#6E7488' }}> ({target.period})</span>}</> : '—'}
-                  </span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    {target ? (
+                      <>
+                        <span className="mono" style={{ fontSize: 12, color: '#A8AEC4' }}>{target.nrLabel} / {target.targetLabel}</span>
+                        <span style={{ fontSize: 10.5, color: '#6E7488' }}>{target.pct}{target.period && ` · ${target.period}`}</span>
+                      </>
+                    ) : <span style={{ fontSize: 12, color: '#A8AEC4' }}>—</span>}
+                  </div>
                 )}
                 <span style={{ fontSize: 12, color: '#A8AEC4' }}>{algo.band || '—'}</span>
                 <span style={{ fontSize: 12, color: '#A8AEC4' }}>{algo.rule || '—'}</span>

@@ -226,6 +226,7 @@ for (const stmt of [
   'ALTER TABLE employees ADD COLUMN quarter_target_name TEXT',
   'ALTER TABLE employees ADD COLUMN quarter_target_year TEXT',
   'ALTER TABLE employees ADD COLUMN quarter_target_remarks TEXT',
+  'ALTER TABLE employees ADD COLUMN quarter_target_amount REAL',
 ]) {
   try {
     await db.execute(stmt);

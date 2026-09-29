@@ -267,6 +267,26 @@ export const SALES_REGIONS = {
   OVERSEAS: 'overseas',
 };
 
+// Calendar quarter (Q1 Jan-Mar, Q2 Apr-Jun, Q3 Jul-Sep, Q4 Oct-Dec) — matches
+// Koenig's own Get Targets Data naming (confirmed: Jul-Sep 2026 rows come
+// back labelled Target_Name "Q3"). Shared by lib/syncRunners.js's
+// syncTargetsData (server, picks this quarter's CSM target row) and
+// DashboardClient.js's quarterTargetLabel (client, sums this quarter's NR
+// against it) so both sides agree on what "current quarter" means.
+export function currentQuarter(date = new Date()) {
+  return { name: `Q${Math.floor(date.getMonth() / 3) + 1}`, year: date.getFullYear() };
+}
+
+// The 3 nr_monthly_details month keys ("Jul-2026" style, see syncPms's
+// monthKey in lib/syncRunners.js) making up the current calendar quarter.
+export function currentQuarterMonthKeys(date = new Date()) {
+  const startMonth = Math.floor(date.getMonth() / 3) * 3;
+  return [0, 1, 2].map((i) => {
+    const d = new Date(date.getFullYear(), startMonth + i, 1);
+    return `${d.toLocaleString('en-US', { month: 'short' })}-${d.getFullYear()}`;
+  });
+}
+
 // nrMonthlyDetails is chronological oldest-first (see syncPms's fullHistory
 // in lib/syncRunners.js) — Koenig only ever returns months from DOJ onward,
 // so "every month on file" already means "every month since joining", with

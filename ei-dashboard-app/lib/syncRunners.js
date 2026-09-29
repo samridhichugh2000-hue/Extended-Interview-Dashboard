@@ -432,6 +432,50 @@ export async function syncTargetAchievement() {
   return { message: `Synced quarter target achievement for ${updated} Sales employees (${unmatched} unmatched).` };
 }
 
+// Get Targets Data (lib/koenigTargetsDataApi.js) has real, current target
+// figures — unlike Get Target Achieved Details above, which has returned
+// zero rows for every query tried. It gives the target amount, not an
+// achievement %, so this writes quarter_target_amount (a column
+// syncTargetAchievement never touches) and leaves quarter_target_pct alone;
+// DashboardClient.js's quarterTargetLabel computes the % itself from this
+// amount and the employee's already-synced current-quarter NR.
+export async function syncTargetsData() {
+  const db = getDb();
+  const { getTargetsData } = await import('./koenigTargetsDataApi.js');
+  const { currentQuarter } = await import('./paAlgo.js');
+
+  const { name: qName, year: qYear } = currentQuarter();
+
+  const rows = await getTargetsData();
+  const byEmpId = new Map();
+  for (const r of rows) {
+    if (r.type !== 'CSM') continue;
+    if (r.targetName !== qName || Number(r.targetYear) !== qYear) continue;
+    byEmpId.set(r.empId, r);
+  }
+
+  const salesEmployees = await db.execute("SELECT id FROM employees WHERE team = 'Sales'");
+
+  const statements = [];
+  let updated = 0;
+  let unmatched = 0;
+  for (const emp of salesEmployees.rows) {
+    const empId = parseInt(emp.id.replace('EMP', ''), 10);
+    const target = byEmpId.get(empId);
+    if (!target) { unmatched++; continue; }
+
+    statements.push({
+      sql: 'UPDATE employees SET quarter_target_amount = ?, quarter_target_name = ?, quarter_target_year = ? WHERE id = ?',
+      args: [target.target, target.targetName, String(target.targetYear), emp.id],
+    });
+    updated++;
+  }
+
+  if (statements.length) await db.batch(statements, 'write');
+
+  return { message: `Synced ${qName} ${qYear} CSM target amount for ${updated} Sales employees (${unmatched} unmatched).` };
+}
+
 export async function syncUtil() {
   const db = getDb();
   const { getMonthlyUtilization } = await import('./koenigUtilApi.js');
@@ -1339,6 +1383,7 @@ export const SYNC_RUNNERS = {
   sc: syncSc,
   csmroster: syncCsmRoster,
   target: syncTargetAchievement,
+  targetsdata: syncTargetsData,
   util: syncUtil,
   exam: syncExam,
   negfeedback: syncNegFeedback,

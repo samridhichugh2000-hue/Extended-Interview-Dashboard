@@ -134,6 +134,7 @@ export async function getEmployees() {
       quarterTargetName: e.quarter_target_name,
       quarterTargetYear: e.quarter_target_year,
       quarterTargetRemarks: e.quarter_target_remarks,
+      quarterTargetAmount: e.quarter_target_amount,
       // null = no weekly_responses row yet for this week (e.g. feature hasn't
       // been run for them this week) — distinct from a confirmed Pending/Overdue.
       weeklyReportState: (weeksByEmp.get(e.id) || []).find((w) => w.week === currentWeek)?.state ?? null,
