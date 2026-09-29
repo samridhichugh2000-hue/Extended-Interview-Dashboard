@@ -43,10 +43,30 @@ export async function POST(request, { params }) {
     args: [a1, a2, new Date().toISOString(), token],
   });
 
-  // ai_rating / ai_rating_reason get filled in later by the scheduled rating
-  // pass (scripts/rate-weekly-responses.mjs) rather than here — there's no
-  // API key wired up for a synchronous call, so this route just leaves them
-  // NULL and moves on.
+  // Rate immediately so the dashboard (a plain live DB query, no caching)
+  // reflects it as soon as this request completes, instead of waiting on
+  // the manual list-unrated-responses.mjs/save-ratings.mjs pass. A rating
+  // failure (rate limit, timeout, malformed reply) shouldn't lose the NJ's
+  // already-recorded answer — log and leave ai_rating NULL for that backfill
+  // path to pick up later, same resilience pattern as the email send below.
+  try {
+    const { rateWeeklyResponse } = await import('../../../../lib/rateWeeklyResponse');
+    const prior = await db.execute({
+      sql: `SELECT a1, a2 FROM weekly_responses WHERE employee_id = ? AND state = 'Received' AND week < ? ORDER BY week DESC LIMIT 1`,
+      args: [row.employee_id, row.week],
+    });
+    const { rating, reason } = await rateWeeklyResponse({
+      q1: row.q1, a1, q2: row.q2, a2,
+      priorA1: prior.rows[0]?.a1 || null,
+      priorA2: prior.rows[0]?.a2 || null,
+    });
+    await db.execute({
+      sql: `UPDATE weekly_responses SET ai_rating = ?, ai_rating_reason = ? WHERE token = ?`,
+      args: [String(rating), reason, token],
+    });
+  } catch (err) {
+    console.error('Weekly response AI rating failed:', err.message);
+  }
 
   // A Graph hiccup here shouldn't lose an already-recorded answer — log and
   // still report success to the NJ.
