@@ -90,7 +90,7 @@ function buildParamColumns(missedWeeksCount, belowSatisfactoryCount) {
     { header: 'Applied for KGT', teams: 'All', get: (e) => e.kgtCount, weightLabels: ['Applied for KGT'] },
     { header: 'Ideas for improvement', teams: 'All', get: (e) => e.ideasCount, weightLabels: ['Ideas for improvement'] },
     { header: 'Weekly email not received', teams: 'All', get: (e) => missedWeeksCount(e), weightLabels: ['Weekly progress email not received'] },
-    { header: 'Manager feedback below satisfactory', teams: 'All', get: (e) => belowSatisfactoryCount(e), weightLabels: ['Manager feedback below satisfactory'] },
+    { header: 'Manager feedback below satisfactory', teams: 'All', get: (e) => belowSatisfactoryCount(e), weightLabels: ['Manager feedback below satisfactory (last feedback)'] },
     { header: 'Shoddy (neg)', teams: 'All', get: (e) => e.shoddyNegCount, weightLabels: ['Shoddy marked against NJ'] },
     { header: 'Shoddy (pos)', teams: 'All', get: (e) => e.shoddyPosCount, weightLabels: ['HR incidents (positive)'] },
     { header: 'Polls participated', teams: 'All', get: (e) => e.pollsParticipated, weightLabels: ['Polls participated'] },

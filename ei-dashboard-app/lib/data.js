@@ -208,6 +208,17 @@ export function belowSatisfactoryCount(e) {
   return (e.mgrFeedbackDetails || []).filter((f) => feedbackRating(f) === 'below').length;
 }
 
+// Scoring uses only the single most recent applicable feedback entry, not a
+// running historical count — mgrFeedbackDetails is already sorted newest-
+// first (scripts/sync-mgrfeedback.mjs), so this is just the first entry that
+// isn't 'not-applicable' (an onboarding-checklist item, never a real
+// performance read). An older 'below' stops counting once a newer entry
+// exists, applicable or not — what matters is where they stand now.
+export function lastFeedbackIsBelow(e) {
+  const latest = (e.mgrFeedbackDetails || []).find((f) => feedbackRating(f) != null);
+  return latest ? feedbackRating(latest) === 'below' : false;
+}
+
 // Every week this NJ has been tracked that isn't 'Received' — cumulative,
 // not just the current week. The current week only counts once past
 // Wednesday 6PM IST (see the signal def below); every earlier week is
@@ -372,27 +383,27 @@ export const SIGNAL_DEFS = [
     fires: (e) => e.negAudits > 0,
     count: (e) => e.negAudits,
     countInWindow: (e, since) => countDatedRecords(e.auditRemarks, 'createdOn', since) },
-  // -5 per week short of the 1-call/week pace (same "weeks since joining"
-  // math as the skills-count signals above) — scales with the shortfall,
-  // same convention as Shoddy marked against NJ above.
-  { label: 'Tech calls < 1 per week', teams: 'Sales', pts: -5, live: true,
+  // -0.5 per week short of the 1-call/week pace (same "weeks since joining"
+  // math, and same per-week penalty scale, as Trainer's "Skills count <
+  // weeks since joining" signal above) — scales with the shortfall.
+  { label: 'Tech calls < 1 per week', teams: 'Sales', pts: -0.5, live: true,
     hasData: (e) => e.techCallsCount != null,
     fires: (e) => { const wks = Math.floor((e.tenure ?? 0) / 7); return wks > 0 && (e.techCallsCount ?? 0) < wks; },
     count: (e) => Math.floor((e.tenure ?? 0) / 7) - (e.techCallsCount ?? 0) },
   // negative, not yet tracked
   // Cumulative across every week this NJ has been tracked, not just the
-  // current one — 2 missed weeks scores 2 × -1, same convention as other
+  // current one — 2 missed weeks scores 2 × -2, same convention as other
   // count-backed signals (see missedWeeksCount above).
-  { label: 'Weekly progress email not received', teams: 'All', pts: -1, live: true,
+  { label: 'Weekly progress email not received', teams: 'All', pts: -2, live: true,
     hasData: (e) => (e.weeks || []).length > 0,
     fires: (e) => missedWeeksCount(e) > 0,
     count: missedWeeksCount,
     countInWindow: missedWeeksInWindow },
-  { label: 'Manager feedback below satisfactory', teams: 'All', pts: -1, live: true,
+  // Flat -5 if the most recent applicable feedback is 'below' — not a count,
+  // since only the latest entry counts at all (see lastFeedbackIsBelow).
+  { label: 'Manager feedback below satisfactory (last feedback)', teams: 'All', pts: -5, live: true,
     hasData: (e) => e.mgrFeedbackCount != null,
-    fires: (e) => belowSatisfactoryCount(e) > 0,
-    count: belowSatisfactoryCount,
-    countInWindow: belowSatisfactoryCountInWindow },
+    fires: (e) => lastFeedbackIsBelow(e) },
   { label: 'Not replying to HR emails', teams: 'All', pts: -1, live: false, hasData: () => false, fires: () => false },
   { label: 'Audio / video not OK in meetings', teams: 'All', pts: -1, live: false, hasData: () => false, fires: () => false },
   { label: 'Weekly email shows less progress', teams: 'All', pts: -2, live: false, hasData: () => false, fires: () => false },
@@ -483,6 +494,7 @@ export const WORRY_WINDOWS = [
   { key: 'all', label: 'All time', days: null, trendPhrase: 'in total' },
   { key: 'weekly', label: 'Weekly', days: 7, trendPhrase: 'this week' },
   { key: 'monthly', label: 'Monthly', days: 30, trendPhrase: 'this month' },
+  { key: '3month', label: '3 Months', days: 91, trendPhrase: 'in the last 3 months' },
   { key: '6month', label: '6 Months', days: 182, trendPhrase: 'in the last 6 months' },
 ];
 export function windowSince(days) {
