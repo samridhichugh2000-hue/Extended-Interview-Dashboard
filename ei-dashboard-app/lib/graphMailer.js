@@ -3,7 +3,9 @@ import { graphFetch } from './graphAuth.js';
 const SENDER_EMAIL = process.env.GRAPH_SENDER_EMAIL;
 const INTERNAL_DOMAIN = 'koenig-solutions.com';
 
-function isExternalAddress(address) {
+// Shared with lib/syncRunners.js's syncGraphMeetings (client-meeting
+// detection) — one definition of "external" for the whole app.
+export function isExternalAddress(address) {
   const at = address.lastIndexOf('@');
   return at !== -1 && address.slice(at + 1).toLowerCase() !== INTERNAL_DOMAIN;
 }

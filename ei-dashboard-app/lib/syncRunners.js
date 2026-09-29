@@ -1008,16 +1008,19 @@ function findAttendance(reports, email, parseGraphDateTime, scheduledStart) {
 
 export async function recomputeGraphAggregates(db, employeeId) {
   const res = await db.execute({
-    sql: 'SELECT timing_status, av_issue FROM graph_meetings WHERE employee_id = ?',
+    sql: 'SELECT timing_status, av_issue, client_emails FROM graph_meetings WHERE employee_id = ?',
     args: [employeeId],
   });
   const total = res.rows.length;
   const late = res.rows.filter((r) => r.timing_status === 'Late').length;
   const missed = res.rows.filter((r) => r.timing_status === 'Did Not Join').length;
   const avIssues = res.rows.filter((r) => r.av_issue === 1).length;
+  const externalMeetings = res.rows.filter((r) => {
+    try { return JSON.parse(r.client_emails || '[]').length > 0; } catch { return false; }
+  }).length;
   await db.execute({
-    sql: 'UPDATE employees SET meetings_count = ?, meetings_late_count = ?, meetings_missed_count = ?, av_issue_count = ? WHERE id = ?',
-    args: [total, late, missed, avIssues, employeeId],
+    sql: 'UPDATE employees SET meetings_count = ?, meetings_late_count = ?, meetings_missed_count = ?, av_issue_count = ?, external_meetings_count = ? WHERE id = ?',
+    args: [total, late, missed, avIssues, externalMeetings, employeeId],
   });
 }
 
@@ -1030,6 +1033,7 @@ export async function recomputeGraphAggregates(db, employeeId) {
 export async function syncGraphMeetings() {
   const db = getDb();
   const { getCalendarTeamsMeetings, resolveUserIdByEmail, resolveOnlineMeeting, getAttendanceReports, parseGraphDateTime, ON_TIME_GRACE_SECONDS } = await import('./graphCallsApi.js');
+  const { isExternalAddress } = await import('./graphMailer.js');
 
   const to = new Date();
   const from = new Date(to.getTime() - GRAPH_MEETINGS_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
@@ -1065,6 +1069,12 @@ export async function syncGraphMeetings() {
       const scheduledStart = parseGraphDateTime(event.start.dateTime);
       const scheduledEnd = event.end?.dateTime ? parseGraphDateTime(event.end.dateTime) : null;
 
+      // "Client meeting" = organizer or any attendee outside the company
+      // domain — covers both directions (rep organizes and invites the
+      // client, or the client organizes and invites the rep).
+      const participants = [organizerEmail, ...(event.attendees || []).map((a) => a.emailAddress?.address)].filter(Boolean);
+      const clientEmails = [...new Set(participants.filter(isExternalAddress).map((a) => a.toLowerCase()))];
+
       let timingStatus = 'No Data', joinedAt = null, leftAt = null, attendanceSeconds = null, delaySeconds = null, onlineMeetingId = null;
       try {
         const organizerId = await organizerIdFor(organizerEmail);
@@ -1091,17 +1101,17 @@ export async function syncGraphMeetings() {
       }
 
       await db.execute({
-        sql: `INSERT INTO graph_meetings (employee_id, subject, organizer_email, scheduled_start, scheduled_end, join_url, online_meeting_id, joined_at, left_at, attendance_seconds, delay_seconds, timing_status, synced_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        sql: `INSERT INTO graph_meetings (employee_id, subject, organizer_email, scheduled_start, scheduled_end, join_url, online_meeting_id, joined_at, left_at, attendance_seconds, delay_seconds, timing_status, client_emails, synced_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               ON CONFLICT(employee_id, join_url, scheduled_start) DO UPDATE SET
                 subject = excluded.subject, online_meeting_id = excluded.online_meeting_id,
                 joined_at = excluded.joined_at, left_at = excluded.left_at,
                 attendance_seconds = excluded.attendance_seconds, delay_seconds = excluded.delay_seconds,
-                timing_status = excluded.timing_status, synced_at = excluded.synced_at`,
+                timing_status = excluded.timing_status, client_emails = excluded.client_emails, synced_at = excluded.synced_at`,
         args: [
           emp.id, event.subject || null, organizerEmail, scheduledStart.toISOString(), scheduledEnd ? scheduledEnd.toISOString() : null,
           joinUrl, onlineMeetingId, joinedAt ? joinedAt.toISOString() : null, leftAt ? leftAt.toISOString() : null,
-          attendanceSeconds, delaySeconds, timingStatus, new Date().toISOString(),
+          attendanceSeconds, delaySeconds, timingStatus, JSON.stringify(clientEmails), new Date().toISOString(),
         ],
       });
       meetingsSynced++;

@@ -27,6 +27,7 @@ const COMMON_MISSING_FILTERS = [
 const DEPT_MISSING_FILTERS = {
   Sales: [
     { key: 'techCalls', label: 'Without Tech Calls', test: (e) => !(e.techCallsCount > 0) },
+    { key: 'externalMeetings', label: 'Without External Meetings', test: (e) => !(e.externalMeetingsCount > 0) },
     { key: 'scRaised', label: 'Without SCs Raised', test: (e) => !(e.scRaised > 0) },
     // scDetails carries a dated record per SC (see syncSc) — unlike scRaised
     // above (any SC ever, within the 2-year sync lookback), this flags reps
@@ -1392,10 +1393,9 @@ function PaPip({ employees, filter, setFilter, setModal }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16 }}>
-        <div style={{ border: '1px solid rgba(168,85,247,0.28)', background: 'linear-gradient(150deg,rgba(168,85,247,0.14),rgba(168,85,247,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>Total PA / PIP cases</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6 }}>{allCases.length}</div></div>
-        <div style={{ border: '1px solid rgba(245,158,11,0.28)', background: 'linear-gradient(150deg,rgba(245,158,11,0.13),rgba(245,158,11,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>PA Issued</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6, color: '#F59E0B' }}>{paCount}</div></div>
-        <div style={{ border: '1px solid rgba(244,63,94,0.28)', background: 'linear-gradient(150deg,rgba(244,63,94,0.13),rgba(244,63,94,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>PIP Issued</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6, color: '#F43F5E' }}>{pipCount}</div></div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 16 }}>
+        <div style={{ border: '1px solid rgba(245,158,11,0.28)', background: 'linear-gradient(150deg,rgba(245,158,11,0.13),rgba(245,158,11,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>Active PA</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6, color: '#F59E0B' }}>{paCount}</div></div>
+        <div style={{ border: '1px solid rgba(244,63,94,0.28)', background: 'linear-gradient(150deg,rgba(244,63,94,0.13),rgba(244,63,94,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>Active PIP</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6, color: '#F43F5E' }}>{pipCount}</div></div>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {tabs.map((t) => (
@@ -1480,6 +1480,10 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
   const [search, setSearch] = useState('');
   const [includeInactive, setIncludeInactive] = useState(false);
   const [firedOnly, setFiredOnly] = useState(true);
+  // Needs Review / Clear / Missing data summary cards double as a filter —
+  // independent of firedOnly below (which stays for the quick "just show me
+  // what needs attention" default). Clicking the active card again clears it.
+  const [statusFilter, setStatusFilter] = useState(null);
   // Local to this screen (unlike filter/setFilter, which is shared top-level
   // state reused across several screens) — a second, independent narrowing
   // dimension alongside the tier/region tabs. Reset whenever team or the
@@ -1539,6 +1543,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
   const rows = pool
     .filter((e) => !filter || e[algoKey][tabKey] === filter)
     .filter((e) => !bandFilter || e[algoKey].band === bandFilter)
+    .filter((e) => !statusFilter || (statusFilter === 'missing' ? PA_ALGO_MISSING_STATUSES.includes(e[algoKey].status) : e[algoKey].status === statusFilter))
     .filter((e) => !firedOnly || e[algoKey].status === 'fired' || e[algoKey].negFeedbackSuggestion)
     .filter((e) => !q || e.name.toLowerCase().includes(q) || String(e.id).toLowerCase().includes(q))
     .map(decorate)
@@ -1581,16 +1586,21 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ display: 'flex', gap: 8 }}>
         {['Trainer', 'Sales'].map((t) => (
-          <div key={t} onClick={() => { setTeam(t); setFilter(null); setBandFilter(null); }} style={{ cursor: 'pointer', border: `1px solid ${team === t ? 'rgba(99,102,241,0.45)' : 'rgba(255,255,255,0.1)'}`, background: team === t ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.03)', color: team === t ? '#FFFFFF' : '#9BA1B8', borderRadius: 10, padding: '8px 16px', fontSize: 13, fontWeight: 600 }}>
+          <div key={t} onClick={() => { setTeam(t); setFilter(null); setBandFilter(null); setStatusFilter(null); }} style={{ cursor: 'pointer', border: `1px solid ${team === t ? 'rgba(99,102,241,0.45)' : 'rgba(255,255,255,0.1)'}`, background: team === t ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.03)', color: team === t ? '#FFFFFF' : '#9BA1B8', borderRadius: 10, padding: '8px 16px', fontSize: 13, fontWeight: 600 }}>
             {t}
           </div>
         ))}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16 }}>
-        <div style={{ border: '1px solid rgba(244,63,94,0.28)', background: 'linear-gradient(150deg,rgba(244,63,94,0.13),rgba(244,63,94,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>Needs Review</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6, color: '#F43F5E' }}>{firedCount}</div></div>
-        <div style={{ border: '1px solid rgba(20,184,166,0.28)', background: 'linear-gradient(150deg,rgba(20,184,166,0.13),rgba(20,184,166,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>Clear</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6, color: '#5EEAD4' }}>{clearCount}</div></div>
-        <div style={{ border: '1px solid rgba(245,158,11,0.28)', background: 'linear-gradient(150deg,rgba(245,158,11,0.13),rgba(245,158,11,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>Missing data</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6, color: '#F59E0B' }}>{noDataCount}</div></div>
+        <div onClick={() => setStatusFilter(statusFilter === 'fired' ? null : 'fired')} style={{ cursor: 'pointer', border: `1px solid rgba(244,63,94,${statusFilter === 'fired' ? 0.7 : 0.28})`, background: 'linear-gradient(150deg,rgba(244,63,94,0.13),rgba(244,63,94,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>Needs Review</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6, color: '#F43F5E' }}>{firedCount}</div></div>
+        <div onClick={() => setStatusFilter(statusFilter === 'clear' ? null : 'clear')} style={{ cursor: 'pointer', border: `1px solid rgba(20,184,166,${statusFilter === 'clear' ? 0.7 : 0.28})`, background: 'linear-gradient(150deg,rgba(20,184,166,0.13),rgba(20,184,166,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>Clear</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6, color: '#5EEAD4' }}>{clearCount}</div></div>
+        <div onClick={() => setStatusFilter(statusFilter === 'missing' ? null : 'missing')} style={{ cursor: 'pointer', border: `1px solid rgba(245,158,11,${statusFilter === 'missing' ? 0.7 : 0.28})`, background: 'linear-gradient(150deg,rgba(245,158,11,0.13),rgba(245,158,11,0.02))', borderRadius: 16, padding: 20 }}><div style={{ fontSize: 12, color: '#A8AEC4' }}>Missing data</div><div className="disp" style={{ fontSize: 36, fontWeight: 600, marginTop: 6, color: '#F59E0B' }}>{noDataCount}</div></div>
       </div>
+      {statusFilter && (
+        <div onClick={() => setStatusFilter(null)} style={{ cursor: 'pointer', alignSelf: 'flex-start', border: '1px solid rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.1)', color: '#A5A7FA', borderRadius: 10, padding: '8px 14px', fontSize: 12.5 }}>
+          Filtered to: {statusFilter === 'fired' ? 'Needs Review' : statusFilter === 'clear' ? 'Clear' : 'Missing data'} ×
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {tabs.map((t) => (
           <div key={t.label} onClick={() => { setFilter(t.val); setBandFilter(null); }} style={{ cursor: 'pointer', border: `1px solid ${t.active ? 'rgba(99,102,241,0.45)' : 'rgba(255,255,255,0.1)'}`, background: t.active ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.03)', color: t.active ? '#FFFFFF' : '#9BA1B8', borderRadius: 999, padding: '8px 16px', fontSize: 13, display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -1735,12 +1745,27 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
   // under Weekly/Monthly/6 Months rather than silently keeping their
   // all-time count under a window label that would misrepresent them.
   const [windowKey, setWindowKey] = useState('all');
+  // Custom range is a 5th option alongside the WORRY_WINDOWS presets — not
+  // itself in that list (it has no fixed `days`), so it's tracked as its
+  // own state and only consulted when windowKey === 'custom'.
+  const [customRange, setCustomRange] = useState({ from: '', to: '' });
+  const isCustomWindow = windowKey === 'custom';
   const windowDef = WORRY_WINDOWS.find((w) => w.key === windowKey) || WORRY_WINDOWS[0];
-  const since = windowSince(windowDef.days);
+  const since = isCustomWindow
+    // Only a "to" date picked still counts as windowed ("everything up
+    // through that date") rather than silently falling back to all-time —
+    // an epoch since with no lower bound of its own.
+    ? (customRange.from ? new Date(`${customRange.from}T00:00:00`) : customRange.to ? new Date(0) : null)
+    : windowSince(windowDef.days);
+  const until = isCustomWindow && customRange.to ? new Date(`${customRange.to}T23:59:59`) : null;
+  const windowLabel = isCustomWindow
+    ? (customRange.from && customRange.to ? `${customRange.from} → ${customRange.to}` : 'Custom range (pick both dates)')
+    : windowDef.label;
+  const windowTrendPhrase = isCustomWindow ? `between ${customRange.from || '…'} and ${customRange.to || '…'}` : windowDef.trendPhrase;
   const windowedEmployees = employees.map((e) => {
-    const signalReport = computeSignalReport(e, since ? { since } : {});
+    const signalReport = computeSignalReport(e, since ? { since, until } : {});
     const signals = signalReport.filter((s) => s.status === 'fired');
-    return { ...e, signalReport, signals, score: computeWorryScore(signals), trendNote: trendNoteFor(signals, windowDef.trendPhrase) };
+    return { ...e, signalReport, signals, score: computeWorryScore(signals), trendNote: trendNoteFor(signals, windowTrendPhrase) };
   });
   // score is non-null for every employee now (isScoredEmployee always
   // returns true) — the `!= null` check is just defensive.
@@ -1788,7 +1813,19 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
             {w.label}
           </div>
         ))}
-        {windowKey !== 'all' && (
+        <div onClick={() => setWindowKey('custom')} style={{ cursor: 'pointer', border: `1px solid ${isCustomWindow ? 'rgba(20,184,166,0.45)' : 'rgba(255,255,255,0.1)'}`, background: isCustomWindow ? 'rgba(20,184,166,0.18)' : 'rgba(255,255,255,0.03)', color: isCustomWindow ? '#FFFFFF' : '#9BA1B8', borderRadius: 999, padding: '6px 14px', fontSize: 12.5 }}>
+          Custom range
+        </div>
+        {isCustomWindow && (
+          <>
+            <input type="date" value={customRange.from} onChange={(ev) => setCustomRange((r) => ({ ...r, from: ev.target.value }))}
+              style={{ border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '5px 9px', fontSize: 12, color: '#E4E6F0', colorScheme: 'dark' }} />
+            <span style={{ color: '#5C6178', fontSize: 12 }}>to</span>
+            <input type="date" value={customRange.to} onChange={(ev) => setCustomRange((r) => ({ ...r, to: ev.target.value }))}
+              style={{ border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '5px 9px', fontSize: 12, color: '#E4E6F0', colorScheme: 'dark' }} />
+          </>
+        )}
+        {since && (
           <span style={{ fontSize: 11, color: '#6E7488' }}>
             Signals with no per-event date on file (tech calls, exam results, skills pace, polls) can't be scoped to a window — shown as "no dated records" and excluded from this score.
           </span>
@@ -1825,7 +1862,7 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
       <div style={{ ...card, overflow: 'hidden' }}>
         <div style={{ padding: '16px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
           <div className="disp" style={{ fontSize: 15, fontWeight: 600 }}>Every NJ, ranked worst to best</div>
-          <div style={{ fontSize: 11.5, color: '#6E7488', marginTop: 2 }}>{windowDef.label} · click a row for the full signal breakdown</div>
+          <div style={{ fontSize: 11.5, color: '#6E7488', marginTop: 2 }}>{windowLabel} · click a row for the full signal breakdown</div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1.5fr .9fr .7fr .8fr 2fr', padding: '10px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 10, letterSpacing: '.1em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
           <span>Employee</span><span>Team</span><span style={{ textAlign: 'right' }}>Score</span><span>Band</span><span>Trend</span>
@@ -1857,11 +1894,11 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
           {posSignals.map((s) => {
             const cov = coverageFor(s);
             return (
-              <div key={s.label} style={{ display: 'grid', gridTemplateColumns: '1fr .8fr .5fr .9fr', padding: '10px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.04)', opacity: !s.live ? 0.45 : !s.windowed && windowKey !== 'all' ? 0.6 : 1 }}>
+              <div key={s.label} style={{ display: 'grid', gridTemplateColumns: '1fr .8fr .5fr .9fr', padding: '10px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.04)', opacity: !s.live ? 0.45 : !s.windowed && since != null ? 0.6 : 1 }}>
                 <span style={{ fontSize: 13, color: '#C7CBDA', display: 'flex', alignItems: 'center', gap: 8 }}>
                   {s.label}
                   {!s.live && <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase' }}>not tracked</span>}
-                  {s.live && !s.windowed && windowKey !== 'all' && <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase' }}>not dated</span>}
+                  {s.live && !s.windowed && since != null && <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase' }}>not dated</span>}
                 </span>
                 <span style={{ fontSize: 11, color: '#6E7488' }}>{s.teams}</span>
                 <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12.5, color: '#14B8A6' }}>{s.w}</span>
@@ -1882,11 +1919,11 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
           {negSignals.map((s) => {
             const cov = coverageFor(s);
             return (
-              <div key={s.label} style={{ display: 'grid', gridTemplateColumns: '1fr .8fr .5fr .9fr', padding: '10px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.04)', opacity: !s.live ? 0.45 : !s.windowed && windowKey !== 'all' ? 0.6 : 1 }}>
+              <div key={s.label} style={{ display: 'grid', gridTemplateColumns: '1fr .8fr .5fr .9fr', padding: '10px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.04)', opacity: !s.live ? 0.45 : !s.windowed && since != null ? 0.6 : 1 }}>
                 <span style={{ fontSize: 13, color: '#C7CBDA', display: 'flex', alignItems: 'center', gap: 8 }}>
                   {s.label}
                   {!s.live && <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase' }}>not tracked</span>}
-                  {s.live && !s.windowed && windowKey !== 'all' && <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase' }}>not dated</span>}
+                  {s.live && !s.windowed && since != null && <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase' }}>not dated</span>}
                 </span>
                 <span style={{ fontSize: 11, color: '#6E7488' }}>{s.teams}</span>
                 <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12.5, color: '#F87171' }}>{s.w}</span>
@@ -1905,6 +1942,12 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
 function fmtIst(iso) {
   if (!iso) return '—';
   return new Date(iso).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) + ' IST';
+}
+// Time only, no date — used inside a day-grouped list where the date's
+// already in the group header (see EmployeeMeetingsModal).
+function fmtIstTime(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' }) + ' IST';
 }
 function fmtDuration(seconds) {
   if (seconds == null) return '—';
@@ -1926,10 +1969,11 @@ const TIMING_COLORS = {
 
 // Graph API Calls — Sales' Teams meetings pulled from each rep's Outlook
 // calendar (join timing) plus, once a callRecords webhook notification has
-// matched a meeting, whether audio/video quality was flagged. Purely
-// informational for now — not wired into the Worry Index yet (see the "not
-// tracked" badges still on those two signals in Worry Index) until this
-// data's been reviewed.
+// matched a meeting, whether audio/video quality was flagged. Timing/A-V
+// quality themselves are still purely informational (see the "not tracked"
+// badges still on those two signals in Worry Index) — but whether a meeting
+// had an external (client) participant feeds the "External meetings < 1 per
+// week" Worry Index signal, via employees.external_meetings_count.
 function GraphCalls({ meetings, employees, filter, setFilter }) {
   const [search, setSearch] = useState('');
   const [empDetail, setEmpDetail] = useState(null);
@@ -1989,7 +2033,7 @@ function GraphCalls({ meetings, employees, filter, setFilter }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ border: '1px solid rgba(99,102,241,0.25)', background: 'rgba(99,102,241,0.06)', borderRadius: 12, padding: '12px 16px', fontSize: 12.5, color: '#A8AEC4', lineHeight: 1.5 }}>
-        Sourced from each Sales rep's Outlook calendar and Teams attendance reports via Microsoft Graph — meetings organized by Gunjan Setia (recurring internal briefings) are excluded, everything else stays in, internal and external alike. Audio/video quality only appears once a callRecords webhook notification arrives for that meeting — "No Data" there just means none has landed yet, not a clean call. Roster is a separate feed (Koenig's Get CSM Roster) — click it to see that rep's on-file shift history. This screen doesn't feed the Worry Index score yet.
+        Sourced from each Sales rep's Outlook calendar and Teams attendance reports via Microsoft Graph — meetings organized by Gunjan Setia (recurring internal briefings) are excluded, everything else stays in, internal and external alike. Audio/video quality only appears once a callRecords webhook notification arrives for that meeting — "No Data" there just means none has landed yet, not a clean call. Roster is a separate feed (Koenig's Get CSM Roster) — click it to see that rep's on-file shift history. A meeting with any non-@koenig-solutions.com attendee or organizer counts as a client meeting (shown in each meeting's detail) and feeds the "External meetings &lt; 1 per week" Worry Index signal — timing/A-V quality here don't feed the score yet.
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10 }}>
@@ -2104,33 +2148,64 @@ function EmployeeRosterModal({ emp, onClose }) {
   );
 }
 
+// IST calendar day (Asia/Kolkata, matching fmtIst/fmtIstTime elsewhere on
+// this screen) so a meeting's group always matches the date its own row
+// would show — en-CA gives YYYY-MM-DD, which also sorts correctly as a
+// plain string for the Map's insertion order below.
+function istDayKey(iso) {
+  return new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+}
+function istDayLabel(iso) {
+  return new Date(iso).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 function EmployeeMeetingsModal({ emp, onClose, onSelectMeeting }) {
   const meetings = [...emp.meetings].sort((a, b) => new Date(b.scheduledStart) - new Date(a.scheduledStart));
-  const gridCols = '1.8fr 1.1fr 1.1fr .9fr .8fr .9fr';
+  const gridCols = '1.8fr .9fr .9fr .9fr .8fr .9fr';
+
+  const days = new Map();
+  for (const m of meetings) {
+    const key = istDayKey(m.scheduledStart);
+    if (!days.has(key)) days.set(key, []);
+    days.get(key).push(m);
+  }
+
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 800, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 820, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
         <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.employeeName} — meeting details</div>
-            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>{meetings.length} Teams {meetings.length === 1 ? 'meeting' : 'meetings'} tracked</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>{meetings.length} Teams {meetings.length === 1 ? 'meeting' : 'meetings'} tracked, across {days.size} day{days.size === 1 ? '' : 's'}</div>
           </div>
           <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
         </div>
         <div style={{ padding: '8px 24px 24px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '10px 0', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-            <span>Meeting</span><span>Start Time</span><span>Joined Time</span><span>Timing</span><span style={{ textAlign: 'right' }}>Duration</span><span style={{ textAlign: 'right' }}>A/V Quality</span>
-          </div>
-          {meetings.map((m) => (
-            <div key={m.id} className="hoverrow" onClick={() => onSelectMeeting(m)} style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '11px 0', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 12.5, cursor: 'pointer' }}>
-              <span style={{ color: '#C7CBDA', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.subject}</span>
-              <span className="mono" style={{ fontSize: 11.5, color: '#8A90A8' }}>{fmtIst(m.scheduledStart)}</span>
-              <span className="mono" style={{ fontSize: 11.5, color: '#8A90A8' }}>{fmtIst(m.joinedAt)}</span>
-              <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: `${TIMING_COLORS[m.timingStatus]}1F`, color: TIMING_COLORS[m.timingStatus], border: `1px solid ${TIMING_COLORS[m.timingStatus]}55` }}>{m.timingStatus}</span>
-              <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: '#C7CBDA' }}>{fmtDuration(m.attendanceSeconds)}</span>
-              <span style={{ textAlign: 'right', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, justifySelf: 'end', background: m.avIssue == null ? 'rgba(255,255,255,0.05)' : m.avIssue ? 'rgba(244,63,94,0.14)' : 'rgba(20,184,166,0.14)', color: m.avIssue == null ? '#6E7488' : m.avIssue ? '#F87171' : '#5EEAD4', border: `1px solid ${m.avIssue == null ? 'rgba(255,255,255,0.12)' : m.avIssue ? 'rgba(244,63,94,0.35)' : 'rgba(20,184,166,0.35)'}` }}>
-                {m.avIssue == null ? 'No Data' : m.avIssue ? 'Issue' : 'Clean'}
-              </span>
+          {[...days.values()].map((dayMeetings) => (
+            <div key={dayMeetings[0].id}>
+              <div className="mono" style={{ fontSize: 11, letterSpacing: '.05em', color: '#8A90A8', padding: '12px 0 8px' }}>
+                {istDayLabel(dayMeetings[0].scheduledStart)} <span style={{ color: '#5C6178' }}>· {dayMeetings.length} meeting{dayMeetings.length === 1 ? '' : 's'}</span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '0 0 6px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                <span>Meeting</span><span>Time</span><span>Joined</span><span>Timing</span><span style={{ textAlign: 'right' }}>Duration</span><span style={{ textAlign: 'right' }}>A/V Quality</span>
+              </div>
+              {dayMeetings.map((m) => (
+                <div key={m.id} className="hoverrow" onClick={() => onSelectMeeting(m)} style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '11px 0', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 12.5, cursor: 'pointer' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2, overflow: 'hidden' }}>
+                    <span style={{ color: '#C7CBDA', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.subject}</span>
+                    {m.clientEmails?.length > 0 && (
+                      <span className="mono" style={{ fontSize: 10.5, color: '#A5A7FA', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Client: {m.clientEmails.join(', ')}</span>
+                    )}
+                  </div>
+                  <span className="mono" style={{ fontSize: 11.5, color: '#8A90A8' }}>{fmtIstTime(m.scheduledStart)}</span>
+                  <span className="mono" style={{ fontSize: 11.5, color: '#8A90A8' }}>{fmtIstTime(m.joinedAt)}</span>
+                  <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: `${TIMING_COLORS[m.timingStatus]}1F`, color: TIMING_COLORS[m.timingStatus], border: `1px solid ${TIMING_COLORS[m.timingStatus]}55` }}>{m.timingStatus}</span>
+                  <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: '#C7CBDA' }}>{fmtDuration(m.attendanceSeconds)}</span>
+                  <span style={{ textAlign: 'right', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, justifySelf: 'end', background: m.avIssue == null ? 'rgba(255,255,255,0.05)' : m.avIssue ? 'rgba(244,63,94,0.14)' : 'rgba(20,184,166,0.14)', color: m.avIssue == null ? '#6E7488' : m.avIssue ? '#F87171' : '#5EEAD4', border: `1px solid ${m.avIssue == null ? 'rgba(255,255,255,0.12)' : m.avIssue ? 'rgba(244,63,94,0.35)' : 'rgba(20,184,166,0.35)'}` }}>
+                    {m.avIssue == null ? 'No Data' : m.avIssue ? 'Issue' : 'Clean'}
+                  </span>
+                </div>
+              ))}
             </div>
           ))}
           {!meetings.length && <div style={{ fontSize: 12.5, color: '#6E7488', paddingTop: 12 }}>No meetings on file.</div>}
@@ -2146,6 +2221,7 @@ function GraphMeetingModal({ meeting: m, onClose }) {
     ['Employee', m.employeeName],
     ['Team', m.team],
     ['Organizer', m.organizerEmail || '—'],
+    ...(m.clientEmails?.length ? [['Client email' + (m.clientEmails.length > 1 ? 's' : ''), m.clientEmails.join(', ')]] : []),
     ['Scheduled start', fmtIst(m.scheduledStart)],
     ['Scheduled end', fmtIst(m.scheduledEnd)],
     ['Joined at', fmtIst(m.joinedAt)],
@@ -2490,12 +2566,18 @@ function EmployeeModal({ emp, onClose }) {
   // recomputed the same way (computeSignalReport's `since` option). 'All
   // time' with no `since` reproduces the exact all-time score above.
   const [windowKey, setWindowKey] = useState('all');
+  const [customRange, setCustomRange] = useState({ from: '', to: '' });
+  const isCustomWindow = windowKey === 'custom';
   const windowDef = WORRY_WINDOWS.find((w) => w.key === windowKey) || WORRY_WINDOWS[0];
-  const since = windowSince(windowDef.days);
-  const signalReport = computeSignalReport(emp, since ? { since } : {});
+  const since = isCustomWindow
+    ? (customRange.from ? new Date(`${customRange.from}T00:00:00`) : customRange.to ? new Date(0) : null)
+    : windowSince(windowDef.days);
+  const until = isCustomWindow && customRange.to ? new Date(`${customRange.to}T23:59:59`) : null;
+  const windowTrendPhrase = isCustomWindow ? `between ${customRange.from || '…'} and ${customRange.to || '…'}` : windowDef.trendPhrase;
+  const signalReport = computeSignalReport(emp, since ? { since, until } : {});
   const signals = signalReport.filter((s) => s.status === 'fired');
   const score = computeWorryScore(signals);
-  const trendNote = trendNoteFor(signals, windowDef.trendPhrase);
+  const trendNote = trendNoteFor(signals, windowTrendPhrase);
   const wd = decorate({ ...emp, score });
   const scored = score != null;
   const bandPct = scored ? Math.round(Math.max(0, Math.min(1, (score + 12) / 24)) * 100) + '%' : '0%';
@@ -2523,18 +2605,30 @@ function EmployeeModal({ emp, onClose }) {
                 <div style={{ height: 8, borderRadius: 4, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}><div style={{ height: '100%', width: bandPct, background: wd.bandColor, borderRadius: 4 }} /></div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#5C6178', marginTop: 6 }}><span>−12</span><span>0</span><span>+12</span></div>
               </>}
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 14 }}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 14, alignItems: 'center' }}>
                 {WORRY_WINDOWS.map((w) => (
                   <div key={w.key} onClick={() => setWindowKey(w.key)} style={{ cursor: 'pointer', border: `1px solid ${windowKey === w.key ? 'rgba(20,184,166,0.45)' : 'rgba(255,255,255,0.1)'}`, background: windowKey === w.key ? 'rgba(20,184,166,0.18)' : 'rgba(255,255,255,0.03)', color: windowKey === w.key ? '#FFFFFF' : '#9BA1B8', borderRadius: 999, padding: '5px 11px', fontSize: 11.5 }}>
                     {w.label}
                   </div>
                 ))}
+                <div onClick={() => setWindowKey('custom')} style={{ cursor: 'pointer', border: `1px solid ${isCustomWindow ? 'rgba(20,184,166,0.45)' : 'rgba(255,255,255,0.1)'}`, background: isCustomWindow ? 'rgba(20,184,166,0.18)' : 'rgba(255,255,255,0.03)', color: isCustomWindow ? '#FFFFFF' : '#9BA1B8', borderRadius: 999, padding: '5px 11px', fontSize: 11.5 }}>
+                  Custom
+                </div>
               </div>
+              {isCustomWindow && (
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 8 }}>
+                  <input type="date" value={customRange.from} onChange={(ev) => setCustomRange((r) => ({ ...r, from: ev.target.value }))}
+                    style={{ border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '4px 8px', fontSize: 11.5, color: '#E4E6F0', colorScheme: 'dark' }} />
+                  <span style={{ color: '#5C6178', fontSize: 11.5 }}>to</span>
+                  <input type="date" value={customRange.to} onChange={(ev) => setCustomRange((r) => ({ ...r, to: ev.target.value }))}
+                    style={{ border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '4px 8px', fontSize: 11.5, color: '#E4E6F0', colorScheme: 'dark' }} />
+                </div>
+              )}
               <div style={{ marginTop: 12, fontSize: 12.5, color: '#8A90A8', lineHeight: 1.55 }}>{trendNote}</div>
             </div>
             <div>
               <div className="mono" style={{ fontSize: 10, letterSpacing: '.12em', color: '#5C6178', textTransform: 'uppercase', marginBottom: 10 }}>Signal breakdown — every parameter for {emp.team}</div>
-              {windowKey !== 'all' && (
+              {since && (
                 <div style={{ fontSize: 11.5, color: '#6E7488', lineHeight: 1.5, marginBottom: 10 }}>
                   Signals with no per-event date on file show "no dated records" and are excluded from this window's score — the Alert action above still uses the full all-time record regardless of this filter.
                 </div>

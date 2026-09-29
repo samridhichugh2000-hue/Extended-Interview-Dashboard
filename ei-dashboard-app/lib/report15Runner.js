@@ -74,9 +74,10 @@ function weightCell(weightMap, label, label2) {
 // A factory (not a plain module-level array) because two columns need to
 // call back into lib/data.js's missedWeeksCount/belowSatisfactoryCount,
 // which are only available once buildReport15Html has imported them.
-function buildParamColumns(missedWeeksCount, belowSatisfactoryCount) {
+function buildParamColumns(missedWeeksCount, belowSatisfactoryCount, weeklyResponseRatingPoints) {
   return [
     { header: 'Tech calls', teams: 'Sales · PT Team', get: (e) => e.techCallsCount, weightLabels: ['Tech calls < 1 per week', 'Tech calls'] },
+    { header: 'External meetings', teams: 'Sales', get: (e) => e.externalMeetingsCount, weightLabels: ['External meetings < 1 per week'] },
     { header: 'Neg audits', teams: 'Sales · PT Team', get: (e) => e.negAudits, weightLabels: ['Negative enquiry audit'] },
     { header: 'Tech Calls converted', teams: 'Trainer · PT Team', get: (e) => e.techCallsConverted, weightLabels: ['Tech calls converted'] },
     { header: 'Exams failed', teams: 'Trainer · PT Team', get: (e) => e.examFail, weightLabels: ['Failure in exam'] },
@@ -90,6 +91,7 @@ function buildParamColumns(missedWeeksCount, belowSatisfactoryCount) {
     { header: 'Ideas for improvement', teams: 'All', get: (e) => e.ideasCount, weightLabels: ['Ideas for improvement'] },
     { header: 'Weekly email not received', teams: 'All', get: (e) => missedWeeksCount(e), weightLabels: ['Weekly progress email not received'] },
     { header: 'Manager feedback below satisfactory', teams: 'All', get: (e) => belowSatisfactoryCount(e), weightLabels: ['Manager feedback below satisfactory (last feedback)'] },
+    { header: 'Weekly rating pts', teams: 'All', get: (e) => weeklyResponseRatingPoints(e), weightLabels: ['Weekly response quality (AI rating)'] },
     { header: 'Shoddy (pos)', teams: 'All', get: (e) => e.shoddyPosCount, weightLabels: ['HR incidents (positive)'] },
     { header: 'Polls participated', teams: 'All', get: (e) => e.pollsParticipated, weightLabels: ['Polls participated'] },
   ];
@@ -121,7 +123,7 @@ function buildTeamSection(list, cols, weightMap) {
 }
 
 export async function buildReport15Html(employees) {
-  const { SIGNAL_DEFS, appliesToTeam, missedWeeksCount, belowSatisfactoryCount } = await import('./data.js');
+  const { SIGNAL_DEFS, appliesToTeam, missedWeeksCount, belowSatisfactoryCount, weeklyResponseRatingPoints } = await import('./data.js');
   const weightMap = new Map(SIGNAL_DEFS.map((d) => [d.label, d.pts]));
 
   // Scored employees only (New Joiners + active PA/PIP cases) — since the
@@ -140,7 +142,7 @@ export async function buildReport15Html(employees) {
   const trainerNeg = trainer.filter((e) => e.score < 0).length;
   const ptNeg = pt.filter((e) => e.score < 0).length;
 
-  const paramColumns = buildParamColumns(missedWeeksCount, belowSatisfactoryCount);
+  const paramColumns = buildParamColumns(missedWeeksCount, belowSatisfactoryCount, weeklyResponseRatingPoints);
   const salesCols = paramColumns.filter((c) => appliesToTeam(c.teams, 'Sales'));
   const trainerCols = paramColumns.filter((c) => appliesToTeam(c.teams, 'Trainer'));
   // PT Team's own parameter set is deliberately narrower than the Sales/
@@ -154,13 +156,18 @@ export async function buildReport15Html(employees) {
   const ptSection = buildTeamSection(pt, ptCols, weightMap);
 
   function legendRow(d) {
-    const color = d.pts > 0 ? '#2F6E5E' : '#B23A2E';
+    // computeTotal signals (Weekly response quality) have no single
+    // per-unit weight — each response scores its own points by rating, so
+    // the "weight" column shows the range instead of d.pts (a reference
+    // value only, not what any individual response actually scores).
+    const weightDisplay = d.computeTotal ? '−2 to +2' : fmtPts(d.pts);
+    const color = d.computeTotal ? '#8C8A7F' : d.pts > 0 ? '#2F6E5E' : '#B23A2E';
     const tracked = d.live ? '' : ' <span style="color:#B5793A;font-size:10px;">(not tracked yet)</span>';
-    const basis = d.count ? 'per occurrence' : 'flat, if condition met';
+    const basis = d.computeTotal ? 'sum per rated response: +2 (5), +1 (4), 0 (3), -1 (2), -2 (1 or 0)' : d.count ? 'per occurrence' : 'flat, if condition met';
     return `<tr>
       <td style="padding:6px 8px;border-bottom:1px solid #ECEAE1;">${esc(d.label)}${tracked}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #ECEAE1;color:#8C8A7F;">${esc(d.teams)}</td>
-      <td style="padding:6px 8px;border-bottom:1px solid #ECEAE1;text-align:right;font-weight:700;color:${color};">${fmtPts(d.pts)}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #ECEAE1;text-align:right;font-weight:700;color:${color};">${weightDisplay}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #ECEAE1;color:#8C8A7F;font-size:11px;">${basis}</td>
     </tr>`;
   }

@@ -55,7 +55,12 @@ export async function getEmployees() {
   const weeksByEmp = new Map();
   for (const row of weeksRes.rows) {
     if (!weeksByEmp.has(row.employee_id)) weeksByEmp.set(row.employee_id, []);
-    weeksByEmp.get(row.employee_id).push({ week: row.week, state: effectiveState(row.week, row.state) });
+    weeksByEmp.get(row.employee_id).push({
+      week: row.week,
+      state: effectiveState(row.week, row.state),
+      aiRating: row.ai_rating != null && row.ai_rating !== '' ? Number(row.ai_rating) : null,
+      receivedAt: row.received_at,
+    });
   }
 
   return empRes.rows.map((e) => {
@@ -135,6 +140,7 @@ export async function getEmployees() {
       quarterTargetYear: e.quarter_target_year,
       quarterTargetRemarks: e.quarter_target_remarks,
       quarterTargetAmount: e.quarter_target_amount,
+      externalMeetingsCount: e.external_meetings_count,
       // null = no weekly_responses row yet for this week (e.g. feature hasn't
       // been run for them this week) — distinct from a confirmed Pending/Overdue.
       weeklyReportState: (weeksByEmp.get(e.id) || []).find((w) => w.week === currentWeek)?.state ?? null,
@@ -211,6 +217,7 @@ export async function getGraphMeetings() {
     callRecordId: r.call_record_id,
     avIssue: r.av_issue == null ? null : !!r.av_issue,
     avIssueDetails: r.av_issue_details ? JSON.parse(r.av_issue_details) : null,
+    clientEmails: r.client_emails ? JSON.parse(r.client_emails) : [],
     syncedAt: r.synced_at,
   }));
 }

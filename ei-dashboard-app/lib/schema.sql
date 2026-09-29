@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS employees (
   meetings_late_count INTEGER,   -- of those, joined later than ON_TIME_GRACE_SECONDS after scheduled start
   meetings_missed_count INTEGER, -- of those, never joined at all (meeting already ended)
   av_issue_count INTEGER,        -- of those, a matched callRecords webhook flagged an audio/video quality problem
+  external_meetings_count INTEGER, -- of those, had at least one non-@koenig-solutions.com attendee/organizer (a "client meeting"). Feeds the "External meetings < 1 per week" Worry Index signal (Sales only).
   external_email_count INTEGER,  -- total Outlook Sent Items emails to non-@koenig-solutions.com addresses in the lookback window (Sales only). Purely informational — not a Worry Index signal, since emailing external contacts is the normal shape of a Sales rep's job.
   external_email_details TEXT,   -- JSON array of {address, count, lastSentAt}, top 100 addresses by count
   external_email_daily TEXT,     -- JSON array of {date, count}, oldest to newest, always exactly the last 14 UTC calendar days (zero-filled) — powers the trend graph in the employee modal
@@ -152,6 +153,7 @@ CREATE TABLE IF NOT EXISTS graph_meetings (
   call_record_id TEXT,
   av_issue INTEGER,               -- 0/1, NULL until a call record is matched
   av_issue_details TEXT,          -- JSON: which streams/metrics tripped the audio/video thresholds
+  client_emails TEXT,             -- JSON array of attendee/organizer addresses whose domain isn't @koenig-solutions.com — empty array means no external participant (an internal-only meeting), not "not checked yet"
   synced_at TEXT NOT NULL,
   UNIQUE(employee_id, join_url, scheduled_start)
 );
