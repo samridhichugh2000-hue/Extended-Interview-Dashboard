@@ -28,12 +28,16 @@ export async function rateWeeklyResponse({ q1, a1, q2, a2, priorA1, priorA2 }) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
+      model: 'gpt-5-mini',
       messages: [{ role: 'user', content: PROMPT({ q1, a1, q2, a2, priorA1, priorA2 }) }],
-      max_tokens: 100,
-      temperature: 0,
+      // gpt-5-mini is a reasoning model: its internal reasoning tokens come
+      // out of this same budget before any visible output, and it only
+      // supports 'max_completion_tokens' (not 'max_tokens') and the default
+      // temperature (1 — passing 0 is a 400). 1500 leaves headroom over the
+      // ~150-250 reasoning tokens seen in testing for this prompt.
+      max_completion_tokens: 1500,
     }),
-    signal: AbortSignal.timeout(20000),
+    signal: AbortSignal.timeout(30000),
   });
   if (!res.ok) throw new Error(`OpenAI rate request failed: ${res.status} ${await res.text().catch(() => '')}`);
   const json = await res.json();
