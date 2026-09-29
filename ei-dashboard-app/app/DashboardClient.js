@@ -1480,6 +1480,13 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
   const [search, setSearch] = useState('');
   const [includeInactive, setIncludeInactive] = useState(false);
   const [firedOnly, setFiredOnly] = useState(true);
+  // Local to this screen (unlike filter/setFilter, which is shared top-level
+  // state reused across several screens) — a second, independent narrowing
+  // dimension alongside the tier/region tabs. Reset whenever team or the
+  // tier/region tab changes, since Trainer's band labels are tier-specific
+  // (a band picked under one tier rarely exists under another) and a stale
+  // selection would otherwise silently zero out the row list.
+  const [bandFilter, setBandFilter] = useState(null);
   // Which row's evidence panel is open — one at a time, keyed by employee
   // id. Evidence is the raw data behind whatever fired (which months, which
   // assignment ids, etc.) shown inline so it's visible without opening the
@@ -1506,9 +1513,32 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
     count: val ? pool.filter((e) => e[algoKey][tabKey] === val).length : pool.length,
   }));
 
+  // Tenure band filter tabs — built from whichever band labels actually
+  // occur in the current tier/region selection (bandPool), rather than a
+  // fixed list, since Trainer's bands are tier-specific (e.g. K11's "any
+  // tenure (K11)" vs the under-125K tier's "0-3 months"/"3-6 months"/…) and
+  // an unfiltered "All Tiers" view mixes all three tiers' vocabularies.
+  // Ordered by each label's lowest tenure_days in the current pool so it
+  // always reads youngest-to-oldest regardless of which tier(s) contributed
+  // the labels.
+  const bandPool = pool.filter((e) => !filter || e[algoKey][tabKey] === filter);
+  const bandMinTenure = new Map();
+  for (const e of bandPool) {
+    const b = e[algoKey].band;
+    if (!b) continue;
+    const t = e.tenure ?? 0;
+    if (!bandMinTenure.has(b) || t < bandMinTenure.get(b)) bandMinTenure.set(b, t);
+  }
+  const bandLabels = [...bandMinTenure.keys()].sort((a, b) => bandMinTenure.get(a) - bandMinTenure.get(b));
+  const bandTabs = [['All tenure bands', null], ...bandLabels.map((l) => [l, l])].map(([label, val]) => ({
+    label, val, active: bandFilter === val || (!bandFilter && !val),
+    count: val ? bandPool.filter((e) => e[algoKey].band === val).length : bandPool.length,
+  }));
+
   const q = search.trim().toLowerCase();
   const rows = pool
     .filter((e) => !filter || e[algoKey][tabKey] === filter)
+    .filter((e) => !bandFilter || e[algoKey].band === bandFilter)
     .filter((e) => !firedOnly || e[algoKey].status === 'fired' || e[algoKey].negFeedbackSuggestion)
     .filter((e) => !q || e.name.toLowerCase().includes(q) || String(e.id).toLowerCase().includes(q))
     .map(decorate)
@@ -1545,7 +1575,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ display: 'flex', gap: 8 }}>
         {['Trainer', 'Sales'].map((t) => (
-          <div key={t} onClick={() => { setTeam(t); setFilter(null); }} style={{ cursor: 'pointer', border: `1px solid ${team === t ? 'rgba(99,102,241,0.45)' : 'rgba(255,255,255,0.1)'}`, background: team === t ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.03)', color: team === t ? '#FFFFFF' : '#9BA1B8', borderRadius: 10, padding: '8px 16px', fontSize: 13, fontWeight: 600 }}>
+          <div key={t} onClick={() => { setTeam(t); setFilter(null); setBandFilter(null); }} style={{ cursor: 'pointer', border: `1px solid ${team === t ? 'rgba(99,102,241,0.45)' : 'rgba(255,255,255,0.1)'}`, background: team === t ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.03)', color: team === t ? '#FFFFFF' : '#9BA1B8', borderRadius: 10, padding: '8px 16px', fontSize: 13, fontWeight: 600 }}>
             {t}
           </div>
         ))}
@@ -1557,8 +1587,15 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {tabs.map((t) => (
-          <div key={t.label} onClick={() => setFilter(t.val)} style={{ cursor: 'pointer', border: `1px solid ${t.active ? 'rgba(99,102,241,0.45)' : 'rgba(255,255,255,0.1)'}`, background: t.active ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.03)', color: t.active ? '#FFFFFF' : '#9BA1B8', borderRadius: 999, padding: '8px 16px', fontSize: 13, display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div key={t.label} onClick={() => { setFilter(t.val); setBandFilter(null); }} style={{ cursor: 'pointer', border: `1px solid ${t.active ? 'rgba(99,102,241,0.45)' : 'rgba(255,255,255,0.1)'}`, background: t.active ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.03)', color: t.active ? '#FFFFFF' : '#9BA1B8', borderRadius: 999, padding: '8px 16px', fontSize: 13, display: 'flex', gap: 8, alignItems: 'center' }}>
             <span>{t.label}</span><span className="mono" style={{ fontSize: 11, opacity: 0.75 }}>{t.count}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {bandTabs.map((t) => (
+          <div key={t.label} onClick={() => setBandFilter(t.val)} style={{ cursor: 'pointer', border: `1px solid ${t.active ? 'rgba(20,184,166,0.45)' : 'rgba(255,255,255,0.1)'}`, background: t.active ? 'rgba(20,184,166,0.16)' : 'rgba(255,255,255,0.03)', color: t.active ? '#FFFFFF' : '#9BA1B8', borderRadius: 999, padding: '7px 14px', fontSize: 12.5, display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span>{t.label}</span><span className="mono" style={{ fontSize: 10.5, opacity: 0.75 }}>{t.count}</span>
           </div>
         ))}
       </div>
@@ -1592,6 +1629,11 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                   <span style={{ fontWeight: 600 }}>{e.name}</span>
                   <span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id}{e.inactive ? ' · Inactive' : ''}</span>
+                  {(e.doj || e.tenure != null) && (
+                    <span className="mono" style={{ fontSize: 10, color: '#6E7488' }}>
+                      {e.doj ? `DOJ ${e.doj}` : ''}{e.doj && e.tenure != null ? ' · ' : ''}{e.tenure != null ? `${e.tenure}d tenure` : ''}
+                    </span>
+                  )}
                   {e.activePipRange && <span style={{ fontSize: 10, color: '#F59E0B' }}>{e.activePipRange}</span>}
                 </div>
                 {isTrainer && <span style={{ fontSize: 12, color: util?.isCurrent ? '#A8AEC4' : '#6E7488' }}>{util?.label || '—'}</span>}
