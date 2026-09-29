@@ -48,5 +48,16 @@ export async function graphFetch(url, options = {}) {
     token = await getGraphToken({ forceRefresh: true });
     res = await call(token);
   }
+  // Graph throttles under sustained load (seen in practice: a full meetings
+  // sync firing hundreds of attendance-report calls back-to-back stalled
+  // out entirely, every remaining call also hitting 429). Honor Retry-After
+  // and retry once, centrally, rather than every caller needing its own
+  // backoff or the whole run failing the same way for the rest of its list.
+  if (res.status === 429) {
+    const retryAfterSec = parseInt(res.headers.get('Retry-After'), 10);
+    const waitMs = Math.min(Number.isFinite(retryAfterSec) ? retryAfterSec * 1000 : 5000, 30000);
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+    res = await call(token);
+  }
   return res;
 }

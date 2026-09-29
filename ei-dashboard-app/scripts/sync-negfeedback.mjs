@@ -33,17 +33,23 @@ async function mapWithConcurrency(items, limit, fn) {
 }
 
 let updated = 0;
+let apiErrors = 0;
 await mapWithConcurrency(trainerEmployees.rows, CONCURRENCY, async (emp) => {
   const empCode = emp.id.replace('EMP', '');
-  const feedback = await getTrainerNegativeFeedback(empCode);
+  try {
+    const feedback = await getTrainerNegativeFeedback(empCode);
 
-  await db.execute({
-    sql: 'UPDATE employees SET neg_feedback = ?, neg_feedback_details = ? WHERE id = ?',
-    args: [feedback.length, JSON.stringify(feedback), emp.id],
-  });
-  if (feedback.length) updated++;
+    await db.execute({
+      sql: 'UPDATE employees SET neg_feedback = ?, neg_feedback_details = ? WHERE id = ?',
+      args: [feedback.length, JSON.stringify(feedback), emp.id],
+    });
+    if (feedback.length) updated++;
+  } catch (err) {
+    console.error(`Negative feedback sync failed for ${emp.id}:`, err.message);
+    apiErrors++;
+  }
 });
 
-console.log(`Synced negative feedback for Trainer roster — ${updated} employees have at least one record.`);
+console.log(`Synced negative feedback for Trainer roster — ${updated} employees have at least one record (${apiErrors} API errors).`);
 const check = await db.execute("SELECT id, name, neg_feedback FROM employees WHERE team = 'Trainer' AND neg_feedback > 0 ORDER BY neg_feedback DESC");
 for (const r of check.rows) console.log(' ', r.id, r.name, r.neg_feedback);

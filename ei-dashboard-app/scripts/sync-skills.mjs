@@ -34,17 +34,23 @@ async function mapWithConcurrency(items, limit, fn) {
 
 let updated = 0;
 let unmatched = 0;
+let apiErrors = 0;
 await mapWithConcurrency(trainerEmployees.rows, CONCURRENCY, async (emp) => {
   const empCode = emp.id.replace('EMP', '');
-  const skills = await getTrainerSkills(empCode);
+  try {
+    const skills = await getTrainerSkills(empCode);
 
-  await db.execute({
-    sql: 'UPDATE employees SET skills_count = ?, skills_details = ? WHERE id = ?',
-    args: [skills.length, JSON.stringify(skills), emp.id],
-  });
-  if (skills.length) updated++; else unmatched++;
+    await db.execute({
+      sql: 'UPDATE employees SET skills_count = ?, skills_details = ? WHERE id = ?',
+      args: [skills.length, JSON.stringify(skills), emp.id],
+    });
+    if (skills.length) updated++; else unmatched++;
+  } catch (err) {
+    console.error(`Skills sync failed for ${emp.id}:`, err.message);
+    apiErrors++;
+  }
 });
 
-console.log(`Synced skills data for Trainer roster — ${updated} employees have at least one skill (${unmatched} have none).`);
+console.log(`Synced skills data for Trainer roster — ${updated} employees have at least one skill (${unmatched} have none, ${apiErrors} API errors).`);
 const check = await db.execute("SELECT id, name, skills_count FROM employees WHERE team = 'Trainer' AND skills_count > 0 ORDER BY skills_count DESC");
 for (const r of check.rows) console.log(' ', r.id, r.name, r.skills_count);

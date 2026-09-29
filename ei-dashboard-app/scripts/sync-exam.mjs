@@ -35,18 +35,24 @@ async function mapWithConcurrency(items, limit, fn) {
 
 let updated = 0;
 let unmatched = 0;
+let apiErrors = 0;
 await mapWithConcurrency(trainerEmployees.rows, CONCURRENCY, async (emp) => {
   const empCode = emp.id.replace('EMP', '');
-  const summary = await getExamSummary(empCode);
-  if (!summary) { unmatched++; return; }
+  try {
+    const summary = await getExamSummary(empCode);
+    if (!summary) { unmatched++; return; }
 
-  await db.execute({
-    sql: 'UPDATE employees SET exam_pass = ?, exam_fail = ?, exam_total = ?, exam_not_updated = ? WHERE id = ?',
-    args: [summary.passCount, summary.failCount, summary.totalExam, summary.statusNotUpdated, emp.id],
-  });
-  updated++;
+    await db.execute({
+      sql: 'UPDATE employees SET exam_pass = ?, exam_fail = ?, exam_total = ?, exam_not_updated = ? WHERE id = ?',
+      args: [summary.passCount, summary.failCount, summary.totalExam, summary.statusNotUpdated, emp.id],
+    });
+    updated++;
+  } catch (err) {
+    console.error(`Exam sync failed for ${emp.id}:`, err.message);
+    apiErrors++;
+  }
 });
 
-console.log(`Synced exam data for ${updated} Trainer employees (${unmatched} had no matching record).`);
+console.log(`Synced exam data for ${updated} Trainer employees (${unmatched} had no matching record, ${apiErrors} API errors).`);
 const check = await db.execute("SELECT id, name, exam_pass, exam_fail, exam_total, exam_not_updated FROM employees WHERE team = 'Trainer' ORDER BY tenure_days DESC");
 for (const r of check.rows) console.log(' ', r.id, r.name, r.exam_pass, r.exam_fail, r.exam_total, r.exam_not_updated);

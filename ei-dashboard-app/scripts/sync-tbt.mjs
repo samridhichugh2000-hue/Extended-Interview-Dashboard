@@ -34,17 +34,23 @@ async function mapWithConcurrency(items, limit, fn) {
 
 let updated = 0;
 let unmatched = 0;
+let apiErrors = 0;
 await mapWithConcurrency(trainerEmployees.rows, CONCURRENCY, async (emp) => {
   const empCode = emp.id.replace('EMP', '');
-  const records = await getTbtRecords(empCode);
+  try {
+    const records = await getTbtRecords(empCode);
 
-  await db.execute({
-    sql: 'UPDATE employees SET tbt_count = ?, tbt_details = ? WHERE id = ?',
-    args: [records.length, JSON.stringify(records), emp.id],
-  });
-  if (records.length) updated++; else unmatched++;
+    await db.execute({
+      sql: 'UPDATE employees SET tbt_count = ?, tbt_details = ? WHERE id = ?',
+      args: [records.length, JSON.stringify(records), emp.id],
+    });
+    if (records.length) updated++; else unmatched++;
+  } catch (err) {
+    console.error(`TBT sync failed for ${emp.id}:`, err.message);
+    apiErrors++;
+  }
 });
 
-console.log(`Synced TBT data for Trainer roster — ${updated} employees have at least one TBT (${unmatched} have none).`);
+console.log(`Synced TBT data for Trainer roster — ${updated} employees have at least one TBT (${unmatched} have none, ${apiErrors} API errors).`);
 const check = await db.execute("SELECT id, name, tbt_count FROM employees WHERE team = 'Trainer' AND tbt_count > 0 ORDER BY tbt_count DESC");
 for (const r of check.rows) console.log(' ', r.id, r.name, r.tbt_count);

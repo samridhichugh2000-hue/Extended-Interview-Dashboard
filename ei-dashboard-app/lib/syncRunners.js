@@ -1048,7 +1048,7 @@ export async function syncGraphMeetings() {
     return organizerIdCache.get(email);
   }
 
-  let processed = 0, noEmail = 0, apiErrors = 0, meetingsSynced = 0;
+  let processed = 0, noEmail = 0, apiErrors = 0, meetingsSynced = 0, skippedResolved = 0;
   for (const emp of employees.rows) {
     if (!emp.email) { noEmail++; continue; }
 
@@ -1061,6 +1061,19 @@ export async function syncGraphMeetings() {
       continue;
     }
 
+    // Meetings whose timing is already final (On Time/Late/Did Not Join)
+    // from a prior run don't need their attendance re-fetched — only
+    // 'No Data' (attendance not published yet last time) is worth
+    // re-checking. Re-resolving every meeting in the lookback window on
+    // every run was the actual driver of hitting Graph's rate limits.
+    const existing = await db.execute({
+      sql: 'SELECT join_url, scheduled_start, timing_status FROM graph_meetings WHERE employee_id = ?',
+      args: [emp.id],
+    });
+    const finalStatusByKey = new Map(
+      existing.rows.filter((r) => r.timing_status !== 'No Data').map((r) => [`${r.join_url}|${r.scheduled_start}`, r.timing_status])
+    );
+
     for (const event of events) {
       const organizerEmail = event.organizer?.emailAddress?.address;
       const joinUrl = event.onlineMeeting?.joinUrl;
@@ -1068,6 +1081,12 @@ export async function syncGraphMeetings() {
 
       const scheduledStart = parseGraphDateTime(event.start.dateTime);
       const scheduledEnd = event.end?.dateTime ? parseGraphDateTime(event.end.dateTime) : null;
+
+      if (finalStatusByKey.has(`${joinUrl}|${scheduledStart.toISOString()}`)) {
+        skippedResolved++;
+        meetingsSynced++;
+        continue;
+      }
 
       // "Client meeting" = organizer or any attendee outside the company
       // domain — covers both directions (rep organizes and invites the
@@ -1121,7 +1140,7 @@ export async function syncGraphMeetings() {
     processed++;
   }
 
-  return { message: `Synced Teams meeting attendance for ${processed} Sales reps (${meetingsSynced} meetings, ${apiErrors} calendar fetch errors, ${noEmail} had no email on file).` };
+  return { message: `Synced Teams meeting attendance for ${processed} Sales reps (${meetingsSynced} meetings, ${skippedResolved} already resolved and skipped, ${apiErrors} calendar fetch errors, ${noEmail} had no email on file).` };
 }
 
 // Keeps the callRecords webhook subscription alive — creates one if none is
