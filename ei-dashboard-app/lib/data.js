@@ -433,7 +433,6 @@ export const SIGNAL_DEFS = [
   { label: 'Weekly response quality (AI rating)', teams: 'All', pts: -2, live: true,
     hasData: (e) => (e.weeks || []).some((w) => w.aiRating != null),
     computeTotal: weeklyResponseRatingPoints },
-  { label: 'Not replying to HR emails', teams: 'All', pts: -1, live: false, hasData: () => false, fires: () => false },
   { label: 'Audio / video not OK in meetings', teams: 'All', pts: -1, live: false, hasData: () => false, fires: () => false },
   { label: 'Weekly email shows less progress', teams: 'All', pts: -2, live: false, hasData: () => false, fires: () => false },
   { label: 'Not on time for meetings', teams: 'All', pts: -2, live: false, hasData: () => false, fires: () => false },
