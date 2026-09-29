@@ -292,11 +292,6 @@ export const SIGNAL_DEFS = [
     hasData: (e) => e.techCallsConverted != null,
     fires: (e) => e.techCallsConverted > 0,
     count: (e) => e.techCallsConverted },
-  { label: 'SCs raised', teams: 'Sales', pts: 5, live: true,
-    hasData: (e) => e.scRaised != null,
-    fires: (e) => e.scRaised > 0,
-    count: (e) => e.scRaised,
-    countInWindow: (e, since) => countDatedRecords(e.scDetails, 'createdOn', since) },
   { label: 'TBTs requested', teams: 'Trainer', pts: 1, live: true,
     hasData: (e) => e.tbtCount != null,
     fires: (e) => e.tbtCount > 0,
@@ -354,11 +349,6 @@ export const SIGNAL_DEFS = [
     count: (e) => e.ideasCount,
     countInWindow: (e, since) => countDatedRecords(e.ideasDetails, 'createdDateTime', since) },
   // negative, live
-  { label: 'Shoddy marked against NJ', teams: 'All', pts: -5, live: true,
-    hasData: (e) => e.shoddyNegCount != null,
-    fires: (e) => e.shoddyNegCount > 0,
-    count: (e) => e.shoddyNegCount,
-    countInWindow: (e, since) => countDatedRecords(e.shoddyNegDetails, 'reportedDate', since) },
   // Boolean absence-of-any state, not a count — either they have zero
   // assignments for every week since joining (including future weeks) or
   // they don't.

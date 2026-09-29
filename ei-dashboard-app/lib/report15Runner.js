@@ -77,7 +77,6 @@ function weightCell(weightMap, label, label2) {
 function buildParamColumns(missedWeeksCount, belowSatisfactoryCount) {
   return [
     { header: 'Tech calls', teams: 'Sales · PT Team', get: (e) => e.techCallsCount, weightLabels: ['Tech calls < 1 per week', 'Tech calls'] },
-    { header: 'SCs raised', teams: 'Sales · PT Team', get: (e) => e.scRaised, weightLabels: ['SCs raised'] },
     { header: 'Neg audits', teams: 'Sales · PT Team', get: (e) => e.negAudits, weightLabels: ['Negative enquiry audit'] },
     { header: 'Tech Calls converted', teams: 'Trainer · PT Team', get: (e) => e.techCallsConverted, weightLabels: ['Tech calls converted'] },
     { header: 'Exams failed', teams: 'Trainer · PT Team', get: (e) => e.examFail, weightLabels: ['Failure in exam'] },
@@ -91,7 +90,6 @@ function buildParamColumns(missedWeeksCount, belowSatisfactoryCount) {
     { header: 'Ideas for improvement', teams: 'All', get: (e) => e.ideasCount, weightLabels: ['Ideas for improvement'] },
     { header: 'Weekly email not received', teams: 'All', get: (e) => missedWeeksCount(e), weightLabels: ['Weekly progress email not received'] },
     { header: 'Manager feedback below satisfactory', teams: 'All', get: (e) => belowSatisfactoryCount(e), weightLabels: ['Manager feedback below satisfactory (last feedback)'] },
-    { header: 'Shoddy (neg)', teams: 'All', get: (e) => e.shoddyNegCount, weightLabels: ['Shoddy marked against NJ'] },
     { header: 'Shoddy (pos)', teams: 'All', get: (e) => e.shoddyPosCount, weightLabels: ['HR incidents (positive)'] },
     { header: 'Polls participated', teams: 'All', get: (e) => e.pollsParticipated, weightLabels: ['Polls participated'] },
   ];
@@ -147,8 +145,8 @@ export async function buildReport15Html(employees) {
   const trainerCols = paramColumns.filter((c) => appliesToTeam(c.teams, 'Trainer'));
   // PT Team's own parameter set is deliberately narrower than the Sales/
   // Trainer columns SIGNAL_DEFS' "· PT Team" tagging would otherwise pull
-  // in here — kept to just these five, per HR.
-  const PT_COLUMNS = ['Applied for KGT', 'Ideas for improvement', 'Shoddy (neg)', 'Shoddy (pos)', 'Polls participated'];
+  // in here — kept to just these four, per HR.
+  const PT_COLUMNS = ['Applied for KGT', 'Ideas for improvement', 'Shoddy (pos)', 'Polls participated'];
   const ptCols = paramColumns.filter((c) => PT_COLUMNS.includes(c.header));
 
   const salesSection = buildTeamSection(sales, salesCols, weightMap);
