@@ -7,7 +7,7 @@ import {
   computeSignalReport, computeWorryScore, trendNoteFor, WORRY_WINDOWS, windowSince,
 } from '../lib/data';
 import { JOB_LABELS } from '../lib/jobLabels';
-import { TRAINER_SALARY_TIERS, SALES_REGIONS, currentQuarterMonthKeys } from '../lib/paAlgo';
+import { TRAINER_SALARY_TIERS, SALES_REGIONS, currentQuarter, currentQuarterMonthKeys, formatTenure } from '../lib/paAlgo';
 import { draftToHtml } from '../lib/emailDraft';
 
 const card = { border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 16 };
@@ -1574,8 +1574,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
       .reduce((sum, m) => sum + (m.nr ?? 0), 0);
     const pct = e.quarterTargetAmount > 0 ? Math.round((nr / e.quarterTargetAmount) * 1000) / 10 : null;
     const lakhs = (n) => '₹' + (n / 100000).toFixed(1) + 'L';
-    const q = [e.quarterTargetName, e.quarterTargetYear].filter(Boolean).join(' ');
-    return { pct: pct != null ? `${pct}%` : '—', nrLabel: lakhs(nr), targetLabel: lakhs(e.quarterTargetAmount), period: q || null };
+    return { pct: pct != null ? `${pct}%` : '—', achieved: pct != null && pct >= 100, nrLabel: lakhs(nr), targetLabel: lakhs(e.quarterTargetAmount) };
   }
 
   return (
@@ -1620,7 +1619,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
         <div style={{ display: 'grid', gridTemplateColumns: gridCols, padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           {isTrainer
             ? <><span>Employee</span><span>This month</span><span>Salary tier</span><span>Tenure band</span><span>Rule</span><span>Status</span><span style={{ textAlign: 'right' }}>Neg. feedback (7d)</span><span /></>
-            : <><span>Employee</span><span>Region</span><span>Quarter target</span><span>Tenure band</span><span>Rule</span><span style={{ textAlign: 'right' }}>Status</span><span /></>}
+            : <><span>Employee</span><span>Region</span><span>Quarter target ({currentQuarter().name} {currentQuarter().year})</span><span>Tenure band</span><span>Rule</span><span style={{ textAlign: 'right' }}>Status</span><span /></>}
         </div>
         {rows.map((e) => {
           const algo = e[algoKey];
@@ -1638,7 +1637,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
                   <span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id}{e.inactive ? ' · Inactive' : ''}</span>
                   {(e.doj || e.tenure != null) && (
                     <span className="mono" style={{ fontSize: 10, color: '#6E7488' }}>
-                      {e.doj ? `DOJ ${e.doj}` : ''}{e.doj && e.tenure != null ? ' · ' : ''}{e.tenure != null ? `${e.tenure}d tenure` : ''}
+                      {e.doj ? `DOJ ${e.doj}` : ''}{e.doj && e.tenure != null ? ' · ' : ''}{e.tenure != null ? `${formatTenure(e.tenure)} tenure` : ''}
                     </span>
                   )}
                   {e.activePipRange && <span style={{ fontSize: 10, color: '#F59E0B' }}>{e.activePipRange}</span>}
@@ -1649,8 +1648,8 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                     {target ? (
                       <>
-                        <span className="mono" style={{ fontSize: 12, color: '#A8AEC4' }}>{target.nrLabel} / {target.targetLabel}</span>
-                        <span style={{ fontSize: 10.5, color: '#6E7488' }}>{target.pct}{target.period && ` · ${target.period}`}</span>
+                        <span className="mono" style={{ fontSize: 12, fontWeight: 600, color: target.achieved ? '#5EEAD4' : '#F87171' }}>{target.nrLabel} / {target.targetLabel}</span>
+                        <span style={{ fontSize: 10.5, color: target.achieved ? '#5EEAD4' : '#F87171' }}>{target.pct}</span>
                       </>
                     ) : <span style={{ fontSize: 12, color: '#A8AEC4' }}>—</span>}
                   </div>
