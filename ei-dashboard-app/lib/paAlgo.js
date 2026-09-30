@@ -238,8 +238,14 @@ export function computeTrainerPaAlgoFlag(employee) {
   const payScale = employee.netPayableDetails?.PayScale != null ? Number(employee.netPayableDetails.PayScale) : null;
   const tier = trainerSalaryTier(payScale);
   if (tier == null) {
+    // No pay scale -> no tier -> no tier-specific rule, but the tenure band
+    // column still shouldn't be blank: show the plain tenure bucket (same
+    // breakpoints as the under-125K ladder, used purely as a tenure label -
+    // no rule is applied, status stays 'no-salary-data').
+    const tenureBand = [...UNDER_125K_BANDS].reverse().find((b) => (employee.tenure ?? 0) >= b.minDays);
     return {
       status: negFeedbackFires ? 'fired' : 'no-salary-data',
+      band: tenureBand?.label,
       negFeedbackSuggestion,
       rule: negReason,
       evidence: [negFeedbackEvidence].filter(Boolean),
