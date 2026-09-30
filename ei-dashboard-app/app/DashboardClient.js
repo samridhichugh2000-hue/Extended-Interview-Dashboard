@@ -1627,7 +1627,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
         <IncludeInactiveToggle value={includeInactive} onChange={setIncludeInactive} />
       </div>
       <div style={{ ...card, overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: gridCols, padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: gridCols, columnGap: isTrainer ? 0 : 18, padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           {isTrainer
             ? <><span>Employee</span><span>This month</span><span>Salary tier</span><span>Tenure band</span><span>Rule</span><span>Status</span><span style={{ textAlign: 'right' }}>Neg. feedback (7d)</span><span /></>
             : <><span>Employee</span><span>Region</span><span>Quarter target ({currentQuarter().name} {currentQuarter().year})</span><span>Tenure band</span><span>Rule</span><span style={{ textAlign: 'right' }}>Status</span><span>Pipeline</span><span /></>}
@@ -1643,7 +1643,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
           const pipeline = !isTrainer ? pipelineSummary(e) : null;
           return (
             <Fragment key={e.id}>
-              <div className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: gridCols, padding: '14px 18px', alignItems: 'center', borderBottom: isExpanded ? 'none' : '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
+              <div className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: gridCols, columnGap: isTrainer ? 0 : 18, padding: '14px 18px', alignItems: 'center', borderBottom: isExpanded ? 'none' : '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                   <span style={{ fontWeight: 600 }}>{e.name}</span>
                   <span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id}{e.inactive ? ' · Inactive' : ''}</span>
@@ -1674,7 +1674,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
                 {!isTrainer && (
                   pipeline ? (
                     <span onClick={(ev) => { ev.stopPropagation(); setPipelineDetail(e); }} className="mono" style={{ fontSize: 12.5, color: '#A5A7FA', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>
-                      {pipeline.label} · {pipeline.deals}
+                      {pipeline.label}
                     </span>
                   ) : <span style={{ fontSize: 12, color: '#6E7488' }}>—</span>
                 )}
@@ -1952,7 +1952,7 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
             {filter === 'Sales' && (
               pipeline ? (
                 <span onClick={(ev) => { ev.stopPropagation(); setPipelineDetail(e); }} className="mono" style={{ fontSize: 12.5, color: '#A5A7FA', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>
-                  {pipeline.label} · {pipeline.deals}
+                  {pipeline.label}
                 </span>
               ) : <span style={{ fontSize: 12, color: '#6E7488' }}>—</span>
             )}
