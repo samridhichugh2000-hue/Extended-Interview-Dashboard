@@ -463,9 +463,14 @@ export async function syncTargetsData() {
 
   const rows = await getTargetsData();
   const byEmpId = new Map();
+  // Individual rupee targets come as type 'CSM' - and as 'CM' for a few
+  // Sales reps (e.g. Umar Farooq), whose target was silently dropped when
+  // only 'CSM' was kept. A CSM row wins if someone has both. 'ASM' (managers,
+  // crore-scale) and 'DM' (Trainers, unit counts) are deliberately left out.
   for (const r of rows) {
-    if (r.type !== 'CSM') continue;
+    if (r.type !== 'CSM' && r.type !== 'CM') continue;
     if (r.targetName !== qName || Number(r.targetYear) !== qYear) continue;
+    if (r.type === 'CM' && byEmpId.get(r.empId)?.type === 'CSM') continue;
     byEmpId.set(r.empId, r);
   }
 

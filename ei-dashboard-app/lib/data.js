@@ -216,6 +216,18 @@ export const FEEDBACK_RATING_UI = {
 // (thresholds like "skills ≥ weeks since joining", or single per-week
 // booleans like "zero assignments" / "email overdue") stay flat — there's
 // no meaningful "how many times" for those.
+export function assignmentsOverlapping(details, since, until) {
+  return (details || []).filter((a) => {
+    const start = a.startDate ? new Date(a.startDate) : null;
+    if (!start || isNaN(start)) return false;
+    const endRaw = a.endDate ? new Date(a.endDate) : null;
+    const end = endRaw && !isNaN(endRaw) ? endRaw : start;
+    if (since && end < since) return false;
+    if (until && start > until) return false;
+    return true;
+  }).length;
+}
+
 export function belowSatisfactoryCount(e) {
   return (e.mgrFeedbackDetails || []).filter((f) => feedbackRating(f) === 'below').length;
 }
@@ -406,7 +418,11 @@ export const SIGNAL_DEFS = [
   // they don't.
   { label: 'Zero assignments since joining, including future', teams: 'Trainer', pts: -1, live: true,
     hasData: (e) => e.assignmentsCount != null,
-    fires: (e) => (e.tenure ?? 0) >= 14 && !e.assignmentsCount },
+    fires: (e) => (e.tenure ?? 0) >= 14 && !e.assignmentsCount,
+    // Windowed: fires (1) when no assignment overlaps [since, until] - an
+    // assignment counts if it starts on/before the window's end and ends
+    // on/after its start (future-dated ones included, per the signal's name).
+    countInWindow: (e, since, until) => ((e.tenure ?? 0) >= 14 && !assignmentsOverlapping(e.assignmentsDetails, since, until) ? 1 : 0) },
   { label: 'Failure in exam', teams: 'Trainer', pts: -5, live: true,
     hasData: (e) => e.examFail != null,
     fires: (e) => e.examFail > 0,
