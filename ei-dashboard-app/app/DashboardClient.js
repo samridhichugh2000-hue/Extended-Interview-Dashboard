@@ -3,7 +3,7 @@ import { useState, useEffect, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   STATUS, decorate, band, isNewJoiner, NAV, TITLES, PATHS, METRIC_HEADS,
-  WORRY_BANDS, POS_SIGNALS, NEG_SIGNALS, NJ_QUESTIONS, appliesToTeam, feedbackRating,
+  WORRY_BANDS, POS_SIGNALS, NEG_SIGNALS, NJ_QUESTIONS, appliesToTeam, feedbackRating, FEEDBACK_RATING_UI,
   computeSignalReport, computeWorryScore, trendNoteFor, WORRY_WINDOWS, windowSince,
 } from '../lib/data';
 import { JOB_LABELS } from '../lib/jobLabels';
@@ -1094,19 +1094,20 @@ function MgrFeedbackModal({ emp, onClose }) {
           <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
         </div>
         <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {emp.mgrFeedbackDetails.map((f, i) => {
-            const rating = feedbackRating(f);
-            const ratingStyle = rating === 'below'
-              ? { border: '1px solid rgba(244,63,94,0.3)', background: 'rgba(244,63,94,0.06)' }
-              : rating === 'good'
-              ? { border: '1px solid rgba(20,184,166,0.3)', background: 'rgba(20,184,166,0.05)' }
+          {emp.mgrFeedbackDetails.map((f, i, all) => {
+            // Only the LAST (newest rated) feedback carries a rating - it is the
+            // one the Worry Index scores; older entries are shown as plain text.
+            const rating = i === all.findIndex((x) => feedbackRating(x) != null) ? feedbackRating(f) : null;
+            const ui = FEEDBACK_RATING_UI[rating];
+            const ratingStyle = ui
+              ? { border: `1px solid ${ui.border}`, background: ui.bg }
               : { border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)' };
             return (
             <div key={i} style={{ ...ratingStyle, borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, fontSize: 11 }}>
                 <span className="mono" style={{ color: '#8A90A8' }}>{f.date || '—'}</span>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  {rating && <span className="mono" style={{ fontSize: 9.5, letterSpacing: '.06em', textTransform: 'uppercase', padding: '2px 7px', borderRadius: 999, color: rating === 'below' ? '#F87171' : '#5EEAD4', border: `1px solid ${rating === 'below' ? 'rgba(244,63,94,0.4)' : 'rgba(20,184,166,0.4)'}` }}>{rating === 'below' ? 'Below satisfactory' : 'Satisfactory'}</span>}
+                  {ui && <span className="mono" style={{ fontSize: 9.5, letterSpacing: '.06em', textTransform: 'uppercase', padding: '2px 7px', borderRadius: 999, color: ui.color, border: `1px solid ${ui.border}` }}>{ui.label}</span>}
                   <span className="mono" style={{ color: '#6E7488' }}>{f.managerName || '—'}</span>
                 </div>
               </div>
@@ -2783,7 +2784,7 @@ function EmployeeModal({ emp, onClose }) {
                         {s.status === 'fired' && s.count > 1 && (
                           <span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>×{s.count}</span>
                         )}
-                        {s.detail && <span className="mono" style={{ fontSize: 10.5, color: s.detail.startsWith('Below') ? '#F87171' : '#5EEAD4' }}>{s.detail}</span>}
+                        {s.detail && <span className="mono" style={{ fontSize: 10.5, color: s.detail.startsWith('Below') ? '#F87171' : s.detail.startsWith('Above') ? '#5EEAD4' : '#A5A7FA' }}>{s.detail}</span>}
                         {s.status !== 'fired' && (
                           <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase', flex: 'none' }}>
                             {s.status === 'not-tracked' ? 'not tracked' : s.status === 'no-data' ? 'no data traced' : s.status === 'not-windowed' ? 'no dated records' : 'no incident'}
@@ -2810,15 +2811,15 @@ function EmployeeModal({ emp, onClose }) {
             </div>
             <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, padding: 18, background: 'rgba(255,255,255,0.02)', maxHeight: 260, overflow: 'auto' }}>
               <div className="disp" style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Manager feedback</div>
-              {(emp.mgrFeedbackDetails || []).map((f, i) => {
-                const rating = feedbackRating(f);
-                const ratingColor = rating === 'below' ? '#F87171' : rating === 'good' ? '#5EEAD4' : '#6E7488';
+              {(emp.mgrFeedbackDetails || []).map((f, i, all) => {
+                const rating = i === all.findIndex((x) => feedbackRating(x) != null) ? feedbackRating(f) : null;
+                const ratingColor = FEEDBACK_RATING_UI[rating]?.color || '#6E7488';
                 return (
                 <div key={i} style={{ padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', borderLeft: rating ? `2px solid ${ratingColor}` : undefined, paddingLeft: rating ? 8 : undefined }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
                     <span className="mono" style={{ color: '#8A90A8' }}>{f.date || '—'}</span>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      {rating && <span className="mono" style={{ fontSize: 9, letterSpacing: '.05em', textTransform: 'uppercase', color: ratingColor }}>{rating === 'below' ? 'Below satisfactory' : 'Satisfactory'}</span>}
+                      {rating && <span className="mono" style={{ fontSize: 9, letterSpacing: '.05em', textTransform: 'uppercase', color: ratingColor }}>{FEEDBACK_RATING_UI[rating].label}</span>}
                       <span style={{ color: '#6E7488' }}>{f.managerName || '—'}</span>
                     </div>
                   </div>

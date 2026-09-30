@@ -182,25 +182,32 @@ export const WORRY_BANDS = [
 // 'satisfactory' | 'above' | 'not-applicable' (onboarding checklist, never
 // counted). That's authoritative when present. The literal keyword match
 // below only remains as a fallback for entries synced before this existed.
-// Returns 'below' | 'good' | null (no signal either way — not-applicable,
+// Returns 'below' | 'satisfactory' | 'above' | null (no signal either way — not-applicable,
 // or a blank/unrated entry).
 export function feedbackRating(entry) {
   // The manager's own per-question picks (lib/feedbackStructured.js) outrank
   // the AI read of the free-text comment, including for entries whose stored
   // aiRating was produced before that rule existed.
   const picked = structuredFeedbackRating(entry);
-  if (picked) return picked === 'below' ? 'below' : 'good';
+  if (picked) return picked;
   if (entry?.aiRating) {
-    if (entry.aiRating === 'below') return 'below';
-    if (entry.aiRating === 'satisfactory' || entry.aiRating === 'above') return 'good';
+    if (entry.aiRating === 'below' || entry.aiRating === 'satisfactory' || entry.aiRating === 'above') return entry.aiRating;
     return null; // 'not-applicable'
   }
   const text = [entry?.strength, entry?.improvement, entry?.other].filter(Boolean).join(' ').toLowerCase();
   if (!text) return null;
   if (/below average|below satisfactory|unsatisfactory/.test(text)) return 'below';
-  if (/average|satisfactory|good|excellent/.test(text)) return 'good';
+  if (/above average|excellent/.test(text)) return 'above';
+  if (/average|satisfactory|good/.test(text)) return 'satisfactory';
   return null;
 }
+
+// Display for the three categories - shared by every place a rating is shown.
+export const FEEDBACK_RATING_UI = {
+  below: { label: 'Below satisfactory', color: '#F87171', border: 'rgba(244,63,94,0.4)', bg: 'rgba(244,63,94,0.06)' },
+  satisfactory: { label: 'Satisfactory', color: '#A5A7FA', border: 'rgba(139,140,246,0.4)', bg: 'rgba(139,140,246,0.06)' },
+  above: { label: 'Above satisfactory', color: '#5EEAD4', border: 'rgba(20,184,166,0.4)', bg: 'rgba(20,184,166,0.05)' },
+};
 
 // `count` is only present on signals backed by a real occurrence count (not
 // a one-off boolean/threshold state) — computeSignalReport multiplies pts by
@@ -452,7 +459,7 @@ export const SIGNAL_DEFS = [
     detail: (e, since, until) => {
       const latest = latestFeedbackInWindow(e, since, until);
       if (!latest) return since || until ? 'No feedback in window' : 'No rated feedback';
-      return `${feedbackRating(latest) === 'below' ? 'Below satisfactory' : 'Satisfactory'} · ${latest.date || 'undated'}`;
+      return `${FEEDBACK_RATING_UI[feedbackRating(latest)].label} · ${latest.date || 'undated'}`;
     } },
   // Variable weight, not a fixed per-unit pts — computeTotal (not
   // fires/count) drives this one; see weeklyResponseRatingPoints. `pts`
