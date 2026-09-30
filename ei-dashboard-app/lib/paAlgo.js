@@ -20,14 +20,16 @@ const MONTH_DAYS = 30;
 const YEAR_DAYS = 365;
 
 // Same 30-day-month/365-day-year convention as the tenure bands below, so a
-// displayed "1y 2m" always lines up with which band this employee is in.
-// Under a month old shows in days (a lone "0m" reads as no tenure at all).
+// displayed "1 year 2 months" always lines up with which band this employee is in.
+// Under a month old shows in days (a lone "0 months" reads as no tenure at all).
 export function formatTenure(days) {
   if (days == null) return null;
-  if (days < MONTH_DAYS) return `${days}d`;
+  const plural = (n, unit) => `${n} ${unit}${n === 1 ? '' : 's'}`;
+  if (days < MONTH_DAYS) return plural(days, 'day');
   const years = Math.floor(days / YEAR_DAYS);
   const months = Math.floor((days % YEAR_DAYS) / MONTH_DAYS);
-  return years > 0 ? `${years}y ${months}m` : `${months}m`;
+  if (years === 0) return plural(months, 'month');
+  return months > 0 ? `${plural(years, 'year')} ${plural(months, 'month')}` : plural(years, 'year');
 }
 
 export const TRAINER_SALARY_TIERS = {

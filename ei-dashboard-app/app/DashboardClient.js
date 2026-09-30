@@ -1506,6 +1506,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
   const [expandedId, setExpandedId] = useState(null);
   const [pipelineDetail, setPipelineDetail] = useState(null);
   const [futureNrDetail, setFutureNrDetail] = useState(null);
+  const [targetDetail, setTargetDetail] = useState(null);
 
   const isTrainer = team === 'Trainer';
   const algoKey = isTrainer ? 'trainerPaAlgo' : 'salesPaAlgo';
@@ -1583,13 +1584,14 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
   // directly from NR rather than trusting that feed.
   function quarterTargetLabel(e) {
     if (e.quarterTargetAmount == null) return null;
-    const months = currentQuarterMonthKeys();
-    const nr = (e.nrMonthlyDetails || [])
-      .filter((m) => months.includes(m.month))
-      .reduce((sum, m) => sum + (m.nr ?? 0), 0);
+    const monthKeys = currentQuarterMonthKeys();
+    // One row per quarter month (0 when the feed has nothing for it), so the
+    // breakdown popup always shows all three months.
+    const breakdown = monthKeys.map((key) => ({ month: key, nr: (e.nrMonthlyDetails || []).find((m) => m.month === key)?.nr ?? 0 }));
+    const nr = breakdown.reduce((sum, m) => sum + m.nr, 0);
     const pct = e.quarterTargetAmount > 0 ? Math.round((nr / e.quarterTargetAmount) * 1000) / 10 : null;
     const lakhs = (n) => '₹' + (n / 100000).toFixed(1) + 'L';
-    return { pct: pct != null ? `${pct}%` : '—', achieved: pct != null && pct >= 100, nrLabel: lakhs(nr), targetLabel: lakhs(e.quarterTargetAmount) };
+    return { pct: pct != null ? `${pct}%` : '—', achieved: pct != null && pct >= 100, nrLabel: lakhs(nr), targetLabel: lakhs(e.quarterTargetAmount), breakdown };
   }
 
   return (
@@ -1667,10 +1669,10 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
                 {!isTrainer && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                     {target ? (
-                      <>
-                        <span className="mono" style={{ fontSize: 12, fontWeight: 600, color: target.achieved ? '#5EEAD4' : '#F87171' }}>{target.nrLabel} / {target.targetLabel}</span>
+                      <span onClick={(ev) => { ev.stopPropagation(); setTargetDetail({ emp: e, target }); }} style={{ display: 'flex', flexDirection: 'column', gap: 1, cursor: 'pointer' }}>
+                        <span className="mono" style={{ fontSize: 12, fontWeight: 600, color: target.achieved ? '#5EEAD4' : '#F87171', textDecoration: 'underline', textUnderlineOffset: 3 }}>{target.targetLabel} / {target.nrLabel}</span>
                         <span style={{ fontSize: 10.5, color: target.achieved ? '#5EEAD4' : '#F87171' }}>{target.pct}</span>
-                      </>
+                      </span>
                     ) : <span style={{ fontSize: 12, color: '#A8AEC4' }}>—</span>}
                   </div>
                 )}
@@ -1713,6 +1715,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
       </div>
       {pipelineDetail && <PipelineModal emp={pipelineDetail} onClose={() => setPipelineDetail(null)} />}
       {futureNrDetail && <FutureNrModal emp={futureNrDetail} onClose={() => setFutureNrDetail(null)} />}
+      {targetDetail && <QuarterTargetModal emp={targetDetail.emp} target={targetDetail.target} onClose={() => setTargetDetail(null)} />}
     </div>
   );
 }
@@ -1733,6 +1736,51 @@ function pipelineSummary(e) {
 function futureNrSummary(e) {
   if (!e.nrFutureDetails) return null;
   return { label: lakhs(e.nrFutureDetails.reduce((sum, m) => sum + (m.nr || 0), 0)) };
+}
+
+// How the PA Algo "target / achieved" figure is worked out: achieved is this
+// quarter's NR (same nr_monthly_details the NR-based checks use) summed over
+// the three calendar months of the quarter, against Koenig's CSM target.
+function QuarterTargetModal({ emp, target, onClose }) {
+  const lakhs = (n) => '₹' + (n / 100000).toFixed(1) + 'L';
+  const q = currentQuarter();
+  const gridCols = '1fr 1fr';
+  const color = target.achieved ? '#5EEAD4' : '#F87171';
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
+      <div onClick={(ev) => ev.stopPropagation()} style={{ width: '100%', maxWidth: 460, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — {q.name} {q.year} target</div>
+            <div className="mono" style={{ fontSize: 12.5, color, marginTop: 3 }}>{target.targetLabel} target / {target.nrLabel} achieved · {target.pct}</div>
+          </div>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+        </div>
+        <div style={{ padding: '8px 24px 24px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '10px 0', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+            <span>Month</span><span style={{ textAlign: 'right' }}>NR</span>
+          </div>
+          {target.breakdown.map((m) => (
+            <div key={m.month} style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
+              <span style={{ color: '#C7CBDA' }}>{m.month.replace('-', ' ')}</span>
+              <span className="mono" style={{ textAlign: 'right', color: m.nr > 0 ? '#5EEAD4' : '#6E7488' }}>{lakhs(m.nr)}</span>
+            </div>
+          ))}
+          <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '10px 0', fontSize: 13, fontWeight: 600 }}>
+            <span style={{ color: '#FFFFFF' }}>Achieved (sum)</span>
+            <span className="mono" style={{ textAlign: 'right', color: '#FFFFFF' }}>{target.nrLabel}</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '4px 0 10px', fontSize: 13 }}>
+            <span style={{ color: '#A8AEC4' }}>Target ({q.name} CSM target)</span>
+            <span className="mono" style={{ textAlign: 'right', color: '#A8AEC4' }}>{target.targetLabel}</span>
+          </div>
+          <div style={{ fontSize: 11.5, color: '#6E7488', marginTop: 8, lineHeight: 1.55 }}>
+            Achieved % = {target.nrLabel} ÷ {target.targetLabel} × 100 = <b style={{ color }}>{target.pct}</b>. Achieved is the employee's NR summed across the three calendar months of {q.name} {q.year} (months with no NR count as ₹0.0L); the target is the CSM target Koenig holds for this quarter.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function FutureNrModal({ emp, onClose }) {
