@@ -80,6 +80,19 @@ function fullHistory(monthlyRevenue) {
 const nrRows = await getCCENRData(lookbackStart(), today());
 const nrByEmpId = new Map(nrRows.map((r) => [r.empId, r]));
 
+// Future NR (booked for months after the current one) - a separate call so the
+// current month's figure and nr_monthly_details stay exactly as before. Local
+// date parts, not toISOString (which shifts a local midnight back a day in IST).
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const nowD = new Date();
+const futureRows = await getCCENRData(
+  ymd(new Date(nowD.getFullYear(), nowD.getMonth() + 1, 1)),
+  ymd(new Date(nowD.getFullYear(), nowD.getMonth() + 7, 0)),
+);
+const futureByEmpId = new Map(futureRows.map((r) => [r.empId, r]));
+const futureMonthKeys = [];
+for (let i = 1; i <= 6; i++) futureMonthKeys.push(monthKey(new Date(nowD.getFullYear(), nowD.getMonth() + i, 1)));
+
 const salesEmployees = await db.execute("SELECT id FROM employees WHERE team = 'Sales'");
 
 let updated = 0;
@@ -91,9 +104,11 @@ for (const row of salesEmployees.rows) {
 
   const months = lastSixMonths(nr.monthlyRevenue);
   const history = fullHistory(nr.monthlyRevenue);
+  const futureRev = futureByEmpId.get(empId)?.monthlyRevenue || {};
+  const future = futureMonthKeys.map((month) => ({ month, nr: parseNR(futureRev[month]) }));
   await db.execute({
-    sql: 'UPDATE employees SET metric1 = ?, metric2 = ?, metric3 = ?, metric4 = ?, metric5 = ?, metric6 = ?, nr_monthly_details = ? WHERE id = ?',
-    args: [...months, JSON.stringify(history), row.id],
+    sql: 'UPDATE employees SET metric1 = ?, metric2 = ?, metric3 = ?, metric4 = ?, metric5 = ?, metric6 = ?, nr_monthly_details = ?, nr_future_details = ? WHERE id = ?',
+    args: [...months, JSON.stringify(history), JSON.stringify(future), row.id],
   });
   updated++;
 }

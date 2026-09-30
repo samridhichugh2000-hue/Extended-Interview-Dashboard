@@ -234,6 +234,19 @@ export async function syncPms() {
 
   const nrRows = await getCCENRData(lookbackStart(), today());
   const nrByEmpId = new Map(nrRows.map((r) => [r.empId, r]));
+
+  // Future NR (booked for months after the current one) - a separate call
+  // rather than widening the one above, so the current month's figure and
+  // nr_monthly_details stay exactly as before. Built from local date parts,
+  // not toISOString (which would shift a local midnight back a day in IST).
+  const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const nowD = new Date();
+  const futureStart = new Date(nowD.getFullYear(), nowD.getMonth() + 1, 1);
+  const futureEnd = new Date(nowD.getFullYear(), nowD.getMonth() + 7, 0);
+  const futureRows = await getCCENRData(ymd(futureStart), ymd(futureEnd));
+  const futureByEmpId = new Map(futureRows.map((r) => [r.empId, r]));
+  const futureMonthKeys = [];
+  for (let i = 1; i <= 6; i++) futureMonthKeys.push(monthKey(new Date(nowD.getFullYear(), nowD.getMonth() + i, 1)));
   const salesEmployees = await db.execute("SELECT id FROM employees WHERE team = 'Sales'");
 
   let updated = 0;
@@ -245,9 +258,11 @@ export async function syncPms() {
 
     const months = lastSixMonths(nr.monthlyRevenue);
     const history = fullHistory(nr.monthlyRevenue);
+    const futureRev = futureByEmpId.get(empId)?.monthlyRevenue || {};
+    const future = futureMonthKeys.map((month) => ({ month, nr: parseNR(futureRev[month]) }));
     await db.execute({
-      sql: 'UPDATE employees SET metric1 = ?, metric2 = ?, metric3 = ?, metric4 = ?, metric5 = ?, metric6 = ?, nr_monthly_details = ? WHERE id = ?',
-      args: [...months, JSON.stringify(history), row.id],
+      sql: 'UPDATE employees SET metric1 = ?, metric2 = ?, metric3 = ?, metric4 = ?, metric5 = ?, metric6 = ?, nr_monthly_details = ?, nr_future_details = ? WHERE id = ?',
+      args: [...months, JSON.stringify(history), JSON.stringify(future), row.id],
     });
     updated++;
   }

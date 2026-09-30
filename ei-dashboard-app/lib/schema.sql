@@ -86,6 +86,7 @@ CREATE TABLE IF NOT EXISTS employees (
   pipeline_undated_deals INTEGER,
   pipeline_total_nr REAL,         -- sum of pipeline_months + pipeline_undated_nr
   pipeline_total_deals INTEGER,
+  nr_future_details TEXT,         -- JSON array of {month: 'Mon-YYYY', nr: <number>} (Sales only), the 6 calendar months AFTER the current one, from the same Koenig CC/ENR feed as nr_monthly_details but with a future end date. Kept out of nr_monthly_details on purpose: PA Algo trailing-average/ROI checks must only ever see past + current months.
   pipeline_synced_at TEXT         -- ISO timestamp of the last successful sync for this employee — each CSM is a separate ~3s API call, so this can lag by longer than other feeds mid-run.
 );
 

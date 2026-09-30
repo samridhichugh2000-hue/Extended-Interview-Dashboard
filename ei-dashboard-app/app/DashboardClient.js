@@ -1504,6 +1504,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
   // employee modal or another screen.
   const [expandedId, setExpandedId] = useState(null);
   const [pipelineDetail, setPipelineDetail] = useState(null);
+  const [futureNrDetail, setFutureNrDetail] = useState(null);
 
   const isTrainer = team === 'Trainer';
   const algoKey = isTrainer ? 'trainerPaAlgo' : 'salesPaAlgo';
@@ -1560,7 +1561,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
     // each tier's own differently-worded band labels.
     .sort((a, b) => (a.tenure ?? 0) - (b.tenure ?? 0) || a.name.localeCompare(b.name));
 
-  const gridCols = isTrainer ? '1.2fr .6fr .7fr .8fr 1.5fr .8fr .8fr 26px' : '1.4fr .8fr .9fr .8fr 1.5fr .8fr 1fr 26px';
+  const gridCols = isTrainer ? '1.2fr .6fr .7fr .8fr 1.5fr .8fr .8fr 26px' : '1.4fr .8fr .9fr .8fr 1.5fr .8fr 1fr 1fr 26px';
   // Current calendar month's utilization, read off the same trailing
   // history the PA Algo evidence panel uses — falls back to the most
   // recent month on file (labelled) if this month hasn't synced yet.
@@ -1637,7 +1638,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
         <div style={{ display: 'grid', gridTemplateColumns: gridCols, columnGap: isTrainer ? 0 : 18, padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           {isTrainer
             ? <><span>Employee</span><span>This month</span><span>Salary tier</span><span>Tenure band</span><span>Rule</span><span>Status</span><span style={{ textAlign: 'right' }}>Neg. feedback (7d)</span><span /></>
-            : <><span>Employee</span><span>Region</span><span>Quarter target ({currentQuarter().name} {currentQuarter().year})</span><span>Tenure band</span><span>Rule</span><span style={{ textAlign: 'right' }}>Status</span><span>Pipeline</span><span /></>}
+            : <><span>Employee</span><span>Region</span><span>Quarter target ({currentQuarter().name} {currentQuarter().year})</span><span>Tenure band</span><span>Rule</span><span style={{ textAlign: 'right' }}>Status</span><span>Pipeline</span><span>Future NR</span><span /></>}
         </div>
         {rows.map((e) => {
           const algo = e[algoKey];
@@ -1648,6 +1649,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
           const util = isTrainer ? thisMonthUtil(e) : null;
           const target = !isTrainer ? quarterTargetLabel(e) : null;
           const pipeline = !isTrainer ? pipelineSummary(e) : null;
+          const futureNr = !isTrainer ? futureNrSummary(e) : null;
           return (
             <Fragment key={e.id}>
               <div className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: gridCols, columnGap: isTrainer ? 0 : 18, padding: '14px 18px', alignItems: 'center', borderBottom: isExpanded ? 'none' : '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
@@ -1685,6 +1687,13 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
                     </span>
                   ) : <span style={{ fontSize: 12, color: '#6E7488' }}>—</span>
                 )}
+                {!isTrainer && (
+                  futureNr ? (
+                    <span onClick={(ev) => { ev.stopPropagation(); setFutureNrDetail(e); }} className="mono" style={{ fontSize: 12.5, color: '#A5A7FA', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>
+                      {futureNr.label}
+                    </span>
+                  ) : <span style={{ fontSize: 12, color: '#6E7488' }}>—</span>
+                )}
                 {isTrainer && (sugg
                   ? <span style={{ justifySelf: 'end', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: sugg.bg, color: sugg.color, border: `1px solid ${sugg.border}` }}>{sugg.label}</span>
                   : <span style={{ justifySelf: 'end', fontSize: 12, color: '#6E7488' }}>—</span>)}
@@ -1704,6 +1713,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
         {!rows.length && <div style={{ padding: '18px', fontSize: 12.5, color: '#6E7488' }}>No {isTrainer ? 'Trainers' : 'Sales reps'} match this filter.</div>}
       </div>
       {pipelineDetail && <PipelineModal emp={pipelineDetail} onClose={() => setPipelineDetail(null)} />}
+      {futureNrDetail && <FutureNrModal emp={futureNrDetail} onClose={() => setFutureNrDetail(null)} />}
     </div>
   );
 }
@@ -1717,6 +1727,45 @@ const lakhs = (n) => '₹' + (n / 100000).toFixed(1) + 'L';
 function pipelineSummary(e) {
   if (e.pipelineTotalNr == null) return null;
   return { label: lakhs(e.pipelineTotalNr), deals: e.pipelineTotalDeals ?? 0 };
+}
+
+// Future NR - NR already booked for the months after the current one (Koenig
+// CC/ENR feed with a future end date, see syncPms). null = never synced.
+function futureNrSummary(e) {
+  if (!e.nrFutureDetails) return null;
+  return { label: lakhs(e.nrFutureDetails.reduce((sum, m) => sum + (m.nr || 0), 0)) };
+}
+
+function FutureNrModal({ emp, onClose }) {
+  const months = emp.nrFutureDetails || [];
+  const gridCols = '1fr 1fr';
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 440, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — future NR</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>{lakhs(months.reduce((sum, m) => sum + (m.nr || 0), 0))} booked for upcoming months</div>
+          </div>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+        </div>
+        <div style={{ padding: '8px 24px 24px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '10px 0', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+            <span>Month</span><span style={{ textAlign: 'right' }}>NR</span>
+          </div>
+          {months.map((m) => (
+            <div key={m.month} style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
+              <span style={{ color: '#C7CBDA' }}>{m.month.replace('-', ' ')}</span>
+              <span className="mono" style={{ textAlign: 'right', color: m.nr > 0 ? '#5EEAD4' : '#6E7488' }}>{lakhs(m.nr)}</span>
+            </div>
+          ))}
+          <div style={{ fontSize: 11.5, color: '#6E7488', marginTop: 14, lineHeight: 1.5 }}>
+            NR already recorded against months after the current one. Not counted in the PA Algo's NR checks.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // Shared by PA Algo and Worry Index (both Sales-only columns) — the current
@@ -1812,6 +1861,7 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
   const [missing, setMissing] = useState([]);
   const toggleMissing = (key) => setMissing((m) => (m.includes(key) ? m.filter((k) => k !== key) : [...m, key]));
   const [pipelineDetail, setPipelineDetail] = useState(null);
+  const [futureNrDetail, setFutureNrDetail] = useState(null);
   // Weekly/Monthly/6 Months/All time — recomputes score, signalReport and
   // trendNote per employee for the selected window rather than reading the
   // all-time values lib/queries.js already attached server-side. Safe to
@@ -1820,7 +1870,7 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
   // without a countInWindow (see SIGNAL_DEFS) surface as 'not-windowed'
   // under Weekly/Monthly/6 Months rather than silently keeping their
   // all-time count under a window label that would misrepresent them.
-  const [windowKey, setWindowKey] = useState('all');
+  const [windowKey, setWindowKey] = useState('monthly');
   // Custom range is a 5th option alongside the WORRY_WINDOWS presets — not
   // itself in that list (it has no fixed `days`), so it's tracked as its
   // own state and only consulted when windowKey === 'custom'.
@@ -2652,7 +2702,7 @@ function EmployeeModal({ emp, onClose }) {
   // Weekly/Monthly/6 Months/All time selector as the Worry Index screen,
   // recomputed the same way (computeSignalReport's `since` option). 'All
   // time' with no `since` reproduces the exact all-time score above.
-  const [windowKey, setWindowKey] = useState('all');
+  const [windowKey, setWindowKey] = useState('monthly');
   const [customRange, setCustomRange] = useState({ from: '', to: '' });
   const isCustomWindow = windowKey === 'custom';
   const windowDef = WORRY_WINDOWS.find((w) => w.key === windowKey) || WORRY_WINDOWS[0];
