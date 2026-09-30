@@ -13,6 +13,7 @@ config({ path: path.join(__dirname, '..', '.env.local') });
 
 const { getManagerFeedback } = await import('../lib/koenigManagerFeedbackApi.js');
 const { classifyFeedback } = await import('../lib/classifyFeedback.js');
+const { structuredFeedbackRating } = await import('../lib/feedbackStructured.js');
 
 const db = createClient({
   url: process.env.TURSO_DATABASE_URL,
@@ -94,6 +95,10 @@ for (const emp of allEmployees.rows) {
     const base = { managerEmpCode: f.managerEmpCode, managerName: f.managerName, strength: f.strength, improvement: f.improvement, other: f.other, date: f.date };
     const cached = classifyCache.get(entryKey(base));
     let aiRating = cached?.rating, aiReason = cached?.reason;
+    // Structured manager picks always win over a cached (possibly older,
+    // comment-driven) AI verdict - deterministic, so re-derived every run.
+    const picked = structuredFeedbackRating(base);
+    if (picked) { aiRating = picked; aiReason = "From the manager's own ratings"; }
     if (!aiRating) {
       try {
         const result = await classifyFeedback(base);

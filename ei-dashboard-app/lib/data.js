@@ -1,4 +1,5 @@
 import { getIsoWeek, isPastWednesdayCheckIn, weekDateRange } from './weekUtils.js';
+import { structuredFeedbackRating } from './feedbackStructured.js';
 
 export const C = { rose: '#F43F5E', amber: '#F59E0B', indigo: '#8B8CF6', teal: '#14B8A6', purple: '#A855F7' };
 
@@ -185,6 +186,11 @@ export const WORRY_BANDS = [
 // Returns 'below' | 'good' | null (no signal either way — not-applicable,
 // or a blank/unrated entry).
 export function feedbackRating(entry) {
+  // The manager's own per-question picks (lib/feedbackStructured.js) outrank
+  // the AI read of the free-text comment, including for entries whose stored
+  // aiRating was produced before that rule existed.
+  const picked = structuredFeedbackRating(entry);
+  if (picked) return picked === 'below' ? 'below' : 'good';
   if (entry?.aiRating) {
     if (entry.aiRating === 'below') return 'below';
     if (entry.aiRating === 'satisfactory' || entry.aiRating === 'above') return 'good';
@@ -217,6 +223,21 @@ export function belowSatisfactoryCount(e) {
 export function lastFeedbackIsBelow(e) {
   const latest = (e.mgrFeedbackDetails || []).find((f) => feedbackRating(f) != null);
   return latest ? feedbackRating(latest) === 'below' : false;
+}
+
+// Same rule, scoped to a date window: the newest applicable entry dated
+// inside [since, until] (mgrFeedbackDetails is newest-first). null = no
+// applicable feedback in the window.
+export function latestFeedbackInWindow(e, since, until) {
+  return (e.mgrFeedbackDetails || []).find((f) => {
+    if (feedbackRating(f) == null) return false;
+    if (!since && !until) return true;
+    const dt = f.date ? new Date(f.date) : null;
+    if (!dt || isNaN(dt)) return false;
+    if (since && dt < since) return false;
+    if (until && dt > until) return false;
+    return true;
+  }) || null;
 }
 
 // Every week this NJ has been tracked that isn't 'Received' — cumulative,
@@ -426,7 +447,14 @@ export const SIGNAL_DEFS = [
   // since only the latest entry counts at all (see lastFeedbackIsBelow).
   { label: 'Manager feedback below satisfactory (last feedback)', teams: 'All', pts: -5, live: true,
     hasData: (e) => e.mgrFeedbackCount != null,
-    fires: (e) => lastFeedbackIsBelow(e) },
+    fires: (e) => lastFeedbackIsBelow(e),
+    countInWindow: (e, since, until) => (feedbackRating(latestFeedbackInWindow(e, since, until)) === 'below' ? 1 : 0),
+    // Shown next to the signal so HR sees the actual rating, not just fired/clear.
+    detail: (e, since, until) => {
+      const latest = latestFeedbackInWindow(e, since, until);
+      if (!latest) return since || until ? 'No feedback in window' : 'No rated feedback';
+      return `${feedbackRating(latest) === 'below' ? 'Below satisfactory' : 'Satisfactory'} · ${latest.date || 'undated'}`;
+    } },
   // Variable weight, not a fixed per-unit pts — computeTotal (not
   // fires/count) drives this one; see weeklyResponseRatingPoints. `pts`
   // here is only a representative reference value for the legend/report.
@@ -507,7 +535,7 @@ export function computeSignalReport(e, { since, until } = {}) {
       if (status === 'fired' && count == null && d.count) count = d.count(e);
       if (status !== 'fired') count = null;
       const pts = count ? Math.round(d.pts * count * 100) / 100 : d.pts;
-      return { label: d.label, pts, ptsStr: fmtPts(pts), weight: weightClass(d.pts), status, count };
+      return { label: d.label, pts, ptsStr: fmtPts(pts), weight: weightClass(d.pts), status, count, detail: d.detail && d.hasData(e) ? d.detail(e, since, until) : null };
     });
 }
 // Only fired signals feed the actual score.

@@ -2785,6 +2785,7 @@ function EmployeeModal({ emp, onClose }) {
                         {s.status === 'fired' && s.count > 1 && (
                           <span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>×{s.count}</span>
                         )}
+                        {s.detail && <span className="mono" style={{ fontSize: 10.5, color: s.detail.startsWith('Below') ? '#F87171' : '#5EEAD4' }}>{s.detail}</span>}
                         {s.status !== 'fired' && (
                           <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase', flex: 'none' }}>
                             {s.status === 'not-tracked' ? 'not tracked' : s.status === 'no-data' ? 'no data traced' : s.status === 'not-windowed' ? 'no dated records' : 'no incident'}

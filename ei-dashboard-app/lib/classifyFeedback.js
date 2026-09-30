@@ -6,6 +6,8 @@
 // Used by scripts/sync-mgrfeedback.mjs so every entry gets a real read
 // instead of the old literal "average"/"satisfactory" keyword match, which
 // missed plain-English critical feedback that never uses those exact words.
+import { structuredFeedbackRating } from './feedbackStructured.js';
+
 const PROMPT = (text) => `You are classifying one manager-feedback entry for an employee performance tracking system.
 
 First decide: is this genuine qualitative feedback about the employee's work performance (discipline, delivery quality, meeting prep, exam/assessment results, punctuality, attitude, etc.)? If it's actually an unrelated onboarding-formalities checklist (e.g. "Did the candidate complete joining documents on time?", follow-ups/reminders about paperwork) or otherwise not performance feedback, classify it "not-applicable".
@@ -23,6 +25,10 @@ ${text}
 Respond with ONLY a JSON object, no other text: {"rating": "below"|"satisfactory"|"above"|"not-applicable", "reason": "<under 12 words>"}`;
 
 export async function classifyFeedback({ strength, improvement, other }) {
+  // The manager's own per-question ratings decide it - no AI read needed.
+  const picked = structuredFeedbackRating({ strength, improvement, other });
+  if (picked) return { rating: picked, reason: "From the manager's own ratings" };
+
   const text = [strength, improvement, other].filter(Boolean).join(' ').trim();
   if (!text) return { rating: 'not-applicable', reason: 'blank entry' };
 
