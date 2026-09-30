@@ -202,7 +202,14 @@ function AlertPreviewModal({ emp, pending, onClose, onSend }) {
   const metric = (emp.team === 'Sales' || emp.team === 'Trainer') && monthHeads
     ? { label: emp.team === 'Sales' ? 'Month-wise NR' : 'Month-wise Utilization',
         isCurrency: emp.team === 'Sales',
-        months: monthHeads.map((h, i) => ({ head: h, value: emp.v?.[i] ?? '—' })),
+        // M1..M6 are the trailing 6 calendar months ending with the current
+        // one (see lastSixMonths in lib/syncRunners.js) — label with the real
+        // month ("Apr 26") instead of "M1 NR" for the email.
+        months: monthHeads.map((h, i) => {
+          const d = new Date(new Date().getFullYear(), new Date().getMonth() - (monthHeads.length - 1 - i), 1);
+          const head = `${d.toLocaleString('en-US', { month: 'short' })} ${String(d.getFullYear()).slice(2)}`;
+          return { head, value: emp.v?.[i] ?? '—' };
+        }),
         isMetric: true }
     : null;
   const items = metric ? [...all, metric] : all;
