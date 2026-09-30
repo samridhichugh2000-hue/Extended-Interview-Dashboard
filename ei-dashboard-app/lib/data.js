@@ -92,7 +92,6 @@ export const NAV = [
   { label: 'Sales', screen: 'dept', dept: 'Sales', count: '18' },
   { label: 'Trainer', screen: 'dept', dept: 'Trainer', count: '15' },
   { label: 'PT Team', screen: 'dept', dept: 'PT Team', count: '9' },
-  { label: 'PA/PIP Detection', screen: 'papip', count: '6' },
   { label: 'PA Algo', screen: 'paalgo', count: '0' },
   { label: 'Worry Index', screen: 'worryindex', count: '42' },
   { label: 'Graph API Calls', screen: 'graphcalls', count: '0' },

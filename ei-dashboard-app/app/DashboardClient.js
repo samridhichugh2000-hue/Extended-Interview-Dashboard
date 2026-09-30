@@ -1656,10 +1656,8 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                   <span style={{ fontWeight: 600 }}>{e.name}</span>
                   <span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id}{e.inactive ? ' · Inactive' : ''}</span>
-                  {(e.doj || e.tenure != null) && (
-                    <span className="mono" style={{ fontSize: 10, color: '#6E7488' }}>
-                      {e.doj ? `DOJ ${e.doj}` : ''}{e.doj && e.tenure != null ? ' · ' : ''}{e.tenure != null ? `${formatTenure(e.tenure)} tenure` : ''}
-                    </span>
+                  {e.tenure != null && (
+                    <span className="mono" style={{ fontSize: 10, color: '#6E7488' }}>{formatTenure(e.tenure)}</span>
                   )}
                   {e.activePipRange && <span style={{ fontSize: 10, color: '#F59E0B' }}>{e.activePipRange}</span>}
                 </div>
