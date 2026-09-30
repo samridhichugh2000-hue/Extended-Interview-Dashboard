@@ -237,4 +237,19 @@ for (const stmt of [
   }
 }
 
+for (const stmt of [
+  'ALTER TABLE employees ADD COLUMN pipeline_months TEXT',
+  'ALTER TABLE employees ADD COLUMN pipeline_undated_nr REAL',
+  'ALTER TABLE employees ADD COLUMN pipeline_undated_deals INTEGER',
+  'ALTER TABLE employees ADD COLUMN pipeline_total_nr REAL',
+  'ALTER TABLE employees ADD COLUMN pipeline_total_deals INTEGER',
+  'ALTER TABLE employees ADD COLUMN pipeline_synced_at TEXT',
+]) {
+  try {
+    await db.execute(stmt);
+  } catch (err) {
+    if (!String(err.message).includes('duplicate column')) throw err;
+  }
+}
+
 console.log('Done. Run `npm run sync:koenig` to populate employees from the live API.');

@@ -141,6 +141,12 @@ export async function getEmployees() {
       quarterTargetRemarks: e.quarter_target_remarks,
       quarterTargetAmount: e.quarter_target_amount,
       externalMeetingsCount: e.external_meetings_count,
+      pipelineMonths: e.pipeline_months ? JSON.parse(e.pipeline_months) : null,
+      pipelineUndatedNr: e.pipeline_undated_nr,
+      pipelineUndatedDeals: e.pipeline_undated_deals,
+      pipelineTotalNr: e.pipeline_total_nr,
+      pipelineTotalDeals: e.pipeline_total_deals,
+      pipelineSyncedAt: e.pipeline_synced_at,
       // null = no weekly_responses row yet for this week (e.g. feature hasn't
       // been run for them this week) — distinct from a confirmed Pending/Overdue.
       weeklyReportState: (weeksByEmp.get(e.id) || []).find((w) => w.week === currentWeek)?.state ?? null,

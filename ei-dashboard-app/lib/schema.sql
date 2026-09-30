@@ -79,7 +79,14 @@ CREATE TABLE IF NOT EXISTS employees (
   quarter_target_pct REAL,        -- Achieved_Percentage for this employee's most recent quarter on file, from the Koenig "Get Target Achieved Details" feed (Sales only). NULL = not yet synced / no record for this employee. Purely informational — not a Worry Index or PA Algo signal.
   quarter_target_name TEXT,       -- e.g. 'Q2' — which quarter quarter_target_pct is for
   quarter_target_year TEXT,       -- e.g. '2026' — which year quarter_target_pct is for
-  quarter_target_remarks TEXT     -- Koenig's own Remarks field for that quarter, if any
+  quarter_target_remarks TEXT,    -- Koenig's own Remarks field for that quarter, if any
+  quarter_target_amount REAL,     -- current-quarter CSM target amount (rupees) from the Koenig "Get Targets Data" feed (Sales only) — the achievement % Sales PA Algo shows is computed from this against nr_monthly_details, not from quarter_target_pct above (that feed has never returned data).
+  pipeline_months TEXT,           -- JSON array of {mon, monDate, expectedNR, deals}, the current month plus the next 5, from the Koenig Sales Pipeline feed (Sales/CSM only). Purely informational — not a Worry Index or PA Algo signal.
+  pipeline_undated_nr REAL,       -- expectedNR of the feed's "No date" bucket — real pipeline with no training month attached yet, kept separate per the feed's own guidance rather than folded into a month.
+  pipeline_undated_deals INTEGER,
+  pipeline_total_nr REAL,         -- sum of pipeline_months + pipeline_undated_nr
+  pipeline_total_deals INTEGER,
+  pipeline_synced_at TEXT         -- ISO timestamp of the last successful sync for this employee — each CSM is a separate ~3s API call, so this can lag by longer than other feeds mid-run.
 );
 
 CREATE TABLE IF NOT EXISTS pip_status (

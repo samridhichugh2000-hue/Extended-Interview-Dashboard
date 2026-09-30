@@ -476,6 +476,47 @@ export async function syncTargetsData() {
   return { message: `Synced ${qName} ${qYear} CSM target amount for ${updated} Sales employees (${unmatched} unmatched).` };
 }
 
+// Sales Pipeline (lib/koenigPipelineApi.js) — per-CSM only, ~3s per call and
+// explicitly not meant to be hammered across a whole team at once, so this
+// runs strictly sequentially (no concurrency, unlike every other per-
+// employee sync here) with a short pause between calls. For ~100+ Sales
+// employees that's several minutes — fine for the local Windows Task,
+// too slow for a single Vercel serverless invocation, so this is meant to
+// run via scripts/sync-pipeline.mjs in scripts/sync-all.mjs, not the
+// /api/sync/[feed] route (though it's still registered there for ad-hoc
+// testing against a handful of employees).
+const PIPELINE_CALL_DELAY_MS = 300;
+export async function syncPipeline() {
+  const db = getDb();
+  const { getSalesPipeline } = await import('./koenigPipelineApi.js');
+
+  const salesEmployees = await db.execute("SELECT id, email FROM employees WHERE team = 'Sales' AND active = 1");
+
+  let updated = 0, notFound = 0, noEmail = 0, apiErrors = 0;
+  for (const emp of salesEmployees.rows) {
+    if (!emp.email) { noEmail++; continue; }
+    try {
+      const pipeline = await getSalesPipeline(emp.email);
+      if (pipeline.status === 'CSM_NOT_FOUND') { notFound++; continue; }
+
+      await db.execute({
+        sql: `UPDATE employees SET pipeline_months = ?, pipeline_undated_nr = ?, pipeline_undated_deals = ?, pipeline_total_nr = ?, pipeline_total_deals = ?, pipeline_synced_at = ? WHERE id = ?`,
+        args: [
+          JSON.stringify(pipeline.months), pipeline.undated.expectedNR, pipeline.undated.deals,
+          pipeline.totalNR, pipeline.totalDeals, new Date().toISOString(), emp.id,
+        ],
+      });
+      updated++;
+    } catch (err) {
+      console.error(`Pipeline sync failed for ${emp.email}:`, err.message);
+      apiErrors++;
+    }
+    await new Promise((resolve) => setTimeout(resolve, PIPELINE_CALL_DELAY_MS));
+  }
+
+  return { message: `Synced Sales Pipeline for ${updated} CSMs (${notFound} not found on the pipeline system, ${apiErrors} API errors, ${noEmail} had no email on file).` };
+}
+
 export async function syncUtil() {
   const db = getDb();
   const { getMonthlyUtilization } = await import('./koenigUtilApi.js');
@@ -1413,6 +1454,7 @@ export const SYNC_RUNNERS = {
   csmroster: syncCsmRoster,
   target: syncTargetAchievement,
   targetsdata: syncTargetsData,
+  pipeline: syncPipeline,
   util: syncUtil,
   exam: syncExam,
   negfeedback: syncNegFeedback,

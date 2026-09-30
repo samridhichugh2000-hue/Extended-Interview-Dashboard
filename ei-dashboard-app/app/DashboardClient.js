@@ -1496,6 +1496,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
   // assignment ids, etc.) shown inline so it's visible without opening the
   // employee modal or another screen.
   const [expandedId, setExpandedId] = useState(null);
+  const [pipelineDetail, setPipelineDetail] = useState(null);
 
   const isTrainer = team === 'Trainer';
   const algoKey = isTrainer ? 'trainerPaAlgo' : 'salesPaAlgo';
@@ -1552,7 +1553,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
     // each tier's own differently-worded band labels.
     .sort((a, b) => (a.tenure ?? 0) - (b.tenure ?? 0) || a.name.localeCompare(b.name));
 
-  const gridCols = isTrainer ? '1.2fr .6fr .7fr .8fr 1.5fr .8fr .8fr 26px' : '1.5fr .9fr .9fr .9fr 2fr .9fr 26px';
+  const gridCols = isTrainer ? '1.2fr .6fr .7fr .8fr 1.5fr .8fr .8fr 26px' : '1.4fr .8fr .9fr .8fr 1.5fr .8fr 1fr 26px';
   // Current calendar month's utilization, read off the same trailing
   // history the PA Algo evidence panel uses — falls back to the most
   // recent month on file (labelled) if this month hasn't synced yet.
@@ -1629,7 +1630,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
         <div style={{ display: 'grid', gridTemplateColumns: gridCols, padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           {isTrainer
             ? <><span>Employee</span><span>This month</span><span>Salary tier</span><span>Tenure band</span><span>Rule</span><span>Status</span><span style={{ textAlign: 'right' }}>Neg. feedback (7d)</span><span /></>
-            : <><span>Employee</span><span>Region</span><span>Quarter target ({currentQuarter().name} {currentQuarter().year})</span><span>Tenure band</span><span>Rule</span><span style={{ textAlign: 'right' }}>Status</span><span /></>}
+            : <><span>Employee</span><span>Region</span><span>Quarter target ({currentQuarter().name} {currentQuarter().year})</span><span>Tenure band</span><span>Rule</span><span style={{ textAlign: 'right' }}>Status</span><span>Pipeline</span><span /></>}
         </div>
         {rows.map((e) => {
           const algo = e[algoKey];
@@ -1639,6 +1640,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
           const isExpanded = expandedId === e.id;
           const util = isTrainer ? thisMonthUtil(e) : null;
           const target = !isTrainer ? quarterTargetLabel(e) : null;
+          const pipeline = !isTrainer ? pipelineSummary(e) : null;
           return (
             <Fragment key={e.id}>
               <div className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: gridCols, padding: '14px 18px', alignItems: 'center', borderBottom: isExpanded ? 'none' : '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
@@ -1669,6 +1671,13 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
                 {isTrainer
                   ? <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: st.bg, color: st.color, border: `1px solid ${st.border}` }}>{st.label}</span>
                   : <span style={{ justifySelf: 'end', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: st.bg, color: st.color, border: `1px solid ${st.border}` }}>{st.label}</span>}
+                {!isTrainer && (
+                  pipeline ? (
+                    <span onClick={(ev) => { ev.stopPropagation(); setPipelineDetail(e); }} className="mono" style={{ fontSize: 12.5, color: '#A5A7FA', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>
+                      {pipeline.label} · {pipeline.deals}
+                    </span>
+                  ) : <span style={{ fontSize: 12, color: '#6E7488' }}>—</span>
+                )}
                 {isTrainer && (sugg
                   ? <span style={{ justifySelf: 'end', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: sugg.bg, color: sugg.color, border: `1px solid ${sugg.border}` }}>{sugg.label}</span>
                   : <span style={{ justifySelf: 'end', fontSize: 12, color: '#6E7488' }}>—</span>)}
@@ -1686,6 +1695,65 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
           );
         })}
         {!rows.length && <div style={{ padding: '18px', fontSize: 12.5, color: '#6E7488' }}>No {isTrainer ? 'Trainers' : 'Sales reps'} match this filter.</div>}
+      </div>
+      {pipelineDetail && <PipelineModal emp={pipelineDetail} onClose={() => setPipelineDetail(null)} />}
+    </div>
+  );
+}
+
+const lakhs = (n) => '₹' + (n / 100000).toFixed(1) + 'L';
+
+// Sales Pipeline (lib/koenigPipelineApi.js via syncPipeline) — compact
+// summary for a table cell; PipelineModal below shows the full month-by-
+// month breakdown. null (not e.g. 0) means never synced, distinct from a
+// confirmed empty pipeline.
+function pipelineSummary(e) {
+  if (e.pipelineTotalNr == null) return null;
+  return { label: lakhs(e.pipelineTotalNr), deals: e.pipelineTotalDeals ?? 0 };
+}
+
+// Shared by PA Algo and Worry Index (both Sales-only columns) — the current
+// month plus the next 5, then the feed's own "No date" bucket (real pipeline
+// with no training month attached yet) shown separately per the feed's own
+// guidance, never folded into a month or sorted alongside them.
+function PipelineModal({ emp, onClose }) {
+  const months = emp.pipelineMonths || [];
+  const gridCols = '1fr 1.1fr .8fr';
+  const hasUndated = emp.pipelineUndatedNr > 0 || emp.pipelineUndatedDeals > 0;
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 520, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — sales pipeline</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>{lakhs(emp.pipelineTotalNr || 0)} expected across {emp.pipelineTotalDeals || 0} deals</div>
+          </div>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+        </div>
+        <div style={{ padding: '8px 24px 24px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '10px 0', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+            <span>Month</span><span style={{ textAlign: 'right' }}>Expected NR</span><span style={{ textAlign: 'right' }}>Deals</span>
+          </div>
+          {months.map((m) => (
+            <div key={m.mon} style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
+              <span style={{ color: '#C7CBDA' }}>{m.mon}</span>
+              <span className="mono" style={{ textAlign: 'right', color: m.expectedNR > 0 ? '#5EEAD4' : '#6E7488' }}>{lakhs(m.expectedNR)}</span>
+              <span className="mono" style={{ textAlign: 'right', color: '#A8AEC4' }}>{m.deals}</span>
+            </div>
+          ))}
+          {!months.length && <div style={{ fontSize: 12.5, color: '#6E7488', padding: '12px 0' }}>No pipeline data on file.</div>}
+          {hasUndated && (
+            <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '12px 0 4px', marginTop: 6, borderTop: '1px dashed rgba(255,255,255,0.14)', fontSize: 13 }}>
+              <span style={{ color: '#8A90A8' }}>No date <span className="mono" style={{ fontSize: 10 }}>(training month not set)</span></span>
+              <span className="mono" style={{ textAlign: 'right', color: '#5EEAD4' }}>{lakhs(emp.pipelineUndatedNr)}</span>
+              <span className="mono" style={{ textAlign: 'right', color: '#A8AEC4' }}>{emp.pipelineUndatedDeals}</span>
+            </div>
+          )}
+          <div style={{ fontSize: 11.5, color: '#6E7488', marginTop: 14, lineHeight: 1.5 }}>
+            Merges RMS invoices and AI-read Outlook quotations; a deal appearing in both is counted once.
+            {emp.pipelineSyncedAt && ` Last synced ${new Date(emp.pipelineSyncedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}.`}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -1736,6 +1804,7 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
   const [njOnly, setNjOnly] = useState(false);
   const [missing, setMissing] = useState([]);
   const toggleMissing = (key) => setMissing((m) => (m.includes(key) ? m.filter((k) => k !== key) : [...m, key]));
+  const [pipelineDetail, setPipelineDetail] = useState(null);
   // Weekly/Monthly/6 Months/All time — recomputes score, signalReport and
   // trendNote per employee for the selected window rather than reading the
   // all-time values lib/queries.js already attached server-side. Safe to
@@ -1864,11 +1933,13 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
           <div className="disp" style={{ fontSize: 15, fontWeight: 600 }}>Every NJ, ranked worst to best</div>
           <div style={{ fontSize: 11.5, color: '#6E7488', marginTop: 2 }}>{windowLabel} · click a row for the full signal breakdown</div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr .9fr .7fr .8fr 2fr', padding: '10px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 10, letterSpacing: '.1em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-          <span>Employee</span><span>Team</span><span style={{ textAlign: 'right' }}>Score</span><span>Band</span><span>Trend</span>
+        <div style={{ display: 'grid', gridTemplateColumns: filter === 'Sales' ? '1.4fr .8fr .7fr .8fr 1.6fr 1fr' : '1.5fr .9fr .7fr .8fr 2fr', padding: '10px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 10, letterSpacing: '.1em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+          <span>Employee</span><span>Team</span><span style={{ textAlign: 'right' }}>Score</span><span>Band</span><span>Trend</span>{filter === 'Sales' && <span>Pipeline</span>}
         </div>
-        {ranked.map((e) => (
-          <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: '1.5fr .9fr .7fr .8fr 2fr', padding: '13px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
+        {ranked.map((e) => {
+          const pipeline = filter === 'Sales' ? pipelineSummary(e) : null;
+          return (
+          <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: filter === 'Sales' ? '1.4fr .8fr .7fr .8fr 1.6fr 1fr' : '1.5fr .9fr .7fr .8fr 2fr', padding: '13px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <span style={{ fontWeight: 600 }}>{e.name}</span>
               <span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id}</span>
@@ -1878,8 +1949,16 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
             <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontWeight: 600, color: e.bandColor }}>{e.scoreStr}</span>
             <span style={{ justifySelf: 'start', fontSize: 11, padding: '4px 9px', borderRadius: 999, background: `${e.bandColor}1F`, color: e.bandColor, border: `1px solid ${e.bandColor}55` }}>{e.bandLabel}</span>
             <span style={{ fontSize: 12, color: '#8A90A8' }}>{e.trendNote}</span>
+            {filter === 'Sales' && (
+              pipeline ? (
+                <span onClick={(ev) => { ev.stopPropagation(); setPipelineDetail(e); }} className="mono" style={{ fontSize: 12.5, color: '#A5A7FA', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>
+                  {pipeline.label} · {pipeline.deals}
+                </span>
+              ) : <span style={{ fontSize: 12, color: '#6E7488' }}>—</span>
+            )}
           </div>
-        ))}
+          );
+        })}
         {!ranked.length && <div style={{ padding: '18px', fontSize: 12.5, color: '#6E7488' }}>No NJ matches this filter.</div>}
       </div>
 
@@ -1935,6 +2014,7 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
           })}
         </div>
       </div>
+      {pipelineDetail && <PipelineModal emp={pipelineDetail} onClose={() => setPipelineDetail(null)} />}
     </div>
   );
 }

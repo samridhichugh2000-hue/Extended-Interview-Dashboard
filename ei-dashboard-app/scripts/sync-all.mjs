@@ -35,6 +35,7 @@ const SCRIPTS = [
   'sync-netpayable.mjs',
   'sync-empdetails.mjs',
   'sync-commonindex.mjs',
+  'sync-pipeline.mjs',
   'sync-graph-meetings.mjs',
   'sync-graph-subscription.mjs',
   'sync-external-emails.mjs',
