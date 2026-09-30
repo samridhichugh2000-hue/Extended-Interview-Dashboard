@@ -431,6 +431,7 @@ export const SIGNAL_DEFS = [
   // fires/count) drives this one; see weeklyResponseRatingPoints. `pts`
   // here is only a representative reference value for the legend/report.
   { label: 'Weekly response quality (AI rating)', teams: 'All', pts: -2, live: true,
+    weightLabel: '+2 to −2', weightNote: '5★ +2 · 4★ +1 · 3★ 0 · 2★ −1 · 1★ −2 (per response)',
     hasData: (e) => (e.weeks || []).some((w) => w.aiRating != null),
     computeTotal: weeklyResponseRatingPoints },
   { label: 'Audio / video not OK in meetings', teams: 'All', pts: -1, live: false, hasData: () => false, fires: () => false },
@@ -453,8 +454,8 @@ export function appliesToTeam(teams, team) {
 // computeTotal signals (Weekly response quality) window themselves via
 // since/until, same as a real countInWindow, so they count as "windowed"
 // too — otherwise they'd wrongly show "not dated" under any window filter.
-export const POS_SIGNALS = SIGNAL_DEFS.filter((d) => d.pts > 0).map((d) => ({ label: d.label, teams: d.teams, w: fmtPts(d.pts), live: d.live, windowed: !!(d.countInWindow || d.computeTotal) }));
-export const NEG_SIGNALS = SIGNAL_DEFS.filter((d) => d.pts < 0).map((d) => ({ label: d.label, teams: d.teams, w: fmtPts(d.pts), live: d.live, windowed: !!(d.countInWindow || d.computeTotal) }));
+export const POS_SIGNALS = SIGNAL_DEFS.filter((d) => d.pts > 0).map((d) => ({ label: d.label, teams: d.teams, w: d.weightLabel || fmtPts(d.pts), note: d.weightNote, live: d.live, windowed: !!(d.countInWindow || d.computeTotal) }));
+export const NEG_SIGNALS = SIGNAL_DEFS.filter((d) => d.pts < 0).map((d) => ({ label: d.label, teams: d.teams, w: d.weightLabel || fmtPts(d.pts), note: d.weightNote, live: d.live, windowed: !!(d.countInWindow || d.computeTotal) }));
 
 // Every parameter that applies to this employee's team, whichever way it
 // landed — this is the "each and every parameter" view, not just the ones

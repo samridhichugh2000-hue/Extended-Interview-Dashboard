@@ -1975,7 +1975,7 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
             return (
               <div key={s.label} style={{ display: 'grid', gridTemplateColumns: '1fr .8fr .5fr .9fr', padding: '10px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.04)', opacity: !s.live ? 0.45 : !s.windowed && since != null ? 0.6 : 1 }}>
                 <span style={{ fontSize: 13, color: '#C7CBDA', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {s.label}
+                  <span>{s.label}{s.note && <span className="mono" style={{ display: 'block', fontSize: 10, color: '#6E7488', marginTop: 2 }}>{s.note}</span>}</span>
                   {!s.live && <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase' }}>not tracked</span>}
                   {s.live && !s.windowed && since != null && <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase' }}>not dated</span>}
                 </span>
@@ -2000,7 +2000,7 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
             return (
               <div key={s.label} style={{ display: 'grid', gridTemplateColumns: '1fr .8fr .5fr .9fr', padding: '10px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.04)', opacity: !s.live ? 0.45 : !s.windowed && since != null ? 0.6 : 1 }}>
                 <span style={{ fontSize: 13, color: '#C7CBDA', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {s.label}
+                  <span>{s.label}{s.note && <span className="mono" style={{ display: 'block', fontSize: 10, color: '#6E7488', marginTop: 2 }}>{s.note}</span>}</span>
                   {!s.live && <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase' }}>not tracked</span>}
                   {s.live && !s.windowed && since != null && <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase' }}>not dated</span>}
                 </span>
