@@ -173,24 +173,39 @@ export async function syncPip() {
 
 export async function syncPms() {
   const db = getDb();
-  const { getCCENRData } = await import('./koenigPmsApi.js');
+  const { getEmployeeNr } = await import('./koenigNrApi.js');
 
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   function monthKey(date) {
-    const mon = date.toLocaleString('en-US', { month: 'short' });
-    return `${mon}-${date.getFullYear()}`;
+    return `${MONTHS[date.getMonth()]}-${date.getFullYear()}`;
+  }
+  // Month keys ("Jul-2026") as a sortable index (year * 12 + month).
+  function monthIndex(key) {
+    const [mon, year] = key.split('-');
+    return Number(year) * 12 + MONTHS.indexOf(mon);
+  }
+  // employees.doj is a display string like "19 May 25" / "07 Sept 26" (some
+  // rows spell September out) — only the month and year matter here.
+  function dojMonthIndex(doj) {
+    const m = /^\d{1,2}\s+([A-Za-z]{3})[A-Za-z]*\s+(\d{2,4})$/.exec(String(doj || '').trim());
+    if (!m) return null;
+    const mon = MONTHS.findIndex((x) => x.toLowerCase() === m[1].toLowerCase());
+    if (mon < 0) return null;
+    const year = Number(m[2]) < 100 ? 2000 + Number(m[2]) : Number(m[2]);
+    return year * 12 + mon;
   }
   function formatLakhs(raw) {
     const n = parseFloat(raw);
     if (!Number.isFinite(n)) return null;
     return '₹' + (n / 100000).toFixed(1) + 'L';
   }
-  // Trailing 6 calendar months ending with the current one — was "first 6
-  // months since joining" (relative to DOJ), which left this permanently
-  // blank for anyone whose first 6 months predates the ~8-month window this
-  // even fetches (i.e. every veteran since the full roster import). M1 is
-  // still the oldest of the 6, M6 the most recent, same left-to-right
-  // convention as before; genuine NJs barely notice the change since their
-  // trailing 6 months already mostly overlaps their actual tenure.
+  function parseNR(raw) {
+    const n = parseFloat(raw);
+    return Number.isFinite(n) ? n : 0;
+  }
+  // Trailing 6 calendar months ending with the current one. M1 is the oldest
+  // of the 6, M6 the most recent, same left-to-right convention as the six
+  // metric columns the Sales table renders.
   function lastSixMonths(monthlyRevenue) {
     const now = new Date();
     const out = [];
@@ -201,64 +216,75 @@ export async function syncPms() {
     }
     return out;
   }
-  // Widened from the original 8 months to comfortably cover a full
-  // trailing-12-calendar-month window regardless of where "today" falls
-  // inside the current month — the Sales PA Algo's "avg NR of last 12
-  // months" check (lib/paAlgo.js's computeSalesPaAlgoFlag) needs a full 12,
-  // not whatever's left after an 8-month fetch.
-  const NR_LOOKBACK_MONTHS = 13;
-  function lookbackStart() {
-    const d = new Date();
-    d.setMonth(d.getMonth() - NR_LOOKBACK_MONTHS);
-    d.setDate(1);
-    return d.toISOString().slice(0, 10);
-  }
-  function today() {
-    return new Date().toISOString().slice(0, 10);
-  }
-  function parseNR(raw) {
-    const n = parseFloat(raw);
-    return Number.isFinite(n) ? n : 0;
-  }
   // Chronological (oldest first) so trailing-N-month windows (Sales PA Algo)
-  // can just slice off the end — same fullHistory pattern as syncUtil's
-  // util_monthly_details. Koenig's own MonthlyRevenue keys ("Jul-2026") sort
-  // correctly via new Date(key) without needing separate parsing, and since
-  // Koenig only ever returns months from DOJ onward, "every month on file"
-  // already means "every month since joining" with no separate filtering.
+  // can just slice off the end.
   function fullHistory(monthlyRevenue) {
     return Object.entries(monthlyRevenue)
       .map(([month, raw]) => ({ month, nr: parseNR(raw) }))
-      .sort((a, b) => new Date(a.month) - new Date(b.month));
+      .sort((a, b) => monthIndex(a.month) - monthIndex(b.month));
   }
+  const nameTokens = (n) => String(n || '').toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(Boolean);
 
-  const nrRows = await getCCENRData(lookbackStart(), today());
-  const nrByEmpId = new Map(nrRows.map((r) => [r.empId, r]));
+  // The NR API returns a fixed 24-month window (May-2025 .. Apr-2027) for
+  // every CCE, zero-filled — including months before the person joined and
+  // months still to come. History is cut to [DOJ month .. current month]
+  // (so a trailing-12 average never counts pre-joining zeros, matching what
+  // the old per-range API returned) and months after the current one become
+  // the future-NR view.
+  const nrRows = await getEmployeeNr();
 
-  // Future NR (booked for months after the current one) - a separate call
-  // rather than widening the one above, so the current month's figure and
-  // nr_monthly_details stay exactly as before. Built from local date parts,
-  // not toISOString (which would shift a local midnight back a day in IST).
-  const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  const nowD = new Date();
-  const futureStart = new Date(nowD.getFullYear(), nowD.getMonth() + 1, 1);
-  const futureEnd = new Date(nowD.getFullYear(), nowD.getMonth() + 7, 0);
-  const futureRows = await getCCENRData(ymd(futureStart), ymd(futureEnd));
-  const futureByEmpId = new Map(futureRows.map((r) => [r.empId, r]));
+  const now = new Date();
+  const currentIdx = now.getFullYear() * 12 + now.getMonth();
   const futureMonthKeys = [];
-  for (let i = 1; i <= 6; i++) futureMonthKeys.push(monthKey(new Date(nowD.getFullYear(), nowD.getMonth() + i, 1)));
-  const salesEmployees = await db.execute("SELECT id FROM employees WHERE team = 'Sales'");
+  for (let i = 1; i <= 6; i++) futureMonthKeys.push(monthKey(new Date(now.getFullYear(), now.getMonth() + i, 1)));
+
+  const salesEmployees = await db.execute("SELECT id, name, doj FROM employees WHERE team = 'Sales'");
+
+  // Matching: by EmpId when the API supplies one; otherwise by name, which
+  // needs care (it carries a trailing "-" and nicknames like "Gourav Garg
+  // Gabe", and we have genuinely different people with near-identical names,
+  // e.g. Subham Saha / Shubham Saha). A name matches only when the employee's
+  // name tokens are an exact leading prefix of the API's, and only when that
+  // pairing is one-to-one — anything ambiguous is skipped, never guessed.
+  const hasEmpIds = nrRows.some((r) => r.empId != null);
+  const rowByEmpId = new Map(nrRows.filter((r) => r.empId != null).map((r) => [r.empId, r]));
+  const claims = new Map();
+  const candidatesFor = new Map();
+  if (!hasEmpIds) {
+    for (const row of salesEmployees.rows) {
+      const toks = nameTokens(row.name);
+      const cands = toks.length
+        ? nrRows.filter((r) => { const t = nameTokens(r.name); return t.length >= toks.length && toks.every((x, i) => t[i] === x); })
+        : [];
+      candidatesFor.set(row.id, cands);
+      for (const c of cands) claims.set(c, (claims.get(c) || 0) + 1);
+    }
+  }
 
   let updated = 0;
   let unmatched = 0;
+  let ambiguous = 0;
   for (const row of salesEmployees.rows) {
-    const empId = parseInt(row.id.replace('EMP', ''), 10);
-    const nr = nrByEmpId.get(empId);
+    let nr;
+    if (hasEmpIds) {
+      nr = rowByEmpId.get(parseInt(row.id.replace('EMP', ''), 10));
+    } else {
+      const cands = candidatesFor.get(row.id) || [];
+      if (cands.length > 1 || (cands.length === 1 && claims.get(cands[0]) > 1)) { ambiguous++; continue; }
+      nr = cands[0];
+    }
     if (!nr) { unmatched++; continue; }
 
-    const months = lastSixMonths(nr.monthlyRevenue);
-    const history = fullHistory(nr.monthlyRevenue);
-    const futureRev = futureByEmpId.get(empId)?.monthlyRevenue || {};
+    const dojIdx = dojMonthIndex(row.doj);
+    const monthlyRevenue = {};
+    const futureRev = {};
+    for (const [month, raw] of Object.entries(nr.monthlyRevenue)) {
+      const idx = monthIndex(month);
+      if (idx > currentIdx) futureRev[month] = raw;
+      else if (dojIdx == null || idx >= dojIdx) monthlyRevenue[month] = raw;
+    }
+    const months = lastSixMonths(monthlyRevenue);
+    const history = fullHistory(monthlyRevenue);
     const future = futureMonthKeys.map((month) => ({ month, nr: parseNR(futureRev[month]) }));
     await db.execute({
       sql: 'UPDATE employees SET metric1 = ?, metric2 = ?, metric3 = ?, metric4 = ?, metric5 = ?, metric6 = ?, nr_monthly_details = ?, nr_future_details = ? WHERE id = ?',
@@ -267,7 +293,7 @@ export async function syncPms() {
     updated++;
   }
 
-  return { message: `Synced NR for ${updated} Sales employees (${unmatched} unmatched).` };
+  return { message: `Synced NR for ${updated} Sales employees (${unmatched} not in the NR API${ambiguous ? `, ${ambiguous} skipped — ambiguous name match` : ''}).` };
 }
 
 export async function syncAudit() {
