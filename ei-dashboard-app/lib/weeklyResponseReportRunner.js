@@ -24,7 +24,7 @@ export async function sendWeeklyResponseReport() {
   const week = getIsoWeek(new Date());
 
   const employees = await db.execute(
-    "SELECT id, name, email, team, manager FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team') AND active = 1 ORDER BY team ASC, name ASC"
+    "SELECT id, name, email, team, manager, status AS pa_pip_status, tenure_days, rc_fully_booked_week, rc_fully_booked_sc_hours FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team') AND active = 1 ORDER BY team ASC, name ASC"
   );
   const responses = await db.execute({ sql: 'SELECT * FROM weekly_responses WHERE week = ?', args: [week] });
   const byEmp = new Map(responses.rows.map((r) => [r.employee_id, r]));
@@ -54,10 +54,19 @@ export async function sendWeeklyResponseReport() {
 
   let received = 0;
   const missed = [];
+  const skipped = [];
   for (const emp of employees.rows) {
     const r = byEmp.get(emp.id);
-    const status = !r ? 'Not sent' : r.state === 'Received' ? 'Received' : 'Pending';
+    // Trainers on 40+ SC hours this week are deliberately not sent a check-in
+    // (see excludeFullyBookedTrainers) — listed as SKIPPED, not "missed".
+    // Only trainers who'd otherwise have been sent one (NJ or PA/PIP) — other
+    // fully-booked trainers were never due a check-in.
+    const dueCheckIn = emp.tenure_days < 182 || ['PA Issued', 'PIP Issued'].includes(emp.pa_pip_status);
+    const fullyBooked = !r && dueCheckIn && emp.team === 'Trainer' && emp.rc_fully_booked_week === week
+      && (emp.rc_fully_booked_sc_hours || 0) >= 40;
+    const status = fullyBooked ? 'SKIPPED' : !r ? 'Not sent' : r.state === 'Received' ? 'Received' : 'Pending';
     if (status === 'Received') received++;
+    else if (status === 'SKIPPED') skipped.push(`${emp.name} (${emp.rc_fully_booked_sc_hours} SC hrs)`);
     else missed.push(emp.name);
 
     const row = sheet.addRow({
@@ -76,13 +85,16 @@ export async function sendWeeklyResponseReport() {
       aiReason: r?.ai_rating_reason || '—',
       shoddyMarked: r?.shoddy_marked_at ? 'Yes' : '—',
     });
-    if (status !== 'Received') {
+    if (status === 'SKIPPED') {
+      row.getCell('status').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3CD' } };
+      row.getCell('q1').value = `SKIPPED — ${emp.rc_fully_booked_sc_hours} SC hours this week (in a 40-hour batch)`;
+    } else if (status !== 'Received') {
       row.getCell('status').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8D7DA' } };
     }
   }
 
   const buffer = await workbook.xlsx.writeBuffer();
-  const total = employees.rows.length;
+  const total = employees.rows.length - skipped.length;
   const dateLabel = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 
   await sendMail({
@@ -93,6 +105,7 @@ export async function sendWeeklyResponseReport() {
         <p>Weekly NJ check-in status for ${week}, as of today.</p>
         <p><strong>${received}</strong> of <strong>${total}</strong> active NJs have responded.</p>
         ${missed.length ? `<p style="color:#B91C1C;font-weight:600;">Missed (${missed.length}): ${missed.join(', ')}</p>` : '<p>Everyone has responded so far.</p>'}
+        ${skipped.length ? `<p style="color:#92400E;font-weight:600;">SKIPPED (${skipped.length}) — 40+ SC hours this week, not sent a check-in: ${skipped.join(', ')}</p>` : ''}
         ${shoddyMarked.length ? `<p style="color:#B91C1C;font-weight:600;">Shoddy marked (${shoddyMarked.length}): ${shoddyMarked.join(', ')}</p>` : ''}
         ${shoddyFailed.length ? `<p style="color:#B91C1C;font-weight:600;">Shoddy marking FAILED for (${shoddyFailed.length}) — needs manual follow-up: ${shoddyFailed.join(', ')}</p>` : ''}
         <p>Full breakdown with questions/answers attached.</p>
@@ -104,5 +117,5 @@ export async function sendWeeklyResponseReport() {
     }],
   });
 
-  return { message: `Sent weekly response report for ${week}: ${received} of ${total} active NJs responded, ${missed.length} missed, ${shoddyMarked.length} shoddy marked${shoddyFailed.length ? `, ${shoddyFailed.length} shoddy marking FAILED` : ''}.` };
+  return { message: `Sent weekly response report for ${week}: ${received} of ${total} active NJs responded, ${missed.length} missed, ${skipped.length} skipped (40+ SC hours), ${shoddyMarked.length} shoddy marked${shoddyFailed.length ? `, ${shoddyFailed.length} shoddy marking FAILED` : ''}.` };
 }
