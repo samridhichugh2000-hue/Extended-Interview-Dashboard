@@ -35,10 +35,12 @@ async function getToken({ forceRefresh = false } = {}) {
   return tokenPromise;
 }
 
-// Trainer Exam Summary — per-employee, like the utilization feed. A bad or
-// blank EmpCode comes back as {Status: 0, Message: "Wrong EmpId"} rather
-// than an HTTP error, so that's treated as "no record" rather than thrown.
-export async function getExamSummary(empCode) {
+// Trainer Exam Details (with dates) — per-employee, one row per exam. An
+// unknown EmpCode comes back as statuscode 500 "Trainer record not found" / "Employee not active"
+// (not an HTTP error), treated as "no record" rather than thrown; a trainer
+// that exists but has taken no exams gets a normal 200 with an empty list.
+// Counts (total/pass/fail/not-updated) are derived from the rows' Result.
+export async function getExamDetails(empCode) {
   const call = async (token) => {
     const url = `${BASE_URL}/api/Kites/Operator/common?apikey=${process.env.KOENIG_EXAM_API_KEY}&accessToken=${encodeURIComponent(token.accessToken)}&deviceToken=${encodeURIComponent(token.deviceToken)}`;
     const res = await fetch(url, {
@@ -46,27 +48,41 @@ export async function getExamSummary(empCode) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ EmpCode: String(empCode) }),
     });
-    if (!res.ok) throw new Error(`Koenig Exam Summary common API failed: ${res.status} ${res.statusText}`);
+    if (!res.ok) throw new Error(`Koenig Exam Details common API failed: ${res.status} ${res.statusText}`);
     return res.json();
   };
 
   let token = await getToken();
   let json = await call(token);
 
-  if (json.statuscode !== 200) {
+  if (json.statuscode !== 200 && !/not (found|active)/i.test(json.message || '')) {
     token = await getToken({ forceRefresh: true });
     json = await call(token);
-    if (json.statuscode !== 200) throw new Error(`Koenig Exam Summary common API error: ${json.message}`);
+  }
+  if (json.statuscode !== 200) {
+    if (/not (found|active)/i.test(json.message || '')) return null;
+    throw new Error(`Koenig Exam Details common API error: ${json.message}`);
   }
 
   const rows = typeof json.content === 'string' ? JSON.parse(json.content) : json.content;
-  const row = rows && rows[0];
-  if (!row || row.Status !== 1) return null;
+  const exams = (rows || [])
+    .map((r) => ({
+      examId: r.ExamId,
+      certificationId: r.CertificationId,
+      examName: (r.ExamName || '').trim(),
+      result: r.Result || null,
+      scheduledOn: r.ExamScheduleDate || null,
+      createdOn: r.CreatedOn || null,
+      resultUpdatedOn: r.ResultUpdatedOn || null,
+    }))
+    .sort((a, b) => String(b.createdOn || '').localeCompare(String(a.createdOn || '')));
 
+  const count = (result) => exams.filter((e) => e.result === result).length;
   return {
-    totalExam: row.TotalExam ?? 0,
-    passCount: row.PassCount ?? 0,
-    failCount: row.FailCount ?? 0,
-    statusNotUpdated: row.StatusNotUpdated ?? 0,
+    totalExam: exams.length,
+    passCount: count('Pass'),
+    failCount: count('Fail'),
+    statusNotUpdated: count('Not Updated'),
+    exams,
   };
 }

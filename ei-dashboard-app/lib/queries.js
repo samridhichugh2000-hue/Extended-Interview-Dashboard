@@ -93,6 +93,7 @@ export async function getEmployees() {
       examFail: e.exam_fail,
       examTotal: e.exam_total,
       examNotUpdated: e.exam_not_updated,
+      examDetails: e.exam_details ? JSON.parse(e.exam_details) : [],
       negFeedback: e.neg_feedback,
       negFeedbackDetails: e.neg_feedback_details ? JSON.parse(e.neg_feedback_details) : [],
       assignmentsCount: e.assignments_count,

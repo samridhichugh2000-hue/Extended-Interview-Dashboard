@@ -1,4 +1,5 @@
-// Syncs the Trainer Exam Summary into employees.exam_pass/exam_fail,
+// Syncs Trainer Exam Details (per-exam rows with dates) into
+// employees.exam_pass/exam_fail/exam_total/exam_not_updated/exam_details,
 // Trainer team only. Per-employee API like utilization — one call per
 // Trainer, matched directly by EmpCode (no fuzzy name matching needed).
 import { createClient } from '@libsql/client';
@@ -9,7 +10,7 @@ import { config } from 'dotenv';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 config({ path: path.join(__dirname, '..', '.env.local') });
 
-const { getExamSummary } = await import('../lib/koenigExamApi.js');
+const { getExamDetails } = await import('../lib/koenigExamApi.js');
 
 const db = createClient({
   url: process.env.TURSO_DATABASE_URL,
@@ -39,12 +40,12 @@ let apiErrors = 0;
 await mapWithConcurrency(trainerEmployees.rows, CONCURRENCY, async (emp) => {
   const empCode = emp.id.replace('EMP', '');
   try {
-    const summary = await getExamSummary(empCode);
+    const summary = await getExamDetails(empCode);
     if (!summary) { unmatched++; return; }
 
     await db.execute({
-      sql: 'UPDATE employees SET exam_pass = ?, exam_fail = ?, exam_total = ?, exam_not_updated = ? WHERE id = ?',
-      args: [summary.passCount, summary.failCount, summary.totalExam, summary.statusNotUpdated, emp.id],
+      sql: 'UPDATE employees SET exam_pass = ?, exam_fail = ?, exam_total = ?, exam_not_updated = ?, exam_details = ? WHERE id = ?',
+      args: [summary.passCount, summary.failCount, summary.totalExam, summary.statusNotUpdated, JSON.stringify(summary.exams), emp.id],
     });
     updated++;
   } catch (err) {

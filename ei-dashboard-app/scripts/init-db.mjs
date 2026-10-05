@@ -50,6 +50,7 @@ for (const stmt of [
   'ALTER TABLE employees ADD COLUMN exam_fail INTEGER',
   'ALTER TABLE employees ADD COLUMN exam_total INTEGER',
   'ALTER TABLE employees ADD COLUMN exam_not_updated INTEGER',
+  'ALTER TABLE employees ADD COLUMN exam_details TEXT',
   'ALTER TABLE employees ADD COLUMN email TEXT',
   'ALTER TABLE employees ADD COLUMN neg_feedback INTEGER',
   'ALTER TABLE employees ADD COLUMN neg_feedback_details TEXT',

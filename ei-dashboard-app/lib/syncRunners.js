@@ -592,7 +592,7 @@ export async function syncUtil() {
 
 export async function syncExam() {
   const db = getDb();
-  const { getExamSummary } = await import('./koenigExamApi.js');
+  const { getExamDetails } = await import('./koenigExamApi.js');
 
   const trainerEmployees = await db.execute("SELECT id FROM employees WHERE team = 'Trainer'");
 
@@ -601,12 +601,12 @@ export async function syncExam() {
   let unmatched = 0;
   await mapWithConcurrency(trainerEmployees.rows, SYNC_CONCURRENCY, async (emp) => {
     const empCode = emp.id.replace('EMP', '');
-    const summary = await getExamSummary(empCode);
+    const summary = await getExamDetails(empCode);
     if (!summary) { unmatched++; return; }
 
     statements.push({
-      sql: 'UPDATE employees SET exam_pass = ?, exam_fail = ?, exam_total = ?, exam_not_updated = ? WHERE id = ?',
-      args: [summary.passCount, summary.failCount, summary.totalExam, summary.statusNotUpdated, emp.id],
+      sql: 'UPDATE employees SET exam_pass = ?, exam_fail = ?, exam_total = ?, exam_not_updated = ?, exam_details = ? WHERE id = ?',
+      args: [summary.passCount, summary.failCount, summary.totalExam, summary.statusNotUpdated, JSON.stringify(summary.exams), emp.id],
     });
     updated++;
   });

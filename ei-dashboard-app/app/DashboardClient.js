@@ -990,24 +990,23 @@ function TechCallsConvertedModal({ emp, onClose }) {
 function PollsModal({ emp, onClose }) {
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 440, border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
-        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — polls</div>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 440, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — polls</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>{emp.pollsParticipated} {emp.pollsParticipated === 1 ? 'poll' : 'polls'} participated</div>
+          </div>
           <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
         </div>
-        <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 12, padding: '18px 20px', textAlign: 'center' }}>
-            <div className="disp" style={{ fontSize: 34, fontWeight: 600, color: '#5EEAD4' }}>{emp.pollsParticipated}</div>
-            <div style={{ fontSize: 11.5, color: '#A8AEC4', marginTop: 4 }}>Polls participated</div>
-          </div>
+        <div style={{ padding: '8px 24px 20px' }}>
           {emp.pollsDetails.map((p) => (
-            <div key={p.pollId} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#C7CBDA', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: 10 }}>
-              <span>{p.topic}{p.department && <span style={{ display: 'block', fontSize: 11, color: '#6E7488', marginTop: 2 }}>{p.department}</span>}</span>
-              <span style={{ flex: 'none', fontSize: 12, color: '#8A90A8' }}>{p.submittedAt ? new Date(p.submittedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '—'}</span>
+            <div key={p.pollId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 12.5 }}>
+              <span style={{ color: '#C7CBDA' }}>{p.topic}{p.department && <span style={{ display: 'block', fontSize: 10.5, color: '#6E7488', marginTop: 2 }}>{p.department}</span>}</span>
+              <span style={{ flex: 'none', fontSize: 11, color: '#8A90A8' }}>{p.submittedAt ? new Date(p.submittedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '—'}</span>
             </div>
           ))}
           {!emp.pollsDetails.length && emp.pollsParticipated > 0 && (
-            <div style={{ fontSize: 12, color: '#6E7488' }}>Per-poll details will appear after the next polls sync.</div>
+            <div style={{ fontSize: 12, color: '#6E7488', paddingTop: 12 }}>Per-poll details will appear after the next polls sync.</div>
           )}
         </div>
       </div>
@@ -1210,26 +1209,38 @@ function ShoddyModal({ emp, onClose }) {
 }
 
 function ExamSummaryModal({ emp, onClose }) {
-  const stats = [
-    { label: 'Total Exams', value: emp.examTotal ?? emp.examPass + emp.examFail, color: '#A5A7FA' },
-    { label: 'Passed', value: emp.examPass, color: '#5EEAD4' },
-    { label: 'Failed', value: emp.examFail, color: '#F87171' },
-    { label: 'Not Updated', value: emp.examNotUpdated ?? 0, color: '#F59E0B' },
-  ];
+  const fmt = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : null);
+  const resultColor = (r) => (r === 'Pass' ? '#5EEAD4' : r === 'Fail' ? '#F87171' : '#F59E0B');
+  const total = emp.examTotal ?? emp.examPass + emp.examFail;
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 440, border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
-        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — exam summary</div>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 600, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — exams</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>
+              {total} total · {emp.examPass} passed · {emp.examFail} failed · {emp.examNotUpdated ?? 0} not updated
+            </div>
+          </div>
           <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
         </div>
-        <div style={{ padding: 24, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          {stats.map((s) => (
-            <div key={s.label} style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 12, padding: '14px 16px' }}>
-              <div className="disp" style={{ fontSize: 26, fontWeight: 600, color: s.color, letterSpacing: '-0.02em' }}>{s.value}</div>
-              <div style={{ fontSize: 11.5, color: '#A8AEC4', marginTop: 4 }}>{s.label}</div>
+        <div style={{ padding: '8px 24px 20px' }}>
+          {emp.examDetails.map((x, i) => (
+            <div key={x.certificationId ?? i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 12.5 }}>
+              <div style={{ color: '#C7CBDA' }}>
+                {x.examName}
+                <div style={{ fontSize: 10.5, color: '#6E7488', marginTop: 3 }}>
+                  {[x.createdOn && `Added ${fmt(x.createdOn)}`, x.scheduledOn && `Scheduled ${fmt(x.scheduledOn)}`, x.resultUpdatedOn && `Result on ${fmt(x.resultUpdatedOn)}`].filter(Boolean).join(' · ') || '—'}
+                </div>
+              </div>
+              <span style={{ flex: 'none', fontSize: 10.5, color: resultColor(x.result), border: `1px solid ${resultColor(x.result)}55`, borderRadius: 6, padding: '3px 7px' }}>{x.result || '—'}</span>
             </div>
           ))}
+          {!emp.examDetails.length && (
+            <div style={{ fontSize: 12, color: '#6E7488', paddingTop: 12 }}>
+              {total > 0 ? 'Per-exam details will appear after the next exam sync.' : 'No exam records on file.'}
+            </div>
+          )}
         </div>
       </div>
     </div>
