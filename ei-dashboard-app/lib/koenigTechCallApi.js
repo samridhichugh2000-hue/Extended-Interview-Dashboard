@@ -35,19 +35,23 @@ async function getToken({ forceRefresh = false } = {}) {
   return tokenPromise;
 }
 
-// Get Tech Call Data for CSM — per-employee, matched by EmpId *and* CSMName
-// together (leaving CSMName blank always returns the API's own "No matching
-// record found" placeholder, even for a valid EmpId — confirmed against a
-// known-good EmpId/CSMName pair from Koenig's own API docs). Returns a single
-// summary row per employee — {CSM, EmpId, "Tech Call", Converted} — not a
-// per-call list.
+// Get Tech Call Data for CSM (Type 1) — per-employee, matched by EmpId *and*
+// CSMName together (a blank CSMName always returns the API's "No matching
+// record found" placeholder, even for a valid EmpId). Type: 1 (capital T) is
+// required — without it the API returns an empty list. Returns one row per
+// tech call: {CSM, EmpId, TechcallId, "Techcall CreatedDate", "Techcall
+// StartDate", "Conversion Date"}. Conversion Date is null until the call is
+// converted. Dates are reduced to plain YYYY-MM-DD (IST, as Koenig sends them)
+// — the time of day isn't wanted anywhere in the UI.
+const dateOnly = (v) => (v ? String(v).slice(0, 10) : null);
+
 export async function getTechCalls(empCode, csmName) {
   const call = async (token) => {
     const url = `${BASE_URL}/api/Kites/Operator/common?apikey=${process.env.KOENIG_TECHCALL_API_KEY}&accessToken=${encodeURIComponent(token.accessToken)}&deviceToken=${encodeURIComponent(token.deviceToken)}`;
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ EmpId: String(empCode), CSMName: csmName || '' }),
+      body: JSON.stringify({ EmpId: String(empCode), CSMName: csmName || '', Type: 1 }),
     });
     if (!res.ok) throw new Error(`Koenig Tech Call common API failed: ${res.status} ${res.statusText}`);
     return res.json();
@@ -66,6 +70,14 @@ export async function getTechCalls(empCode, csmName) {
   if (!rows || !rows.length) return null;
   if (rows[0].Message) return null; // "No matching record found" placeholder — no name match
 
-  const row = rows[0];
-  return { techCalls: row['Tech Call'] ?? 0, converted: row.Converted ?? 0, raw: row };
+  const calls = rows
+    .map((r) => ({
+      techcallId: r.TechcallId,
+      createdOn: dateOnly(r['Techcall CreatedDate']),
+      startDate: dateOnly(r['Techcall StartDate']),
+      conversionDate: dateOnly(r['Conversion Date']),
+    }))
+    .sort((a, b) => String(b.createdOn || '').localeCompare(String(a.createdOn || '')));
+
+  return { techCalls: calls.length, converted: calls.filter((c) => c.conversionDate).length, calls };
 }

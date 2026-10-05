@@ -933,28 +933,39 @@ function ScListModal({ emp, onClose }) {
 // data), so each record renders as a generic key/value dump instead of
 // named columns — whatever shape real data has will still display.
 function TechCallsModal({ emp, onClose }) {
+  // Dates arrive as plain YYYY-MM-DD strings — formatted from the parts so the
+  // viewer's timezone can't shift the day.
+  const fmt = (d) => {
+    if (!d) return null;
+    const [y, m, day] = d.split('-');
+    return `${day} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m) - 1]} ${y}`;
+  };
+  const converted = emp.techCallsDetails.filter((c) => c.conversionDate).length;
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 560, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
-        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 600, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — tech calls</div>
-            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>{emp.techCallsCount} tech {emp.techCallsCount === 1 ? 'call' : 'calls'} attended</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>{emp.techCallsCount} tech {emp.techCallsCount === 1 ? 'call' : 'calls'} · {converted} converted</div>
           </div>
           <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
         </div>
-        <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {emp.techCallsDetails.map((call, i) => (
-            <div key={i} style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {Object.entries(call).map(([k, v]) => (
-                <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 12.5 }}>
-                  <span style={{ color: '#8A90A8' }}>{k}</span>
-                  <span style={{ color: '#C7CBDA', textAlign: 'right' }}>{v === null || v === undefined || v === '' ? '—' : String(v)}</span>
+        <div style={{ padding: '8px 24px 20px' }}>
+          {emp.techCallsDetails.map((c, i) => (
+            <div key={c.techcallId ?? i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 12.5 }}>
+              <div style={{ color: '#C7CBDA' }}>
+                Call #{c.techcallId}
+                <div style={{ fontSize: 10.5, color: '#6E7488', marginTop: 3 }}>
+                  {[c.createdOn && `Created ${fmt(c.createdOn)}`, c.startDate && `Start ${fmt(c.startDate)}`].filter(Boolean).join(' · ') || '—'}
                 </div>
-              ))}
+              </div>
+              <span style={{ flex: 'none', fontSize: 10.5, color: c.conversionDate ? '#5EEAD4' : '#8A90A8', border: `1px solid ${c.conversionDate ? '#5EEAD455' : 'rgba(255,255,255,0.14)'}`, borderRadius: 6, padding: '3px 7px' }}>
+                {c.conversionDate ? `Converted ${fmt(c.conversionDate)}` : 'Not converted'}
+              </span>
             </div>
           ))}
-          {!emp.techCallsDetails.length && <div style={{ fontSize: 12.5, color: '#6E7488' }}>No tech call records on file.</div>}
+          {!emp.techCallsDetails.length && <div style={{ fontSize: 12.5, color: '#6E7488', paddingTop: 12 }}>No tech call records on file.</div>}
         </div>
       </div>
     </div>

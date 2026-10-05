@@ -852,7 +852,7 @@ export async function syncTechCalls() {
 
     await db.execute({
       sql: 'UPDATE employees SET tech_calls_count = ?, tech_calls_details = ? WHERE id = ?',
-      args: [result ? result.techCalls : 0, JSON.stringify(result ? [result.raw] : []), emp.id],
+      args: [result ? result.techCalls : 0, JSON.stringify(result ? result.calls : []), emp.id],
     });
     if (result) updated++; else unmatched++;
   }
