@@ -113,6 +113,7 @@ export async function getEmployees() {
       shoddyPosCount: e.shoddy_pos_count,
       shoddyPosDetails: e.shoddy_pos_details ? JSON.parse(e.shoddy_pos_details) : [],
       pollsParticipated: e.polls_participated,
+      pollsDetails: e.polls_details ? JSON.parse(e.polls_details) : [],
       kgtCount: e.kgt_count,
       kgtDetails: e.kgt_details ? JSON.parse(e.kgt_details) : [],
       mgrFeedbackCount: e.mgr_feedback_count,

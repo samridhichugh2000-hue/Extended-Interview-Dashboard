@@ -985,9 +985,8 @@ function TechCallsConvertedModal({ emp, onClose }) {
   );
 }
 
-// The polls dashboard only reports a total participation count — no
-// per-poll date or topic list is available to show, same as converted tech
-// calls.
+// Polls feed returns a per-poll list (topic, department, submitted date)
+// alongside the total count.
 function PollsModal({ emp, onClose }) {
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
@@ -1001,9 +1000,15 @@ function PollsModal({ emp, onClose }) {
             <div className="disp" style={{ fontSize: 34, fontWeight: 600, color: '#5EEAD4' }}>{emp.pollsParticipated}</div>
             <div style={{ fontSize: 11.5, color: '#A8AEC4', marginTop: 4 }}>Polls participated</div>
           </div>
-          <div style={{ fontSize: 12, color: '#6E7488', lineHeight: 1.5 }}>
-            The polls dashboard only reports a total participation count for this feed — no per-poll date or topic is available to show.
-          </div>
+          {emp.pollsDetails.map((p) => (
+            <div key={p.pollId} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#C7CBDA', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: 10 }}>
+              <span>{p.topic}{p.department && <span style={{ display: 'block', fontSize: 11, color: '#6E7488', marginTop: 2 }}>{p.department}</span>}</span>
+              <span style={{ flex: 'none', fontSize: 12, color: '#8A90A8' }}>{p.submittedAt ? new Date(p.submittedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '—'}</span>
+            </div>
+          ))}
+          {!emp.pollsDetails.length && emp.pollsParticipated > 0 && (
+            <div style={{ fontSize: 12, color: '#6E7488' }}>Per-poll details will appear after the next polls sync.</div>
+          )}
         </div>
       </div>
     </div>

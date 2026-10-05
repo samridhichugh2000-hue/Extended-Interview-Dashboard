@@ -13,5 +13,9 @@ export async function getPollsParticipation(email) {
   if (!res.ok) throw new Error(`Polls participation API failed: ${res.status} ${res.statusText}`);
 
   const json = await res.json();
-  return { participated: json.polls_participated ?? 0 };
+  // Per-poll list (topic, department, submitted_at) — newest first.
+  const polls = (json.polls || [])
+    .map((p) => ({ pollId: p.poll_id, topic: (p.topic || '').trim(), department: p.department || null, submittedAt: p.submitted_at || null }))
+    .sort((a, b) => String(b.submittedAt || '').localeCompare(String(a.submittedAt || '')));
+  return { participated: json.polls_participated ?? 0, polls };
 }

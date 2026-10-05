@@ -998,7 +998,7 @@ export async function syncPolls() {
     const result = await getPollsParticipation(emp.email);
     if (!result) { unmatched++; continue; }
 
-    statements.push({ sql: 'UPDATE employees SET polls_participated = ? WHERE id = ?', args: [result.participated, emp.id] });
+    statements.push({ sql: 'UPDATE employees SET polls_participated = ?, polls_details = ? WHERE id = ?', args: [result.participated, JSON.stringify(result.polls), emp.id] });
     updated++;
   }
 
