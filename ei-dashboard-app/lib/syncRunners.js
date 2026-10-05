@@ -285,7 +285,12 @@ export async function syncPms() {
     }
     const months = lastSixMonths(monthlyRevenue);
     const history = fullHistory(monthlyRevenue);
-    const future = futureMonthKeys.map((month) => ({ month, nr: parseNR(futureRev[month]) }));
+    // Next 6 months at most — and only months the API actually returns: its
+    // columns end at a fixed month, so past that point a month is dropped
+    // rather than shown as a made-up ₹0.
+    const future = futureMonthKeys
+      .filter((month) => futureRev[month] !== undefined)
+      .map((month) => ({ month, nr: parseNR(futureRev[month]) }));
     await db.execute({
       sql: 'UPDATE employees SET metric1 = ?, metric2 = ?, metric3 = ?, metric4 = ?, metric5 = ?, metric6 = ?, nr_monthly_details = ?, nr_future_details = ? WHERE id = ?',
       args: [...months, JSON.stringify(history), JSON.stringify(future), row.id],
