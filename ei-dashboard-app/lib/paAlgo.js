@@ -1,3 +1,4 @@
+import { NON_SC_UTIL_CAP } from './utilization.js';
 // Trainer PA Algo — flags Trainers whose delivery numbers (assignments/
 // utilization) fall below the bar expected for their salary tier and
 // tenure. This is a *proposed* flag, separate from the real PA/PIP records
@@ -81,9 +82,14 @@ function utilCheck(days, threshold) {
     const window = (e.utilMonthlyDetails || []).slice(-monthCount);
     const u = trailingUtilization(e.utilMonthlyDetails, days);
     const evidence = {
-      label: `Utilization — trailing ${days} days`,
-      columns: ['Month', 'Utilization'],
-      rows: window.map((m) => [m.month, m.util != null ? `${m.util}%` : '—']),
+      label: `Utilization (SC + Non-SC, Non-SC capped at ${NON_SC_UTIL_CAP}%) — trailing ${days} days`,
+      columns: ['Month', 'SC', 'Non-SC (capped)', 'Utilization'],
+      rows: window.map((m) => [
+        m.month,
+        m.scUtil != null ? `${m.scUtil}%` : '—',
+        m.nonScUtil != null ? `${m.nonScUtil}%` : '—',
+        m.util != null ? `${m.util}%` : '—',
+      ]),
       summary: u != null ? `Average ${u.toFixed(1)}% (threshold ${threshold}%)` : 'No utilization data synced yet',
     };
     return { status: u == null ? 'no-data' : u < threshold ? 'fired' : 'clear', evidence };
@@ -292,16 +298,35 @@ export const SALES_REGIONS = {
 // syncTargetsData (server, picks this quarter's CSM target row) and
 // DashboardClient.js's quarterTargetLabel (client, sums this quarter's NR
 // against it) so both sides agree on what "current quarter" means.
-export function currentQuarter(date = new Date()) {
-  return { name: `Q${Math.floor(date.getMonth() / 3) + 1}`, year: date.getFullYear() };
+//
+// TARGET_QUARTER_OVERRIDE pins the quarter the target section works against.
+// Koenig's targets feed has no Q4 2026 rows yet (the API is being updated to
+// pass them), so for now the section stays on Q3 2026 — its target against
+// Jul-Sep 2026 NR — instead of showing Q4's NR against a Q3 target or going
+// blank. Set to null once Q4 targets are flowing to follow the calendar again.
+export const TARGET_QUARTER_OVERRIDE = { name: 'Q3', year: 2026 };
+
+export function currentQuarter(date) {
+  if (!date && TARGET_QUARTER_OVERRIDE) return { ...TARGET_QUARTER_OVERRIDE };
+  const d = date || new Date();
+  return { name: `Q${Math.floor(d.getMonth() / 3) + 1}`, year: d.getFullYear() };
 }
 
 // The 3 nr_monthly_details month keys ("Jul-2026" style, see syncPms's
-// monthKey in lib/syncRunners.js) making up the current calendar quarter.
-export function currentQuarterMonthKeys(date = new Date()) {
-  const startMonth = Math.floor(date.getMonth() / 3) * 3;
+// monthKey in lib/syncRunners.js) making up that quarter.
+export function currentQuarterMonthKeys(date) {
+  let startMonth;
+  let year;
+  if (!date && TARGET_QUARTER_OVERRIDE) {
+    startMonth = (Number(TARGET_QUARTER_OVERRIDE.name.slice(1)) - 1) * 3;
+    year = TARGET_QUARTER_OVERRIDE.year;
+  } else {
+    const d = date || new Date();
+    startMonth = Math.floor(d.getMonth() / 3) * 3;
+    year = d.getFullYear();
+  }
   return [0, 1, 2].map((i) => {
-    const d = new Date(date.getFullYear(), startMonth + i, 1);
+    const d = new Date(year, startMonth + i, 1);
     return `${d.toLocaleString('en-US', { month: 'short' })}-${d.getFullYear()}`;
   });
 }

@@ -1,74 +1,17 @@
-// Syncs Trainer month-wise utilization from the Koenig API into
-// employees.metric1..metric6 — the trailing six calendar months of
-// utilization % ending with the current month. Unlike the Sales NR feed,
-// this API is per-employee (no bulk endpoint), so it's one call per Trainer.
+// Syncs Trainer utilization into employees.metric1..metric6 (trailing six
+// calendar months of utilization %) and util_monthly_details (13 months with
+// the SC / Non-SC hours and the resulting utilization).
 //
-// Also stores the full raw month history (util_monthly_details) — the API
-// returns ~14 months per employee, more than the 6 display months kept in
-// metric1-6 — so the Trainer PA Algo's 180/270/360-day trailing-utilization
-// windows (approximated as 6/9/12 trailing calendar months) have enough
-// history to compute from.
-import { createClient } from '@libsql/client';
-import { fileURLToPath } from 'url';
-import path from 'path';
+// Utilization = SC util + Non-SC util capped at 15% — see lib/utilization.js.
+// Source: Koenig's "Trainer Utilization Hours SC / NonSC" API, one call per
+// trainer per month. Thin wrapper over syncUtil in lib/syncRunners.js so the
+// Windows task and the Vercel route run the same code.
 import { config } from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 config({ path: path.join(__dirname, '..', '.env.local') });
 
-const { getMonthlyUtilization } = await import('../lib/koenigUtilApi.js');
-
-const db = createClient({
-  url: process.env.TURSO_DATABASE_URL,
-  authToken: process.env.TURSO_AUTH_TOKEN,
-});
-
-function monthKey(date) {
-  const mon = date.toLocaleString('en-US', { month: 'short' });
-  return `${mon} ${date.getFullYear()}`;
-}
-
-// Chronological (oldest first) so trailing-N-month windows can just slice
-// off the end. `month` parses fine with `new Date('MMM YYYY')`.
-function fullHistory(months) {
-  return Object.entries(months)
-    .map(([month, rec]) => ({ month, hours: rec.hours, util: rec.util }))
-    .sort((a, b) => new Date(a.month) - new Date(b.month));
-}
-
-// Trailing 6 calendar months ending with the current one — was "first 6
-// months since DOJ", which left this permanently blank for veterans (the
-// API's own ~14-month history window rarely reaches back to a multi-year
-// employee's actual joining month). M1 is still the oldest of the 6, M6
-// the most recent, matching the six metric columns Sales already uses.
-function lastSixMonths(months) {
-  const now = new Date();
-  const out = [];
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const rec = months[monthKey(d)];
-    out.push(rec && rec.util !== null ? `${rec.util}%` : '—');
-  }
-  return out;
-}
-
-const trainerEmployees = await db.execute("SELECT id, tenure_days FROM employees WHERE team = 'Trainer'");
-
-let updated = 0;
-let unmatched = 0;
-for (const emp of trainerEmployees.rows) {
-  const empCode = emp.id.replace('EMP', '');
-  const data = await getMonthlyUtilization(empCode);
-  if (!data) { unmatched++; continue; }
-
-  const values = lastSixMonths(data.months);
-  await db.execute({
-    sql: 'UPDATE employees SET metric1 = ?, metric2 = ?, metric3 = ?, metric4 = ?, metric5 = ?, metric6 = ?, util_monthly_details = ? WHERE id = ?',
-    args: [...values, JSON.stringify(fullHistory(data.months)), emp.id],
-  });
-  updated++;
-}
-
-console.log(`Synced utilization for ${updated} Trainer employees (${unmatched} had no matching record).`);
-const check = await db.execute("SELECT id, name, metric1, metric2, metric3, metric4, metric5, metric6 FROM employees WHERE team = 'Trainer' ORDER BY tenure_days DESC");
-for (const r of check.rows) console.log(' ', r.id, r.name, r.metric1, r.metric2, r.metric3, r.metric4, r.metric5, r.metric6);
+const { syncUtil } = await import('../lib/syncRunners.js');
+console.log((await syncUtil()).message);

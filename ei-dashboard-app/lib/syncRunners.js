@@ -298,7 +298,46 @@ export async function syncPms() {
     updated++;
   }
 
-  return { message: `Synced NR for ${updated} Sales employees (${unmatched} not in the NR API${ambiguous ? `, ${ambiguous} skipped — ambiguous name match` : ''}).` };
+  // Team NR — for managers. Every NR row carries its CCE's Manager, so a
+  // manager's team is the rows whose Manager is that person (direct reports
+  // only). Stored as a monthly series (months up to the current one) for the
+  // manager-level (ASM) quarter target, which is crore-scale and set against
+  // the manager's own NR *plus* their team's. Names are matched exactly
+  // (normalized, one employee per name); anyone who manages nobody gets null.
+  const normName = (n) => nameTokens(n).join(' ');
+  const rowsByManager = new Map();
+  for (const r of nrRows) {
+    const k = normName(r.manager);
+    if (!k) continue;
+    if (!rowsByManager.has(k)) rowsByManager.set(k, []);
+    rowsByManager.get(k).push(r);
+  }
+  const nameCounts = new Map();
+  for (const row of salesEmployees.rows) nameCounts.set(normName(row.name), (nameCounts.get(normName(row.name)) || 0) + 1);
+  const teamStatements = [];
+  let managers = 0;
+  for (const row of salesEmployees.rows) {
+    const k = normName(row.name);
+    const team = nameCounts.get(k) === 1 ? rowsByManager.get(k) : null;
+    let details = null;
+    if (team?.length) {
+      const totals = new Map();
+      for (const r of team) {
+        for (const [month, raw] of Object.entries(r.monthlyRevenue)) {
+          if (monthIndex(month) > currentIdx) continue;
+          totals.set(month, (totals.get(month) || 0) + parseNR(raw));
+        }
+      }
+      details = [...totals.entries()]
+        .map(([month, nr]) => ({ month, nr: Math.round(nr * 100) / 100, members: team.length }))
+        .sort((a, b) => monthIndex(a.month) - monthIndex(b.month));
+      managers++;
+    }
+    teamStatements.push({ sql: 'UPDATE employees SET team_nr_details = ? WHERE id = ?', args: [details ? JSON.stringify(details) : null, row.id] });
+  }
+  if (teamStatements.length) await db.batch(teamStatements, 'write');
+
+  return { message: `Synced NR for ${updated} Sales employees (${unmatched} not in the NR API${ambiguous ? `, ${ambiguous} skipped — ambiguous name match` : ''}); team NR for ${managers} managers.` };
 }
 
 export async function syncAudit() {
@@ -494,14 +533,18 @@ export async function syncTargetsData() {
 
   const rows = await getTargetsData();
   const byEmpId = new Map();
-  // Individual rupee targets come as type 'CSM' - and as 'CM' for a few
-  // Sales reps (e.g. Umar Farooq), whose target was silently dropped when
-  // only 'CSM' was kept. A CSM row wins if someone has both. 'ASM' (managers,
-  // crore-scale) and 'DM' (Trainers, unit counts) are deliberately left out.
+  // Rupee targets come as type 'CSM' - and as 'CM' for a few Sales reps (e.g.
+  // Umar Farooq), whose target was silently dropped when only 'CSM' was kept.
+  // Sales managers (Dinesh Jha, Kunal Singh, Neha Shah, ...) carry theirs as
+  // 'ASM' (crore-scale) — it's their own target, so it's used too, but only
+  // when they have no CSM/CM row for the quarter. Priority: CSM > CM > ASM.
+  // 'DM' (Trainers, unit counts) is deliberately left out.
+  const RANK = { CSM: 3, CM: 2, ASM: 1 };
   for (const r of rows) {
-    if (r.type !== 'CSM' && r.type !== 'CM') continue;
+    if (!RANK[r.type]) continue;
     if (r.targetName !== qName || Number(r.targetYear) !== qYear) continue;
-    if (r.type === 'CM' && byEmpId.get(r.empId)?.type === 'CSM') continue;
+    const have = byEmpId.get(r.empId);
+    if (have && RANK[have.type] >= RANK[r.type]) continue;
     byEmpId.set(r.empId, r);
   }
 
@@ -516,8 +559,8 @@ export async function syncTargetsData() {
     if (!target) { unmatched++; continue; }
 
     statements.push({
-      sql: 'UPDATE employees SET quarter_target_amount = ?, quarter_target_name = ?, quarter_target_year = ? WHERE id = ?',
-      args: [target.target, target.targetName, String(target.targetYear), emp.id],
+      sql: 'UPDATE employees SET quarter_target_amount = ?, quarter_target_name = ?, quarter_target_year = ?, quarter_target_type = ? WHERE id = ?',
+      args: [target.target, target.targetName, String(target.targetYear), target.type, emp.id],
     });
     updated++;
   }
@@ -568,57 +611,99 @@ export async function syncPipeline() {
   return { message: `Synced Sales Pipeline for ${updated} CSMs (${notFound} not found on the pipeline system, ${apiErrors} API errors, ${noEmail} had no email on file).` };
 }
 
-export async function syncUtil() {
+// `onlyIds` (optional array of employee ids) re-runs just those trainers — used
+// to retry the few whose months timed out on a full run.
+export async function syncUtil({ onlyIds } = {}) {
   const db = getDb();
-  const { getMonthlyUtilization } = await import('./koenigUtilApi.js');
+  const { getMonthlyScHours } = await import('./koenigUtilScApi.js');
+  const { computeUtilization } = await import('./utilization.js');
 
-  function monthKey(date) {
-    const mon = date.toLocaleString('en-US', { month: 'short' });
-    return `${mon} ${date.getFullYear()}`;
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const monthKey = (year, m) => `${MONTHS[m]} ${year}`;
+  // employees.doj is a display string like "19 May 25" / "07 Sept 26" — only
+  // the month and year matter (months before joining are not fetched).
+  function dojMonthIndex(doj) {
+    const m = /^\d{1,2}\s+([A-Za-z]{3})[A-Za-z]*\s+(\d{2,4})$/.exec(String(doj || '').trim());
+    if (!m) return null;
+    const mon = MONTHS.findIndex((x) => x.toLowerCase() === m[1].toLowerCase());
+    if (mon < 0) return null;
+    const year = Number(m[2]) < 100 ? 2000 + Number(m[2]) : Number(m[2]);
+    return year * 12 + mon;
   }
-  // Trailing 6 calendar months ending with the current one — was "first 6
-  // months since joining" (relative to tenure_days), which left this
-  // permanently blank for veterans (the API's own ~14-month history window
-  // rarely reaches back to a multi-year employee's actual joining month).
-  // M1 is still the oldest of the 6, M6 the most recent.
-  function lastSixMonths(months) {
+  // Trailing 6 calendar months ending with the current one (the 6 shown on the
+  // Trainer table). M1 is the oldest, M6 the most recent.
+  function lastSixMonths(byMonth) {
     const now = new Date();
     const out = [];
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const rec = months[monthKey(d)];
-      out.push(rec && rec.util !== null ? `${rec.util}%` : '—');
+      const rec = byMonth.get(monthKey(d.getFullYear(), d.getMonth()));
+      out.push(rec ? `${Math.round(rec.util)}%` : '—');
     }
     return out;
   }
 
-  // Chronological (oldest first) so trailing-N-month windows (Trainer PA
-  // Algo) can just slice off the end — the API's ~14-month history is more
-  // than the 6 display months kept in metric1-6.
-  function fullHistory(months) {
-    return Object.entries(months)
-      .map(([month, rec]) => ({ month, hours: rec.hours, util: rec.util }))
-      .sort((a, b) => new Date(a.month) - new Date(b.month));
+  // The PA Algo's longest window is 360 days (12 months) — fetch the trailing
+  // 12 completed months plus the current one, trimmed to the DOJ month (a
+  // month before someone joined is "not employed", not 0% utilization).
+  const HISTORY_MONTHS = 13;
+  const now = new Date();
+  const currentIdx = now.getFullYear() * 12 + now.getMonth();
+  const startIdx = currentIdx - (HISTORY_MONTHS - 1);
+
+  const allTrainers = await db.execute("SELECT id, doj FROM employees WHERE team = 'Trainer'");
+  const trainers = { rows: onlyIds ? allTrainers.rows.filter((t) => onlyIds.includes(t.id)) : allTrainers.rows };
+
+  // One call per (trainer, month) — flat task list over the shared concurrency
+  // pool rather than a nested loop, so slow trainers don't hold up the rest.
+  const tasks = [];
+  for (const t of trainers.rows) {
+    const from = Math.max(startIdx, dojMonthIndex(t.doj) ?? startIdx);
+    for (let idx = from; idx <= currentIdx; idx++) tasks.push({ id: t.id, idx });
   }
+  const byTrainer = new Map();
+  const failed = new Set();
+  // 8 in flight, not the usual 20: this feed's calls are heavy on Koenig's
+  // side (~1.5s each) and 20 at once made them time out server-side.
+  await mapWithConcurrency(tasks, 8, async ({ id, idx }) => {
+    try {
+      const year = Math.floor(idx / 12);
+      const m = idx % 12;
+      const hrs = await getMonthlyScHours(id.replace('EMP', ''), year, m);
+      if (!byTrainer.has(id)) byTrainer.set(id, new Map());
+      byTrainer.get(id).set(monthKey(year, m), {
+        month: monthKey(year, m),
+        idx,
+        scHours: hrs.scHours,
+        nonScHours: hrs.nonScHours,
+        hours: hrs.totalHours,
+        ...computeUtilization(hrs.scHours, hrs.nonScHours),
+      });
+    } catch (err) {
+      console.error(`Utilization SC/NonSC failed for ${id} (${idx}):`, err.message);
+      failed.add(id);
+    }
+  });
 
-  const trainerEmployees = await db.execute("SELECT id, tenure_days FROM employees WHERE team = 'Trainer'");
-
+  // A trainer with any failed month keeps its previous data rather than being
+  // overwritten with a partial history.
+  const statements = [];
   let updated = 0;
-  let unmatched = 0;
-  for (const emp of trainerEmployees.rows) {
-    const empCode = emp.id.replace('EMP', '');
-    const data = await getMonthlyUtilization(empCode);
-    if (!data) { unmatched++; continue; }
-
-    const values = lastSixMonths(data.months);
-    await db.execute({
+  for (const t of trainers.rows) {
+    const byMonth = byTrainer.get(t.id);
+    if (!byMonth || failed.has(t.id)) continue;
+    const history = [...byMonth.values()]
+      .sort((a, b) => a.idx - b.idx)
+      .map(({ idx, ...rest }) => rest);
+    statements.push({
       sql: 'UPDATE employees SET metric1 = ?, metric2 = ?, metric3 = ?, metric4 = ?, metric5 = ?, metric6 = ?, util_monthly_details = ? WHERE id = ?',
-      args: [...values, JSON.stringify(fullHistory(data.months)), emp.id],
+      args: [...lastSixMonths(byMonth), JSON.stringify(history), t.id],
     });
     updated++;
   }
+  if (statements.length) await db.batch(statements, 'write');
 
-  return { message: `Synced utilization for ${updated} Trainer employees (${unmatched} unmatched).` };
+  return { message: `Synced SC + Non-SC utilization for ${updated} Trainer employees (${failed.size} kept previous data after API errors).` };
 }
 
 export async function syncExam() {

@@ -33,6 +33,7 @@ const SCRIPTS = [
   'sync-mgrfeedback.mjs',
   'sync-ideas.mjs',
   'sync-salary.mjs',
+  'sync-targetsdata.mjs',
   'sync-empdetails.mjs',
   'sync-commonindex.mjs',
   'sync-pipeline.mjs',

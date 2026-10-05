@@ -1613,11 +1613,19 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
     const monthKeys = currentQuarterMonthKeys();
     // One row per quarter month (0 when the feed has nothing for it), so the
     // breakdown popup always shows all three months.
-    const breakdown = monthKeys.map((key) => ({ month: key, nr: (e.nrMonthlyDetails || []).find((m) => m.month === key)?.nr ?? 0 }));
+    // Manager-level (ASM) targets are crore-scale team targets: achieved is the
+    // manager's own NR plus their team's (direct reports, from the NR API's
+    // Manager field). Individual CSM/CM targets stay own-NR only.
+    const withTeam = e.quarterTargetType === 'ASM' && !!e.teamNrDetails;
+    const breakdown = monthKeys.map((key) => {
+      const own = (e.nrMonthlyDetails || []).find((m) => m.month === key)?.nr ?? 0;
+      const team = withTeam ? ((e.teamNrDetails || []).find((m) => m.month === key)?.nr ?? 0) : 0;
+      return { month: key, own, team, nr: own + team };
+    });
     const nr = breakdown.reduce((sum, m) => sum + m.nr, 0);
     const pct = e.quarterTargetAmount > 0 ? Math.round((nr / e.quarterTargetAmount) * 1000) / 10 : null;
     const lakhs = (n) => '₹' + (n / 100000).toFixed(1) + 'L';
-    return { pct: pct != null ? `${pct}%` : '—', achieved: pct != null && pct >= 100, nrLabel: lakhs(nr), targetLabel: lakhs(e.quarterTargetAmount), breakdown };
+    return { pct: pct != null ? `${pct}%` : '—', achieved: pct != null && pct >= 100, nrLabel: lakhs(nr), targetLabel: lakhs(e.quarterTargetAmount), breakdown, withTeam, teamSize: e.teamNrDetails?.[0]?.members ?? 0 };
   }
 
   return (
@@ -1752,7 +1760,7 @@ function futureNrSummary(e) {
 function QuarterTargetModal({ emp, target, onClose }) {
   const lakhs = (n) => '₹' + (n / 100000).toFixed(1) + 'L';
   const q = currentQuarter();
-  const gridCols = '1fr 1fr';
+  const gridCols = target.withTeam ? '1fr 1fr 1fr 1fr' : '1fr 1fr';
   const color = target.achieved ? '#5EEAD4' : '#F87171';
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
@@ -1766,24 +1774,30 @@ function QuarterTargetModal({ emp, target, onClose }) {
         </div>
         <div style={{ padding: '8px 24px 24px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '10px 0', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-            <span>Month</span><span style={{ textAlign: 'right' }}>NR</span>
+            <span>Month</span>{target.withTeam && <span style={{ textAlign: 'right' }}>Own NR</span>}{target.withTeam && <span style={{ textAlign: 'right' }}>Team NR</span>}<span style={{ textAlign: 'right' }}>{target.withTeam ? 'Total' : 'NR'}</span>
           </div>
           {target.breakdown.map((m) => (
             <div key={m.month} style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
               <span style={{ color: '#C7CBDA' }}>{m.month.replace('-', ' ')}</span>
+              {target.withTeam && <span className="mono" style={{ textAlign: 'right', color: '#A8AEC4' }}>{lakhs(m.own)}</span>}
+              {target.withTeam && <span className="mono" style={{ textAlign: 'right', color: '#A8AEC4' }}>{lakhs(m.team)}</span>}
               <span className="mono" style={{ textAlign: 'right', color: m.nr > 0 ? '#5EEAD4' : '#6E7488' }}>{lakhs(m.nr)}</span>
             </div>
           ))}
           <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '10px 0', fontSize: 13, fontWeight: 600 }}>
             <span style={{ color: '#FFFFFF' }}>Achieved (sum)</span>
+            {target.withTeam && <span />}{target.withTeam && <span />}
             <span className="mono" style={{ textAlign: 'right', color: '#FFFFFF' }}>{target.nrLabel}</span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '4px 0 10px', fontSize: 13 }}>
-            <span style={{ color: '#A8AEC4' }}>Target ({q.name} CSM target)</span>
+            <span style={{ color: '#A8AEC4' }}>Target ({q.name} {target.withTeam ? 'manager target' : 'CSM target'})</span>
+            {target.withTeam && <span />}{target.withTeam && <span />}
             <span className="mono" style={{ textAlign: 'right', color: '#A8AEC4' }}>{target.targetLabel}</span>
           </div>
           <div style={{ fontSize: 11.5, color: '#6E7488', marginTop: 8, lineHeight: 1.55 }}>
-            Achieved % = {target.nrLabel} ÷ {target.targetLabel} × 100 = <b style={{ color }}>{target.pct}</b>. Achieved is the employee's NR summed across the three calendar months of {q.name} {q.year} (months with no NR count as ₹0.0L); the target is the CSM target Koenig holds for this quarter.
+            Achieved % = {target.nrLabel} ÷ {target.targetLabel} × 100 = <b style={{ color }}>{target.pct}</b>. {target.withTeam
+              ? <>Achieved is the manager's own NR plus the NR of their team ({target.teamSize} direct reports), summed across the three calendar months of {q.name} {q.year}; the target is the manager-level target Koenig holds for this quarter.</>
+              : <>Achieved is the employee's NR summed across the three calendar months of {q.name} {q.year} (months with no NR count as ₹0.0L); the target is the CSM target Koenig holds for this quarter.</>}
           </div>
         </div>
       </div>

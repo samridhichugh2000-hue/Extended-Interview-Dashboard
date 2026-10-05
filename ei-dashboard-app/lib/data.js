@@ -278,12 +278,45 @@ export function missedWeeksCount(e) {
 // synced, so there's nothing to filter; computeSignalReport surfaces those
 // as status 'not-windowed' rather than silently keeping the all-time count
 // under a window label that would misrepresent it.
+// Skills dates arrive as "15-Jun-2026", which not every browser's Date parser
+// accepts — parsed by hand; everything else (ISO strings, YYYY-MM-DD) goes
+// straight to Date.
+const MON = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+function parseRecordDate(v) {
+  if (!v) return null;
+  const m = /^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/.exec(String(v));
+  const d = m ? new Date(Number(m[3]), MON.indexOf(m[2].toLowerCase()), Number(m[1])) : new Date(v);
+  return isNaN(d) ? null : d;
+}
 function countDatedRecords(details, dateField, since, until) {
   return (details || []).filter((d) => {
-    const dt = d?.[dateField] && new Date(d[dateField]);
-    return dt && !isNaN(dt) && dt >= since && (!until || dt <= until);
+    const dt = parseRecordDate(d?.[dateField]);
+    return dt && dt >= since && (!until || dt <= until);
   }).length;
 }
+// Same, for records whose relevant date is the first available of several
+// (e.g. an exam's result date, else its scheduled date, else when it was
+// added), optionally restricted to one result.
+function countDatedRecordsBy(details, dateFields, since, until, filter) {
+  return (details || []).filter((d) => {
+    if (filter && !filter(d)) return false;
+    const field = dateFields.find((f) => d?.[f]);
+    const dt = field && parseRecordDate(d[field]);
+    return dt && dt >= since && (!until || dt <= until);
+  }).length;
+}
+// Whole weeks the employee has been here inside the window — the window's
+// length, but never counting time before they joined (tenure is in days).
+// Powers the windowed versions of the "per week" pace signals.
+function weeksInWindow(e, since, until) {
+  const end = until || new Date();
+  const joined = new Date(Date.now() - (e.tenure ?? 0) * 86400000);
+  const start = since > joined ? since : joined;
+  return Math.max(0, Math.floor((end - start) / (7 * 86400000)));
+}
+// Records dated up to 'now' when no explicit end is given — a call booked for
+// next week isn't one this window's employee has attended yet.
+const untilOrNow = (until) => until || new Date();
 
 // Same "cumulative, not just current" rule as missedWeeksCount, restricted
 // to weeks whose date range (weekUtils.weekDateRange) falls at or after the
@@ -336,22 +369,22 @@ export function weeklyResponseRatingPoints(e, since, until) {
 // 15-Day Report's PT_COLUMNS (lib/report15Runner.js) and to
 // DEPT_MISSING_FILTERS['PT Team'] (empty) in DashboardClient.js — keep all
 // three in sync if PT's applicable set ever changes.
-// Signals below with no `countInWindow` (Tech calls, Tech calls converted,
-// both Skills-vs-weeks-since-joining signals, Polls participated, Zero
-// assignments, Failure/Passed exam, Tech calls < 1/week) have no per-event
-// date synced at all — Koenig's feeds for these only ever returned an
-// all-time/summary count, never a dated list of occurrences (see each
-// field's comment in lib/schema.sql) — or, for the two weeks-since-joining
-// signals, are inherently an all-tenure pace comparison that a rolling
-// window can't meaningfully reproduce. Under a date-windowed view
-// (computeSignalReport's `since` option) these surface as status
-// 'not-windowed' rather than quietly keeping their all-time count.
+// The only signal below with no `countInWindow` is Tech calls converted
+// (Trainer; Koenig's feed for it only returns a summary count, no dated list),
+// so it can't be scoped to a date window. Under a
+// date-windowed view (computeSignalReport's `since` option) they surface as
+// status 'not-windowed' rather than quietly keeping their all-time count.
+// Tech calls, Polls, Exam pass/fail and Skills now carry per-event dates
+// (techCallsDetails, pollsDetails, examDetails, skillsDetails) and window
+// like the rest; the "per week" pace signals compare dated records in the
+// window to the weeks the employee was actually here during it.
 export const SIGNAL_DEFS = [
   // positive, live
   { label: 'Tech calls', teams: 'Sales', pts: 1, live: true,
     hasData: (e) => e.techCallsCount != null,
     fires: (e) => e.techCallsCount > 0,
-    count: (e) => e.techCallsCount },
+    count: (e) => e.techCallsCount,
+    countInWindow: (e, since, until) => countDatedRecords(e.techCallsDetails, 'startDate', since, untilOrNow(until)) },
   { label: 'Tech calls converted', teams: 'Trainer', pts: 5, live: true,
     hasData: (e) => e.techCallsConverted != null,
     fires: (e) => e.techCallsConverted > 0,
@@ -377,13 +410,17 @@ export const SIGNAL_DEFS = [
   { label: 'Skills count < weeks since joining', teams: 'Trainer', pts: -0.5, live: true,
     hasData: (e) => e.skillsCount != null,
     fires: (e) => { const wks = Math.floor((e.tenure ?? 0) / 7); return wks > 0 && (e.skillsCount ?? 0) < wks; },
-    count: (e) => Math.floor((e.tenure ?? 0) / 7) - (e.skillsCount ?? 0) },
+    count: (e) => Math.floor((e.tenure ?? 0) / 7) - (e.skillsCount ?? 0),
+    // Windowed: skills that became available inside the window vs the weeks
+    // the employee was here during it.
+    countInWindow: (e, since, until) => Math.max(0, weeksInWindow(e, since, until) - countDatedRecords(e.skillsDetails, 'skillAvailableDate', since, until)) },
   // Mirror bonus — +0.5 for every week skillsCount leads weeks since
   // joining. Equal counts fire neither signal.
   { label: 'Skills count > weeks since joining', teams: 'Trainer', pts: 0.5, live: true,
     hasData: (e) => e.skillsCount != null,
     fires: (e) => { const wks = Math.floor((e.tenure ?? 0) / 7); return wks > 0 && (e.skillsCount ?? 0) > wks; },
-    count: (e) => (e.skillsCount ?? 0) - Math.floor((e.tenure ?? 0) / 7) },
+    count: (e) => (e.skillsCount ?? 0) - Math.floor((e.tenure ?? 0) / 7),
+    countInWindow: (e, since, until) => { const wks = weeksInWindow(e, since, until); return wks > 0 ? Math.max(0, countDatedRecords(e.skillsDetails, 'skillAvailableDate', since, until) - wks) : 0; } },
   // Sourced from the standalone Polls Dashboard API (lib/pollsApi.js), matched
   // by email. Null means that email has no record on the polls dashboard at
   // all — distinct from a confirmed 0 participation count. Excluded from
@@ -391,7 +428,8 @@ export const SIGNAL_DEFS = [
   { label: 'Polls participated', teams: 'Trainer · PT Team', pts: 0.1, live: true,
     hasData: (e) => e.pollsParticipated != null,
     fires: (e) => e.pollsParticipated > 0,
-    count: (e) => e.pollsParticipated },
+    count: (e) => e.pollsParticipated,
+    countInWindow: (e, since, until) => countDatedRecords(e.pollsDetails, 'submittedAt', since, until) },
   { label: 'Marking course inhouse', teams: 'Trainer', pts: 0.5, live: true,
     hasData: (e) => e.inHouseSkillsCount != null,
     fires: (e) => e.inHouseSkillsCount > 0,
@@ -426,11 +464,13 @@ export const SIGNAL_DEFS = [
   { label: 'Failure in exam', teams: 'Trainer', pts: -5, live: true,
     hasData: (e) => e.examFail != null,
     fires: (e) => e.examFail > 0,
-    count: (e) => e.examFail },
+    count: (e) => e.examFail,
+    countInWindow: (e, since, until) => countDatedRecordsBy(e.examDetails, ['resultUpdatedOn', 'scheduledOn', 'createdOn'], since, until, (x) => x.result === 'Fail') },
   { label: 'Passed exam', teams: 'Trainer', pts: 1, live: true,
     hasData: (e) => e.examPass != null,
     fires: (e) => e.examPass > 0,
-    count: (e) => e.examPass },
+    count: (e) => e.examPass,
+    countInWindow: (e, since, until) => countDatedRecordsBy(e.examDetails, ['resultUpdatedOn', 'scheduledOn', 'createdOn'], since, until, (x) => x.result === 'Pass') },
   { label: 'Negative feedback on delivery', teams: 'Trainer', pts: -5, live: true,
     hasData: (e) => e.negFeedback != null,
     fires: (e) => e.negFeedback > 0,
@@ -447,7 +487,8 @@ export const SIGNAL_DEFS = [
   { label: 'Tech calls < 1 per week', teams: 'Sales', pts: -0.5, live: true,
     hasData: (e) => e.techCallsCount != null,
     fires: (e) => { const wks = Math.floor((e.tenure ?? 0) / 7); return wks > 0 && (e.techCallsCount ?? 0) < wks; },
-    count: (e) => Math.floor((e.tenure ?? 0) / 7) - (e.techCallsCount ?? 0) },
+    count: (e) => Math.floor((e.tenure ?? 0) / 7) - (e.techCallsCount ?? 0),
+    countInWindow: (e, since, until) => Math.max(0, weeksInWindow(e, since, until) - countDatedRecords(e.techCallsDetails, 'startDate', since, untilOrNow(until))) },
   // -5 per week short of the 1-client-meeting/week pace — a separate metric
   // from Tech calls above (externalMeetingsCount, sourced from Graph API
   // Calls' client_emails, not Koenig's tech-call feed), and a heavier
