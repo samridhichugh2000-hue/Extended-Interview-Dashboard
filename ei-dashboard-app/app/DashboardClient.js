@@ -1305,7 +1305,7 @@ function SkillsModal({ emp, onClose }) {
         <div style={{ padding: '8px 24px 24px' }}>
           {emp.skillsDetails.map((s) => (
             <div key={s.courseId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
-              <span style={{ color: '#C7CBDA' }}>{s.courseName}</span>
+              <span style={{ color: '#C7CBDA' }}>{s.courseName}{s.skillAvailableDate && <span style={{ display: 'block', fontSize: 11, color: '#6E7488', marginTop: 2 }}>Available from {s.skillAvailableDate}</span>}</span>
               <div style={{ display: 'flex', gap: 6, flex: 'none' }}>
                 {s.isDuplicate && <span style={{ fontSize: 10.5, color: '#F59E0B', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 6, padding: '3px 7px' }}>Duplicate</span>}
                 {s.isDiscontinued && <span style={{ fontSize: 10.5, color: '#F87171', border: '1px solid rgba(244,63,94,0.35)', borderRadius: 6, padding: '3px 7px' }}>Discontinued</span>}

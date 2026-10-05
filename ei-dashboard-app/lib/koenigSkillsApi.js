@@ -35,10 +35,11 @@ async function getToken({ forceRefresh = false } = {}) {
   return tokenPromise;
 }
 
-// Get Trainer Skills — per-employee, like utilization/exam summary. No date
-// fields on this feed (skills accumulate over a trainer's whole career, not
-// scoped to a tenure window), so there's no recycled-emp-code date filter
-// to apply here — every row returned for a code belongs to it.
+// Get Trainer Skills — per-employee, like utilization/exam summary. Each row
+// carries skill_available_date ("15-Jun-2026") — when the skill became
+// available — but it isn't a tenure-window date (skills accumulate over a
+// trainer's whole career), so there's no recycled-emp-code date filter to
+// apply here — every row returned for a code belongs to it.
 export async function getTrainerSkills(empCode) {
   const call = async (token) => {
     const url = `${BASE_URL}/api/Kites/Operator/common?apikey=${process.env.KOENIG_SKILLS_API_KEY}&accessToken=${encodeURIComponent(token.accessToken)}&deviceToken=${encodeURIComponent(token.deviceToken)}`;
@@ -68,5 +69,6 @@ export async function getTrainerSkills(empCode) {
       courseName: r.course_name,
       isDuplicate: !!r.is_duplicate_course,
       isDiscontinued: !!r.is_discontinue_course,
+      skillAvailableDate: r.skill_available_date || null,
     }));
 }
