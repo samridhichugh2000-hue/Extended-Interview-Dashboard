@@ -163,6 +163,8 @@ try {
 for (const stmt of [
   'ALTER TABLE employees ADD COLUMN net_payable_month TEXT',
   'ALTER TABLE employees ADD COLUMN net_payable_details TEXT',
+  'ALTER TABLE employees ADD COLUMN salary REAL',
+  'ALTER TABLE employees ADD COLUMN salary_source TEXT',
 ]) {
   try {
     await db.execute(stmt);

@@ -5,11 +5,11 @@
 // anything, just tells the caller whether this employee's current numbers
 // would justify raising one.
 //
-// Salary tier is read from net_payable_details.PayScale (the fixed monthly
-// pay scale), not .Salary (net amount actually paid that month, which
-// shrinks with leave/absences and would misclassify anyone who took time
-// off) — and from the *current* synced payroll snapshot as a stand-in for
-// salary at DOJ (no joining-month payroll snapshot is kept).
+// Salary tier is read from employees.salary (Koenig's Employee Salary
+// Details feed — the fixed monthly pay scale, not the net amount paid in a
+// month, which shrinks with leave/absences and would misclassify anyone who
+// took time off) — the *current* figure as a stand-in for salary at DOJ (no
+// joining-month snapshot is kept).
 //
 // Tenure-band boundaries below use 30-day months / 365-day years, applied
 // to tenure_days directly (matching NJ_TENURE_DAYS' own day-based
@@ -219,7 +219,7 @@ function negFeedbackReason(distinctAssignmentCount, suggestion) {
 // `evidence` is an array of { label, columns, rows, summary } blocks — the
 // full backing data for every condition that actually contributed to the
 // status, so the dashboard can show it inline without another screen):
-//   { status: 'no-salary-data', negFeedbackSuggestion, rule?, evidence }  — net_payable_details not synced for this employee yet (rule/evidence only set if negFeedbackSuggestion fired)
+//   { status: 'no-salary-data', negFeedbackSuggestion, rule?, evidence }  — salary not synced for this employee yet (rule/evidence only set if negFeedbackSuggestion fired)
 //   { status: 'no-data', tier, band, rule, negFeedbackSuggestion, evidence }  — matched a band, but it needs data (assignments/utilization) we don't have
 //   { status: 'clear', tier, band, rule, negFeedbackSuggestion, evidence }    — matched a band, condition did not fire, and no negative-feedback override
 //   { status: 'fired', tier, band, rule, negFeedbackSuggestion, evidence }    — matched a band, condition fired, OR negFeedbackSuggestion overrode it — PA Algo candidate
@@ -235,7 +235,7 @@ export function computeTrainerPaAlgoFlag(employee) {
     summary: `${negFeedbackEntries.length} distinct assignment(s) → Suggested ${negFeedbackSuggestion}`,
   } : null;
 
-  const payScale = employee.netPayableDetails?.PayScale != null ? Number(employee.netPayableDetails.PayScale) : null;
+  const payScale = employee.salary != null ? Number(employee.salary) : null;
   const tier = trainerSalaryTier(payScale);
   if (tier == null) {
     // No pay scale -> no tier -> no tier-specific rule, but the tenure band
@@ -334,7 +334,7 @@ const INR = (n) => '₹' + n.toLocaleString('en-IN');
 
 // Each check receives { total, nrMonthlyDetails, payScale } (total NR since
 // joining, the raw monthly history for avgNR to window, and payScale from
-// net_payable_details.PayScale) and returns { status, evidence } —
+// employees.salary) and returns { status, evidence } —
 // status is 'fired' | 'clear' | 'no-data'; evidence is the month-by-month
 // NR behind that number, so a fired row can show exactly which months and
 // figures drove it. `months` (undefined = every month on file) picks the
@@ -516,7 +516,7 @@ export function computeSalesPaAlgoFlag(employee) {
   const spec = isOverseas ? band.overseas : band.india;
 
   const total = totalNR(employee.nrMonthlyDetails);
-  const payScale = employee.netPayableDetails?.PayScale != null ? Number(employee.netPayableDetails.PayScale) : null;
+  const payScale = employee.salary != null ? Number(employee.salary) : null;
   const { status: bandStatus, evidence: bandEvidence } = spec.check({ total, nrMonthlyDetails: employee.nrMonthlyDetails, payScale });
 
   const rule = overrideReason ? (spec.rule ? `${spec.rule}; ${overrideReason}` : overrideReason) : spec.rule;

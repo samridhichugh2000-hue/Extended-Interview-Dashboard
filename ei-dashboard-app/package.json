@@ -30,7 +30,7 @@
     "sync:polls": "node scripts/sync-polls.mjs",
     "sync:mgrfeedback": "node scripts/sync-mgrfeedback.mjs",
     "sync:ideas": "node scripts/sync-ideas.mjs",
-    "sync:netpayable": "node scripts/sync-netpayable.mjs",
+    "sync:salary": "node scripts/sync-salary.mjs",
     "sync:empdetails": "node scripts/sync-empdetails.mjs",
     "sync:commonindex": "node scripts/sync-commonindex.mjs",
     "sync:graph-meetings": "node scripts/sync-graph-meetings.mjs",
