@@ -1519,6 +1519,9 @@ function FiredOnlyToggle({ value, onChange, allLabel = 'All Trainers' }) {
 // separate from the real HR-issued PA/PIP records on the PA/PIP Detection
 // screen — nothing here writes to pip_status.
 const PA_ALGO_MISSING_STATUSES = ['no-data', 'no-salary-data', 'no-country-data'];
+// Under 3 months of tenure has no PA Algo criteria at all, so 'no-data' there is
+// nothing to evaluate yet, not a data gap — kept out of Missing data.
+const isPaAlgoMissing = (algo) => PA_ALGO_MISSING_STATUSES.includes(algo.status) && !/^No PA Algo criteria/.test(algo.rule || '');
 function PaAlgo({ employees, filter, setFilter, setModal }) {
   const [team, setTeam] = useState('Trainer');
   const [search, setSearch] = useState('');
@@ -1550,7 +1553,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
   const pool = employees.filter((e) => e.team === team && e[algoKey] && (includeInactive || e.active !== false));
   const firedCount = pool.filter((e) => e[algoKey].status === 'fired').length;
   const clearCount = pool.filter((e) => e[algoKey].status === 'clear').length;
-  const noDataCount = pool.filter((e) => PA_ALGO_MISSING_STATUSES.includes(e[algoKey].status)).length;
+  const noDataCount = pool.filter((e) => isPaAlgoMissing(e[algoKey])).length;
 
   // Object.entries gives [value, label] pairs (both maps are keyed by the
   // underlying tier/region value) — swapped to [label, value] to match the
@@ -1589,7 +1592,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
   const rows = pool
     .filter((e) => !filter || e[algoKey][tabKey] === filter)
     .filter((e) => !bandFilter || e[algoKey].band === bandFilter)
-    .filter((e) => !statusFilter || (statusFilter === 'missing' ? PA_ALGO_MISSING_STATUSES.includes(e[algoKey].status) : e[algoKey].status === statusFilter))
+    .filter((e) => !statusFilter || (statusFilter === 'missing' ? isPaAlgoMissing(e[algoKey]) : e[algoKey].status === statusFilter))
     // The "needs attention only" default must not hide the rows a status card
     // was clicked to show (Missing data / Clear are never 'fired').
     .filter((e) => statusFilter || !firedOnly || e[algoKey].status === 'fired' || e[algoKey].negFeedbackSuggestion)
@@ -1690,7 +1693,10 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
         </div>
         {rows.map((e) => {
           const algo = e[algoKey];
-          const st = PA_ALGO_STATUS_STYLE[algo.status] || PA_ALGO_STATUS_STYLE['no-data'];
+          // Under 3 months tenure there are no PA Algo criteria — say so instead of 'No data'.
+          const st = !isTrainer && algo.status === 'no-data' && /^No PA Algo criteria/.test(algo.rule || '')
+            ? { label: '<3 months tenure', bg: 'rgba(255,255,255,0.05)', color: '#A8AEC4', border: 'rgba(255,255,255,0.14)' }
+            : PA_ALGO_STATUS_STYLE[algo.status] || PA_ALGO_STATUS_STYLE['no-data'];
           const sugg = isTrainer && algo.negFeedbackSuggestion ? NEG_FEEDBACK_SUGGESTION_STYLE[algo.negFeedbackSuggestion] : null;
           const hasEvidence = algo.evidence?.length > 0;
           const isExpanded = expandedId === e.id;
