@@ -1,5 +1,5 @@
 import { getDb } from './db.js';
-import { isExcludedMeeting } from './meetingFilters.js';
+import { isExcludedGraphMeeting } from './meetingFilters.js';
 import { computeSignalReport, computeWorryScore, trendNoteFor, isScoredEmployee } from './data.js';
 import { getIsoWeek, isWeekOver } from './weekUtils.js';
 import { getManagerEmail } from './managerDirectory.js';
@@ -214,7 +214,11 @@ export async function getGraphMeetings() {
     `,
     args: EXCLUDED_ORGANIZERS,
   });
-  return res.rows.filter((r) => !isExcludedMeeting(r.subject)).map((r) => ({
+  return res.rows.filter((r) => {
+    let clients = [];
+    try { clients = JSON.parse(r.client_emails || '[]'); } catch { /* treat as internal */ }
+    return !isExcludedGraphMeeting(r.subject, r.emp_team, clients);
+  }).map((r) => ({
     id: r.id,
     employeeId: r.employee_id,
     employeeName: r.emp_name,

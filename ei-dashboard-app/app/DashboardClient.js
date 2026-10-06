@@ -2170,7 +2170,7 @@ function UnrepliedEmailsPanel({ employees }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ border: '1px solid rgba(99,102,241,0.25)', background: 'rgba(99,102,241,0.06)', borderRadius: 12, padding: '12px 16px', fontSize: 12.5, color: '#A8AEC4', lineHeight: 1.5 }}>
-        Counts come from each employee's Outlook Inbox via Microsoft Graph: email threads addressed to them directly (not Cc, not lists or broadcasts) received in the last 21 days that have gone 7 days or more (weekends included) with no reply from them. Advertising, newsletters and system mail (bulk-mail headers, no-reply senders, OTPs, ILO / Course Advice notices, calendar responses, Outlook's "Other" tab) are left out. Only the counts are stored — emails are fetched live when you click "Load emails".
+        Counts come from each employee's Outlook Inbox via Microsoft Graph: email threads addressed to them directly (not Cc, not lists or broadcasts) received in the last 14 days that have gone 7 days or more (weekends included) with no reply from them. Advertising, newsletters and system mail (bulk-mail headers, no-reply senders, OTPs, ILO / Course Advice notices, calendar responses, Outlook's "Other" tab) are left out. Only the counts are stored — emails are fetched live when you click "Load emails".
         {lastSynced ? ` Counts last refreshed ${fmtIst(lastSynced)}.` : ''}
       </div>
 
@@ -2225,7 +2225,10 @@ function UnrepliedEmailsModal({ emp, onClose }) {
   useEffect(() => {
     let cancelled = false;
     fetch(`/api/outlook/unreplied?employeeId=${encodeURIComponent(emp.id)}`)
-      .then((r) => r.json())
+      .then(async (r) => {
+        const text = await r.text();
+        try { return JSON.parse(text); } catch { return { ok: false, error: r.status === 504 || /timeout|error occurred/i.test(text) ? 'Outlook took too long to respond for this mailbox — try again in a moment.' : `Unexpected response (${r.status}).` }; }
+      })
       .then((j) => { if (!cancelled) setState(j.ok ? { loading: false, error: null, data: j } : { loading: false, error: j.error || 'Failed to load', data: null }); })
       .catch((err) => { if (!cancelled) setState({ loading: false, error: err.message, data: null }); });
     return () => { cancelled = true; };

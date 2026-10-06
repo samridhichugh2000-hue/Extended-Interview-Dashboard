@@ -4,7 +4,7 @@
 // process.env directly (already populated by Vercel — no dotenv needed here,
 // unlike the standalone CLI scripts these mirror).
 import { getDb } from './db.js';
-import { isExcludedMeeting } from './meetingFilters.js';
+import { isExcludedGraphMeeting } from './meetingFilters.js';
 
 // Used by syncSc/syncAssignments/syncMgrFeedback — reconstructs an
 // employee's join date from tenure_days (for recycled-emp-code exclusion),
@@ -1186,10 +1186,14 @@ function findAttendance(reports, email, parseGraphDateTime, scheduledStart) {
 
 export async function recomputeGraphAggregates(db, employeeId) {
   const res = await db.execute({
-    sql: 'SELECT subject, timing_status, av_issue, client_emails FROM graph_meetings WHERE employee_id = ?',
+    sql: 'SELECT g.subject, g.timing_status, g.av_issue, g.client_emails, e.team FROM graph_meetings g JOIN employees e ON e.id = g.employee_id WHERE g.employee_id = ?',
     args: [employeeId],
   });
-  const rows = res.rows.filter((r) => !isExcludedMeeting(r.subject));
+  const rows = res.rows.filter((r) => {
+    let clients = [];
+    try { clients = JSON.parse(r.client_emails || '[]'); } catch { /* treat as internal */ }
+    return !isExcludedGraphMeeting(r.subject, r.team, clients);
+  });
   const total = rows.length;
   const late = rows.filter((r) => r.timing_status === 'Late').length;
   const missed = rows.filter((r) => r.timing_status === 'Did Not Join').length;
@@ -1217,7 +1221,7 @@ export async function syncGraphMeetings() {
   const to = new Date();
   const from = new Date(to.getTime() - GRAPH_MEETINGS_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
   // All active Sales + Assistant Technical Managers (a Trainer-team designation).
-  const employees = await db.execute("SELECT id, email FROM employees WHERE active = 1 AND (team = 'Sales' OR (team = 'Trainer' AND trim(designation) = 'Assistant Technical Manager'))");
+  const employees = await db.execute("SELECT id, email, team FROM employees WHERE active = 1 AND (team = 'Sales' OR (team = 'Trainer' AND trim(designation) = 'Assistant Technical Manager'))");
 
   // The organizer/attendance endpoints need the organizer's AAD object id,
   // not their email — cache the lookup since the same organizer (e.g. a
@@ -1258,7 +1262,14 @@ export async function syncGraphMeetings() {
       const organizerEmail = event.organizer?.emailAddress?.address;
       const joinUrl = event.onlineMeeting?.joinUrl;
       if (!organizerEmail || !joinUrl) continue;
-      if (isExcludedMeeting(event.subject)) continue; // ILO / tech call / Course Advice
+
+      // "Client meeting" = organizer or any attendee outside the company
+      // domain — covers both directions (rep organizes and invites the
+      // client, or the client organizes and invites the rep).
+      const participants = [organizerEmail, ...(event.attendees || []).map((a) => a.emailAddress?.address)].filter(Boolean);
+      const clientEmails = [...new Set(participants.filter(isExternalAddress).map((a) => a.toLowerCase()))];
+      // ILO / tech call / Course Advice, cancelled, and (Sales) training / webinars
+      if (isExcludedGraphMeeting(event.subject, emp.team, clientEmails)) continue;
 
       const scheduledStart = parseGraphDateTime(event.start.dateTime);
       const scheduledEnd = event.end?.dateTime ? parseGraphDateTime(event.end.dateTime) : null;
@@ -1268,12 +1279,6 @@ export async function syncGraphMeetings() {
         meetingsSynced++;
         continue;
       }
-
-      // "Client meeting" = organizer or any attendee outside the company
-      // domain — covers both directions (rep organizes and invites the
-      // client, or the client organizes and invites the rep).
-      const participants = [organizerEmail, ...(event.attendees || []).map((a) => a.emailAddress?.address)].filter(Boolean);
-      const clientEmails = [...new Set(participants.filter(isExternalAddress).map((a) => a.toLowerCase()))];
 
       let timingStatus = 'No Data', joinedAt = null, leftAt = null, attendanceSeconds = null, delaySeconds = null, onlineMeetingId = null;
       try {
@@ -1341,11 +1346,13 @@ const RECORDING_RECHECK_MS = 3 * 24 * 60 * 60 * 1000;
 export async function syncGraphRecordings(db = getDb()) {
   const { resolveUserIdByEmail, getRecordings, parseGraphDateTime } = await import('./graphCallsApi.js');
   const now = Date.now();
-  const res = await db.execute('SELECT id, subject, organizer_email, online_meeting_id, scheduled_start, scheduled_end, recording_count, recording_checked_at FROM graph_meetings WHERE online_meeting_id IS NOT NULL');
+  const res = await db.execute('SELECT g.id, g.subject, g.organizer_email, g.online_meeting_id, g.scheduled_start, g.scheduled_end, g.recording_count, g.recording_checked_at, g.client_emails, e.team FROM graph_meetings g JOIN employees e ON e.id = g.employee_id WHERE g.online_meeting_id IS NOT NULL');
 
   const groups = new Map();
   for (const r of res.rows) {
-    if (isExcludedMeeting(r.subject)) continue;
+    let clients = [];
+    try { clients = JSON.parse(r.client_emails || '[]'); } catch { /* treat as internal */ }
+    if (isExcludedGraphMeeting(r.subject, r.team, clients)) continue;
     const end = new Date(r.scheduled_end || r.scheduled_start).getTime();
     if (end > now) continue;
     const settled = r.recording_checked_at && (r.recording_count > 0 || now - end > RECORDING_RECHECK_MS);
@@ -1454,7 +1461,7 @@ export async function syncUnrepliedEmails() {
   const { getUnrepliedThreads } = await import('./graphUnreplied.js');
   const employees = (await db.execute("SELECT id, email FROM employees WHERE active = 1 AND email IS NOT NULL AND email != ''")).rows;
 
-  let done = 0, apiErrors = 0, next = 0;
+  let done = 0, apiErrors = 0, noMailbox = 0, next = 0;
   async function worker() {
     while (next < employees.length) {
       const emp = employees[next++];
@@ -1466,13 +1473,16 @@ export async function syncUnrepliedEmails() {
         });
         done++;
       } catch (err) {
+        // 404 = the address on file has no mailbox in the tenant (stale email
+        // on the roster) — nothing to count, so it is not an error.
+        if (err.status === 404) { noMailbox++; continue; }
         apiErrors++;
-        if (err.status !== 404 && err.status !== 403) console.error(`Unreplied email sync failed for ${emp.email}:`, err.message);
+        if (err.status !== 403) console.error(`Unreplied email sync failed for ${emp.email}:`, err.message);
       }
     }
   }
   await Promise.all(Array.from({ length: UNREPLIED_CONCURRENCY }, worker));
-  return { message: `Synced unreplied-email counts for ${done} employees (${apiErrors} mailbox errors, ${employees.length} active mailboxes).` };
+  return { message: `Synced unreplied-email counts for ${done} employees (${apiErrors} mailbox errors, ${noMailbox} with no mailbox in the tenant, ${employees.length} active mailboxes).` };
 }
 
 // Non-RMS Tasks By EmpID — feeds the "Ideas for improvement" Worry Index

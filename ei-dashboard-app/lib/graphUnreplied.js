@@ -3,11 +3,11 @@ import { isExcludedMeeting } from './meetingFilters.js';
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 
-export const UNREPLIED_LOOKBACK_DAYS = Number(process.env.UNREPLIED_LOOKBACK_DAYS || 21);
+export const UNREPLIED_LOOKBACK_DAYS = Number(process.env.UNREPLIED_LOOKBACK_DAYS || 14);
 // A mail only counts as "not responded" once 7 full calendar days have passed
 // without a reply (weekends included — plain elapsed time, no business-day
-// math). The lookback must exceed this, so the window is the 14 days of mail
-// that is now overdue.
+// math). The lookback must exceed this, so with 14 days the window is mail
+// received 7-14 days ago that is now overdue.
 export const UNREPLIED_GRACE_HOURS = Number(process.env.UNREPLIED_GRACE_HOURS || 168);
 
 async function* pages(url) {
@@ -68,6 +68,33 @@ export function isAutomatedOrPromotional(msg) {
   return false;
 }
 
+const INBOX_SLICES = 8;
+const INBOX_PARALLEL = 4;
+const FEED_SENDER_MIN_THREADS = 6;
+const TEMPLATE_MIN_THREADS = 4;
+
+// First three words of the subject, reply/forward prefixes and digits
+// stripped — "New Lead from Kashi- India- 10/3" and "New Lead from Shrey…"
+// share one key.
+function templateKey(subject) {
+  return (subject || '').toLowerCase().replace(/^((re|fw|fwd):\s*)+/, '').replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(Boolean).slice(0, 3).join(' ');
+}
+
+// A koenig-solutions.com address with no Entra user behind it (404) is a
+// group, alias or shared mailbox (leadallocation@, sms@, ap@, rms@…), not a
+// person writing to you. External senders and lookup errors count as people
+// so a throttled lookup never hides real mail. Cached for the process.
+const personCache = new Map();
+function isRealPerson(address) {
+  if (!address.endsWith('@koenig-solutions.com')) return Promise.resolve(true);
+  if (!personCache.has(address)) {
+    personCache.set(address, graphFetch(`${GRAPH_BASE}/users/${encodeURIComponent(address)}?$select=id`)
+      .then((res) => res.status !== 404)
+      .catch(() => true));
+  }
+  return personCache.get(address);
+}
+
 // Threads in `email`'s Inbox (last UNREPLIED_LOOKBACK_DAYS days, older than
 // the grace period) that were addressed to them directly and that they have
 // not replied to. A thread counts as replied once any item in their Sent
@@ -92,15 +119,31 @@ export async function getUnrepliedThreads(email, { days = UNREPLIED_LOOKBACK_DAY
     }
   }
 
-  const inboxUrl = `${user}/mailFolders/inbox/messages?` + new URLSearchParams({
-    $filter: `receivedDateTime ge ${from}`,
-    $select: 'id,conversationId,subject,from,toRecipients,ccRecipients,receivedDateTime,isRead,isDraft,bodyPreview,webLink,inferenceClassification,internetMessageHeaders',
-    $top: '100',
-  });
+  // Some inboxes hold 5,000+ messages in the window (80+ sequential pages,
+  // past Vercel's 60s limit), so the window is cut into slices read 4 at a
+  // time — Graph allows 4 concurrent requests per mailbox.
+  const select = 'id,conversationId,subject,from,toRecipients,ccRecipients,receivedDateTime,isRead,isDraft,bodyPreview,webLink,inferenceClassification,internetMessageHeaders';
+  const startMs = Date.parse(from), endMs = Date.now() + 1000;
+  const slices = Array.from({ length: INBOX_SLICES }, (_, i) => [
+    new Date(startMs + ((endMs - startMs) * i) / INBOX_SLICES).toISOString(),
+    new Date(startMs + ((endMs - startMs) * (i + 1)) / INBOX_SLICES).toISOString(),
+  ]);
+  const inboxMessages = [];
+  let nextSlice = 0;
+  await Promise.all(Array.from({ length: INBOX_PARALLEL }, async () => {
+    while (nextSlice < slices.length) {
+      const [a, b] = slices[nextSlice++];
+      const url = `${user}/mailFolders/inbox/messages?` + new URLSearchParams({
+        $filter: `receivedDateTime ge ${a} and receivedDateTime lt ${b}`, $select: select, $top: '100',
+      });
+      for await (const page of pages(url)) inboxMessages.push(...page);
+    }
+  }));
+
   const latestByConversation = new Map();
   let eligibleMessages = 0;
-  for await (const page of pages(inboxUrl)) {
-    for (const m of page) {
+  {
+    for (const m of inboxMessages) {
       if (m.isDraft) continue;
       const sender = (m.from?.emailAddress?.address || '').toLowerCase();
       if (!sender || sender === me) continue;
@@ -112,6 +155,34 @@ export async function getUnrepliedThreads(email, { days = UNREPLIED_LOOKBACK_DAY
       if (!prev || m.receivedDateTime > prev.receivedDateTime) latestByConversation.set(key, m);
     }
   }
+
+  // Notification streams that slip past the per-message checks. Judged per
+  // sender over the whole window: (a) an internal address with no user account
+  // behind it is a group/shared mailbox, never a person; (b) a sender with
+  // many threads to this person, none ever answered, is a feed; (c) the same
+  // template (sender + first three subject words) over and over, never
+  // answered, is a notification, e.g. "New Lead from…", "Skill Level Update".
+  const bySender = new Map();
+  const byTemplate = new Map();
+  for (const [key, m] of latestByConversation) {
+    const sender = m.from.emailAddress.address.toLowerCase();
+    const repliedTo = sentByConversation.has(key) && sentByConversation.get(key) > m.receivedDateTime;
+    const s = bySender.get(sender) || { threads: 0, replied: 0 };
+    s.threads++; if (repliedTo) s.replied++;
+    bySender.set(sender, s);
+    const tkey = `${sender}|${templateKey(m.subject)}`;
+    const t = byTemplate.get(tkey) || { threads: 0, replied: 0 };
+    t.threads++; if (repliedTo) t.replied++;
+    byTemplate.set(tkey, t);
+  }
+  const dropped = new Set();
+  for (const [key, m] of latestByConversation) {
+    const sender = m.from.emailAddress.address.toLowerCase();
+    const s = bySender.get(sender);
+    const t = byTemplate.get(`${sender}|${templateKey(m.subject)}`);
+    if ((s.threads >= FEED_SENDER_MIN_THREADS && s.replied === 0) || (t.threads >= TEMPLATE_MIN_THREADS && t.replied === 0) || !(await isRealPerson(sender))) dropped.add(key);
+  }
+  for (const key of dropped) latestByConversation.delete(key);
 
   const unreplied = [];
   for (const [key, m] of latestByConversation) {
