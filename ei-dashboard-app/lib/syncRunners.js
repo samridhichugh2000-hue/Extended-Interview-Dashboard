@@ -1214,7 +1214,8 @@ export async function syncGraphMeetings() {
 
   const to = new Date();
   const from = new Date(to.getTime() - GRAPH_MEETINGS_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
-  const employees = await db.execute("SELECT id, email FROM employees WHERE team = 'Sales' AND active = 1");
+  // All active Sales + Assistant Technical Managers (a Trainer-team designation).
+  const employees = await db.execute("SELECT id, email FROM employees WHERE active = 1 AND (team = 'Sales' OR (team = 'Trainer' AND trim(designation) = 'Assistant Technical Manager'))");
 
   // The organizer/attendance endpoints need the organizer's AAD object id,
   // not their email — cache the lookup since the same organizer (e.g. a

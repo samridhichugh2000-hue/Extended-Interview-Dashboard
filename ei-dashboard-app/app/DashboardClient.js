@@ -2122,8 +2122,13 @@ const TIMING_COLORS = {
 // badges still on those two signals in Worry Index) — but whether a meeting
 // had an external (client) participant feeds the "External meetings < 1 per
 // week" Worry Index signal, via employees.external_meetings_count.
-function GraphCalls({ meetings, employees, filter, setFilter }) {
+function GraphCalls({ meetings: allMeetings, employees, filter, setFilter }) {
   const [search, setSearch] = useState('');
+  // Sales and Assistant Technical Managers (team 'Trainer') are kept apart —
+  // the default view is Sales only, so ATMs never inflate the Sales numbers.
+  const [scope, setScope] = useState('Sales');
+  const meetings = allMeetings.filter((m) => (scope === 'ATM' ? m.team === 'Trainer' : m.team === 'Sales'));
+  const scopeCounts = { Sales: allMeetings.filter((m) => m.team === 'Sales').length, ATM: allMeetings.filter((m) => m.team === 'Trainer').length };
   const [empDetail, setEmpDetail] = useState(null);
   const [meetingDetail, setMeetingDetail] = useState(null);
   const [rosterDetail, setRosterDetail] = useState(null);
@@ -2190,6 +2195,15 @@ function GraphCalls({ meetings, employees, filter, setFilter }) {
             style={{ cursor: 'pointer', border: `1px solid ${c.active ? c.color : 'rgba(255,255,255,0.09)'}`, background: c.active ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.025)', borderRadius: 12, padding: '13px 14px' }}>
             <div className="disp" style={{ fontSize: 24, fontWeight: 600, color: c.color, letterSpacing: '-0.02em' }}>{c.count}</div>
             <div style={{ fontSize: 11, color: '#A8AEC4', marginTop: 3, lineHeight: 1.3 }}>{c.label}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', gap: 8 }}>
+        {[{ key: 'Sales', label: 'Sales' }, { key: 'ATM', label: 'Assistant Technical Managers' }].map((t) => (
+          <div key={t.key} onClick={() => setScope(t.key)}
+            style={{ cursor: 'pointer', borderRadius: 10, padding: '8px 14px', fontSize: 13, border: `1px solid ${scope === t.key ? 'rgba(99,102,241,0.6)' : 'rgba(255,255,255,0.1)'}`, background: scope === t.key ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.03)', color: scope === t.key ? '#A5A7FA' : '#A8AEC4' }}>
+            {t.label} <span style={{ opacity: 0.7, fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 11.5 }}>({scopeCounts[t.key]})</span>
           </div>
         ))}
       </div>
