@@ -253,6 +253,9 @@ for (const stmt of [
   'ALTER TABLE employees ADD COLUMN pipeline_total_deals INTEGER',
   'ALTER TABLE employees ADD COLUMN pipeline_synced_at TEXT',
   'ALTER TABLE employees ADD COLUMN nr_future_details TEXT',
+  'ALTER TABLE employees ADD COLUMN unreplied_email_count INTEGER',
+  'ALTER TABLE employees ADD COLUMN unreplied_email_total INTEGER',
+  'ALTER TABLE employees ADD COLUMN unreplied_synced_at TEXT',
 ]) {
   try {
     await db.execute(stmt);

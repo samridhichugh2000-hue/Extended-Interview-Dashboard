@@ -40,6 +40,7 @@ const SCRIPTS = [
   'sync-graph-meetings.mjs',
   'sync-graph-subscription.mjs',
   'sync-external-emails.mjs',
+  'sync-unreplied-emails.mjs',
 ];
 
 function run(script) {

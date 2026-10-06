@@ -1443,6 +1443,38 @@ export async function syncExternalEmails() {
   return { message: `Synced external email counts for ${processed} Sales reps (${apiErrors} API errors, ${noEmail} had no email on file).` };
 }
 
+// Unreplied-email counts for every active employee with a mailbox — shown on
+// Graph API Calls -> Unreplied Emails. Stores only two integers per person;
+// the emails themselves are read live, on demand (app/api/outlook/unreplied).
+// Mailboxes are walked a few at a time: some inboxes hold well over a
+// thousand messages a week, so strictly serial would take hours.
+const UNREPLIED_CONCURRENCY = Number(process.env.UNREPLIED_CONCURRENCY || 4);
+export async function syncUnrepliedEmails() {
+  const db = getDb();
+  const { getUnrepliedThreads } = await import('./graphUnreplied.js');
+  const employees = (await db.execute("SELECT id, email FROM employees WHERE active = 1 AND email IS NOT NULL AND email != ''")).rows;
+
+  let done = 0, apiErrors = 0, next = 0;
+  async function worker() {
+    while (next < employees.length) {
+      const emp = employees[next++];
+      try {
+        const { threadsConsidered, unreplied } = await getUnrepliedThreads(emp.email);
+        await db.execute({
+          sql: 'UPDATE employees SET unreplied_email_count = ?, unreplied_email_total = ?, unreplied_synced_at = ? WHERE id = ?',
+          args: [unreplied.length, threadsConsidered, new Date().toISOString(), emp.id],
+        });
+        done++;
+      } catch (err) {
+        apiErrors++;
+        if (err.status !== 404 && err.status !== 403) console.error(`Unreplied email sync failed for ${emp.email}:`, err.message);
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: UNREPLIED_CONCURRENCY }, worker));
+  return { message: `Synced unreplied-email counts for ${done} employees (${apiErrors} mailbox errors, ${employees.length} active mailboxes).` };
+}
+
 // Non-RMS Tasks By EmpID — feeds the "Ideas for improvement" Worry Index
 // signal (lib/data.js), across all three teams. Per-employee API, one call
 // per employee, matched directly by EmpId.
@@ -1655,6 +1687,7 @@ export const SYNC_RUNNERS = {
   graphrecordings: syncGraphRecordings,
   graphsubscription: syncGraphSubscription,
   externalemails: syncExternalEmails,
+  unrepliedemails: syncUnrepliedEmails,
   // PA/PIP status normally comes from the standalone 'pip' feed, which runs
   // on its own cron-job.org schedule independent of this one — that race let
   // this Monday's run miss six people whose status flipped to PA/PIP Issued

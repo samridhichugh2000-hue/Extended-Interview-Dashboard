@@ -2122,7 +2122,158 @@ const TIMING_COLORS = {
 // badges still on those two signals in Worry Index) — but whether a meeting
 // had an external (client) participant feeds the "External meetings < 1 per
 // week" Worry Index signal, via employees.external_meetings_count.
-function GraphCalls({ meetings: allMeetings, employees, filter, setFilter }) {
+// Graph API Calls hosts two views: the Teams meetings tracker and the
+// unreplied-email review. Emails are never bulk-loaded into the dashboard —
+// the second view only carries per-person counts, and the messages themselves
+// are fetched live for one person at a time.
+function GraphCalls({ meetings, employees, filter, setFilter }) {
+  const [view, setView] = useState('meetings');
+  const tabs = [{ key: 'meetings', label: 'Meetings' }, { key: 'emails', label: 'Unreplied Emails' }];
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div style={{ display: 'flex', gap: 8 }}>
+        {tabs.map((t) => (
+          <div key={t.key} onClick={() => setView(t.key)}
+            style={{ cursor: 'pointer', borderRadius: 10, padding: '9px 16px', fontSize: 13.5, fontWeight: 600, border: `1px solid ${view === t.key ? 'rgba(99,102,241,0.6)' : 'rgba(255,255,255,0.1)'}`, background: view === t.key ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.03)', color: view === t.key ? '#A5A7FA' : '#A8AEC4' }}>
+            {t.label}
+          </div>
+        ))}
+      </div>
+      {view === 'meetings'
+        ? <GraphMeetingsPanel meetings={meetings} employees={employees} filter={filter} setFilter={setFilter} />
+        : <UnrepliedEmailsPanel employees={employees} />}
+    </div>
+  );
+}
+
+function fmtAge(iso) {
+  const hrs = (Date.now() - new Date(iso).getTime()) / 36e5;
+  return hrs < 48 ? `${Math.round(hrs)}h` : `${Math.floor(hrs / 24)}d`;
+}
+
+function UnrepliedEmailsPanel({ employees }) {
+  const [search, setSearch] = useState('');
+  const [scope, setScope] = useState('All');
+  const [detail, setDetail] = useState(null);
+
+  const scopes = ['All', 'Sales', 'Trainer', 'PT Team', 'ATM'];
+  const inScope = (e) => scope === 'All' || (scope === 'ATM' ? e.team === 'Trainer' && (e.designation || '').trim() === 'Assistant Technical Manager' : e.team === scope);
+  const q = search.trim().toLowerCase();
+  const rows = (employees || [])
+    .filter((e) => e.active && e.unrepliedEmailCount != null && inScope(e) && (!q || e.name.toLowerCase().includes(q)))
+    .sort((a, b) => b.unrepliedEmailCount - a.unrepliedEmailCount || a.name.localeCompare(b.name));
+  const total = rows.reduce((sum, e) => sum + e.unrepliedEmailCount, 0);
+  const withAny = rows.filter((e) => e.unrepliedEmailCount > 0).length;
+  const lastSynced = (employees || []).map((e) => e.unrepliedSyncedAt).filter(Boolean).sort().pop();
+  const gridCols = '1.6fr .9fr .9fr 1fr 1.2fr';
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div style={{ border: '1px solid rgba(99,102,241,0.25)', background: 'rgba(99,102,241,0.06)', borderRadius: 12, padding: '12px 16px', fontSize: 12.5, color: '#A8AEC4', lineHeight: 1.5 }}>
+        Counts come from each employee's Outlook Inbox via Microsoft Graph: email threads addressed to them directly (not Cc, not lists or broadcasts) received in the last 21 days that have gone 7 days or more (weekends included) with no reply from them. Advertising, newsletters and system mail (bulk-mail headers, no-reply senders, OTPs, ILO / Course Advice notices, calendar responses, Outlook's "Other" tab) are left out. Only the counts are stored — emails are fetched live when you click "Load emails".
+        {lastSynced ? ` Counts last refreshed ${fmtIst(lastSynced)}.` : ''}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
+        {[{ label: 'Unreplied threads', value: total, color: '#F59E0B' }, { label: 'Employees with unreplied mail', value: withAny, color: '#A5A7FA' }, { label: 'Employees covered', value: rows.length, color: '#5EEAD4' }].map((c) => (
+          <div key={c.label} style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.025)', borderRadius: 12, padding: '13px 14px' }}>
+            <div className="disp" style={{ fontSize: 24, fontWeight: 600, color: c.color, letterSpacing: '-0.02em' }}>{c.value}</div>
+            <div style={{ fontSize: 11, color: '#A8AEC4', marginTop: 3 }}>{c.label}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {scopes.map((t) => (
+          <div key={t} onClick={() => setScope(t)}
+            style={{ cursor: 'pointer', borderRadius: 10, padding: '8px 14px', fontSize: 13, border: `1px solid ${scope === t ? 'rgba(99,102,241,0.6)' : 'rgba(255,255,255,0.1)'}`, background: scope === t ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.03)', color: scope === t ? '#A5A7FA' : '#A8AEC4' }}>
+            {t === 'ATM' ? 'Assistant Technical Managers' : t}
+          </div>
+        ))}
+        <input value={search} onChange={(ev) => setSearch(ev.target.value)} placeholder="Search by employee name…"
+          style={{ flex: 1, minWidth: 200, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '9px 14px', fontSize: 13, color: '#E4E6F0', outline: 'none' }} />
+      </div>
+
+      <div style={{ ...card, overflow: 'hidden' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <span>Employee</span><span>Team</span><span style={{ textAlign: 'right' }}>Unreplied</span><span style={{ textAlign: 'right' }}>Of threads</span><span style={{ textAlign: 'right' }}>Emails</span>
+        </div>
+        {rows.map((e) => (
+          <div key={e.id} className="hoverrow" style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '13px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
+            <span style={{ fontWeight: 600 }}>{e.name}</span>
+            <span style={{ fontSize: 12, color: '#6E7488' }}>{e.team}</span>
+            <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 13, color: e.unrepliedEmailCount > 0 ? '#F59E0B' : '#6E7488' }}>{e.unrepliedEmailCount}</span>
+            <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: '#8A90A8' }}>{e.unrepliedEmailTotal ?? '—'}</span>
+            <span onClick={() => setDetail(e)} style={{ textAlign: 'right', fontSize: 12.5, color: '#A5A7FA', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>Load emails</span>
+          </div>
+        ))}
+        {!rows.length && <div style={{ padding: 18, fontSize: 12.5, color: '#6E7488' }}>No unreplied-email counts yet — run the unrepliedemails sync feed (scripts/sync-unreplied-emails.mjs).</div>}
+      </div>
+
+      {detail && <UnrepliedEmailsModal emp={detail} onClose={() => setDetail(null)} />}
+    </div>
+  );
+}
+
+// Fetches one employee's unreplied threads live from Outlook when opened.
+// Subject/sender show in the list; clicking a row reveals the preview and
+// recipients.
+function UnrepliedEmailsModal({ emp, onClose }) {
+  const [state, setState] = useState({ loading: true, error: null, data: null });
+  const [open, setOpen] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/outlook/unreplied?employeeId=${encodeURIComponent(emp.id)}`)
+      .then((r) => r.json())
+      .then((j) => { if (!cancelled) setState(j.ok ? { loading: false, error: null, data: j } : { loading: false, error: j.error || 'Failed to load', data: null }); })
+      .catch((err) => { if (!cancelled) setState({ loading: false, error: err.message, data: null }); });
+    return () => { cancelled = true; };
+  }, [emp.id]);
+
+  const list = state.data?.unreplied || [];
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 820, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — unreplied emails</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>
+              {state.loading ? 'Loading from Outlook…' : state.error ? 'Could not load' : `${list.length} thread${list.length === 1 ? '' : 's'} awaiting a reply · received in the last ${state.data.lookbackDays} days, no reply after ${Math.round(state.data.graceHours / 24)}+ days`}
+            </div>
+          </div>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+        </div>
+        <div style={{ padding: '8px 24px 24px' }}>
+          {state.error && <div style={{ fontSize: 12.5, color: '#F87171', paddingTop: 12 }}>{state.error}</div>}
+          {list.map((m) => (
+            <div key={m.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+              <div className="hoverrow" onClick={() => setOpen(open === m.id ? null : m.id)} style={{ display: 'grid', gridTemplateColumns: '1.8fr 1.2fr .7fr .6fr', gap: 10, padding: '11px 0', alignItems: 'center', fontSize: 12.5, cursor: 'pointer' }}>
+                <span style={{ color: '#C7CBDA', fontWeight: m.isRead ? 400 : 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.subject}</span>
+                <span className="mono" style={{ fontSize: 11, color: '#8A90A8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.fromName || m.fromAddress}</span>
+                <span className="mono" style={{ fontSize: 11, color: '#8A90A8' }}>{fmtIst(m.receivedDateTime)}</span>
+                <span className="mono" style={{ fontSize: 11, color: '#F59E0B', textAlign: 'right' }}>{fmtAge(m.receivedDateTime)} old</span>
+              </div>
+              {open === m.id && (
+                <div style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 10, padding: 14, margin: '0 0 12px', display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12 }}>
+                  <div><span style={{ color: '#8A90A8' }}>From </span><span style={{ color: '#C7CBDA' }}>{m.fromName ? `${m.fromName} <${m.fromAddress}>` : m.fromAddress}</span></div>
+                  <div><span style={{ color: '#8A90A8' }}>To </span><span style={{ color: '#C7CBDA' }}>{m.to.join(', ') || '—'}</span></div>
+                  {m.cc.length > 0 && <div><span style={{ color: '#8A90A8' }}>Cc </span><span style={{ color: '#C7CBDA' }}>{m.cc.join(', ')}</span></div>}
+                  <div><span style={{ color: '#8A90A8' }}>Status </span><span style={{ color: '#C7CBDA' }}>{m.isRead ? 'Read, not replied' : 'Unread'}</span></div>
+                  <div style={{ color: '#A8AEC4', lineHeight: 1.5, marginTop: 4 }}>{m.preview || '(no preview)'}</div>
+                  {m.webLink && <a href={m.webLink} target="_blank" rel="noreferrer" style={{ color: '#A5A7FA', marginTop: 4 }}>Open in Outlook ↗</a>}
+                </div>
+              )}
+            </div>
+          ))}
+          {!state.loading && !state.error && !list.length && <div style={{ fontSize: 12.5, color: '#6E7488', paddingTop: 12 }}>Nothing awaiting a reply.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GraphMeetingsPanel({ meetings: allMeetings, employees, filter, setFilter }) {
   const [search, setSearch] = useState('');
   // Sales and Assistant Technical Managers (team 'Trainer') are kept apart —
   // the default view is Sales only, so ATMs never inflate the Sales numbers.
@@ -2243,7 +2394,7 @@ function GraphCalls({ meetings: allMeetings, employees, filter, setFilter }) {
             <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: e.late > 0 ? '#F59E0B' : '#6E7488' }}>{e.late}</span>
             <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: e.didNotJoin > 0 ? '#F87171' : '#6E7488' }}>{e.didNotJoin}</span>
             <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: e.avIssues > 0 ? '#F87171' : '#6E7488' }}>{e.avIssues}</span>
-            <span title="Meetings with a Teams recording / meetings whose recording status could be checked (organizer inside Koenig's tenant)" style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: e.recorded > 0 ? '#5EEAD4' : '#6E7488' }}>{e.checkable ? `${e.recorded}/${e.checkable}` : '—'}</span>
+            <span title="Meetings with a Teams recording / meetings whose recording status could be checked (Graph can look up the organizer)" style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: e.recorded > 0 ? '#5EEAD4' : '#6E7488' }}>{e.checkable ? `${e.recorded}/${e.checkable}` : '—'}</span>
             {e.rosterCount ? (
               <span onClick={() => setRosterDetail(e)} style={{ textAlign: 'right', fontSize: 12.5, color: '#A5A7FA', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>{e.rosterCount} shift{e.rosterCount === 1 ? '' : 's'}</span>
             ) : (
@@ -2402,7 +2553,7 @@ function GraphMeetingModal({ meeting: m, onClose }) {
     ['Left at', fmtIst(m.leftAt)],
     ['Delay vs. scheduled start', m.timingStatus === 'Did Not Join' ? '—' : fmtDelay(m.delaySeconds)],
     ['Attendance duration', fmtDuration(m.attendanceSeconds)],
-    ['Recording', m.recordingCount == null ? 'Not checkable — organizer outside Koenig tenant, or not checked yet' : m.recordingCount > 0 ? `Yes (${m.recordingCount})` : 'No recording made'],
+    ['Recording', m.recordingCount == null ? 'Not checkable — no Teams application access policy for this organizer (or an outside organizer), or not checked yet' : m.recordingCount > 0 ? `Yes (${m.recordingCount})` : 'No recording made'],
     ['Call record matched', m.callRecordId || 'Not yet — no callRecords notification received for this meeting'],
   ];
   const problems = [...(m.avIssueDetails?.audioProblems || []).map((p) => ({ ...p, kind: 'Audio' })), ...(m.avIssueDetails?.videoProblems || []).map((p) => ({ ...p, kind: 'Video' }))];

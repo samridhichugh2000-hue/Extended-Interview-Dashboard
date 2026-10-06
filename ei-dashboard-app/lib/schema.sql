@@ -57,6 +57,9 @@ CREATE TABLE IF NOT EXISTS employees (
   meetings_missed_count INTEGER, -- of those, never joined at all (meeting already ended)
   av_issue_count INTEGER,        -- of those, a matched callRecords webhook flagged an audio/video quality problem
   external_meetings_count INTEGER, -- of those, had at least one non-@koenig-solutions.com attendee/organizer (a "client meeting"). Feeds the "External meetings < 1 per week" Worry Index signal (Sales only).
+  unreplied_email_count INTEGER, -- Inbox threads addressed to the employee with no reply from them, older than the grace period, excluding ads/promotional/system mail (counts only, no email content is stored)
+  unreplied_email_total INTEGER, -- threads that qualified for the check (denominator for the count above)
+  unreplied_synced_at TEXT,
   external_email_count INTEGER,  -- total Outlook Sent Items emails to non-@koenig-solutions.com addresses in the lookback window (Sales only). Purely informational — not a Worry Index signal, since emailing external contacts is the normal shape of a Sales rep's job.
   external_email_details TEXT,   -- JSON array of {address, count, lastSentAt}, top 100 addresses by count
   external_email_daily TEXT,     -- JSON array of {date, count}, oldest to newest, always exactly the last 14 UTC calendar days (zero-filled) — powers the trend graph in the employee modal
