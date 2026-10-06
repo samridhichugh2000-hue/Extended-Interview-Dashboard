@@ -37,7 +37,7 @@ const EXCLUDED_SENDERS = new Set([
 ].filter(Boolean));
 // System notices that carry no ask: OTP codes and the ILO / Classroom / Course
 // Advice / tech call assignment mails (same exclusions as the meetings view).
-const SYSTEM_SUBJECT_RE = /verification code|one[-\s]?time (pass)?code|\botp\b|^classroom:/i;
+const SYSTEM_SUBJECT_RE = /verification code|one[-\s]?time (pass)?code|\botp\b|^classroom:|\bRMS\b|employee identification|health declaration|action required/i;
 // To+Cc this large is a broadcast, not a message to answer.
 const MASS_RECIPIENT_THRESHOLD = 10;
 
@@ -53,6 +53,9 @@ function header(msg, name) {
 // mailing-list/marketing platform sets), a "noreply"-style sender, delivery
 // or calendar-response subjects, or Outlook's own "Other" (non-Focused) tab.
 export function isAutomatedOrPromotional(msg) {
+  // Meeting invitations, updates, cancellations and accept/decline replies are
+  // calendar traffic (answered with Accept/Decline, not an email reply).
+  if (msg.meetingMessageType && msg.meetingMessageType !== 'none') return true;
   if (header(msg, 'list-unsubscribe') !== null || header(msg, 'list-id') !== null) return true;
   if (/^(bulk|list|junk)$/i.test((header(msg, 'precedence') || '').trim())) return true;
   const autoSubmitted = header(msg, 'auto-submitted');
@@ -122,7 +125,7 @@ export async function getUnrepliedThreads(email, { days = UNREPLIED_LOOKBACK_DAY
   // Some inboxes hold 5,000+ messages in the window (80+ sequential pages,
   // past Vercel's 60s limit), so the window is cut into slices read 4 at a
   // time — Graph allows 4 concurrent requests per mailbox.
-  const select = 'id,conversationId,subject,from,toRecipients,ccRecipients,receivedDateTime,isRead,isDraft,bodyPreview,webLink,inferenceClassification,internetMessageHeaders';
+  const select = 'id,conversationId,subject,from,toRecipients,ccRecipients,receivedDateTime,isRead,isDraft,bodyPreview,webLink,inferenceClassification,internetMessageHeaders,microsoft.graph.eventMessage/meetingMessageType';
   const startMs = Date.parse(from), endMs = Date.now() + 1000;
   const slices = Array.from({ length: INBOX_SLICES }, (_, i) => [
     new Date(startMs + ((endMs - startMs) * i) / INBOX_SLICES).toISOString(),

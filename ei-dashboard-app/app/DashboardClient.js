@@ -2281,8 +2281,24 @@ function GraphMeetingsPanel({ meetings: allMeetings, employees, filter, setFilte
   // Sales and Assistant Technical Managers (team 'Trainer') are kept apart —
   // the default view is Sales only, so ATMs never inflate the Sales numbers.
   const [scope, setScope] = useState('Sales');
-  const meetings = allMeetings.filter((m) => (scope === 'ATM' ? m.team === 'Trainer' : m.team === 'Sales'));
-  const scopeCounts = { Sales: allMeetings.filter((m) => m.team === 'Sales').length, ATM: allMeetings.filter((m) => m.team === 'Trainer').length };
+  // Date range (IST calendar days, inclusive). Default "All" = everything
+  // synced so far; the sync pulls the last 7 days per run, so history builds up.
+  const [rangeFrom, setRangeFrom] = useState('');
+  const [rangeTo, setRangeTo] = useState('');
+  const inRange = (m) => {
+    const day = istDayKey(m.scheduledStart);
+    return (!rangeFrom || day >= rangeFrom) && (!rangeTo || day <= rangeTo);
+  };
+  const ranged = allMeetings.filter(inRange);
+  const meetings = ranged.filter((m) => (scope === 'ATM' ? m.team === 'Trainer' : m.team === 'Sales'));
+  const scopeCounts = { Sales: ranged.filter((m) => m.team === 'Sales').length, ATM: ranged.filter((m) => m.team === 'Trainer').length };
+  const allDays = allMeetings.map((m) => istDayKey(m.scheduledStart)).sort();
+  const dataFrom = allDays[0], dataTo = allDays[allDays.length - 1];
+  const presetDays = (n) => {
+    const to = istDayKey(new Date().toISOString());
+    const from = istDayKey(new Date(Date.now() - (n - 1) * 864e5).toISOString());
+    setRangeFrom(from); setRangeTo(to);
+  };
   const [empDetail, setEmpDetail] = useState(null);
   const [meetingDetail, setMeetingDetail] = useState(null);
   const [rosterDetail, setRosterDetail] = useState(null);
@@ -2368,6 +2384,19 @@ function GraphMeetingsPanel({ meetings: allMeetings, employees, filter, setFilte
             {t.label} <span style={{ opacity: 0.7, fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 11.5 }}>({scopeCounts[t.key]})</span>
           </div>
         ))}
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12, color: '#8A90A8' }}>Date range</span>
+        {[{ label: 'All', fn: () => { setRangeFrom(''); setRangeTo(''); }, active: !rangeFrom && !rangeTo }, { label: 'Last 7 days', fn: () => presetDays(7) }, { label: 'Last 14 days', fn: () => presetDays(14) }, { label: 'Last 30 days', fn: () => presetDays(30) }].map((p) => (
+          <div key={p.label} onClick={p.fn} style={{ cursor: 'pointer', borderRadius: 10, padding: '7px 12px', fontSize: 12.5, border: `1px solid ${p.active ? 'rgba(99,102,241,0.6)' : 'rgba(255,255,255,0.1)'}`, background: p.active ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.03)', color: p.active ? '#A5A7FA' : '#A8AEC4' }}>{p.label}</div>
+        ))}
+        <input type="date" value={rangeFrom} min={dataFrom} max={rangeTo || dataTo} onChange={(ev) => setRangeFrom(ev.target.value)} style={{ border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '6px 10px', fontSize: 12.5, color: '#E4E6F0', colorScheme: 'dark' }} />
+        <span style={{ fontSize: 12, color: '#6E7488' }}>to</span>
+        <input type="date" value={rangeTo} min={rangeFrom || dataFrom} max={dataTo} onChange={(ev) => setRangeTo(ev.target.value)} style={{ border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '6px 10px', fontSize: 12.5, color: '#E4E6F0', colorScheme: 'dark' }} />
+        <span style={{ fontSize: 11.5, color: '#6E7488' }}>
+          {rangeFrom || rangeTo ? `Showing ${rangeFrom || dataFrom} → ${rangeTo || dataTo}` : `All synced meetings: ${dataFrom || '—'} → ${dataTo || '—'}`} (IST days)
+        </span>
       </div>
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
