@@ -39,9 +39,10 @@ async function getToken({ forceRefresh = false } = {}) {
 // date range: returns one row per CCE with a fixed 24-month window of monthly
 // columns ("May-2025" .. "Apr-2027", zero-filled before joining and for
 // months still to come) as Indian-format strings ("1,79,537"). The row
-// carries Manager and CCE (name, often with a trailing "-" or nickname) but,
-// for now, no EmpId — an EmpId/EmpCode field is picked up automatically if
-// Koenig adds one.
+// carries Manager and CCE (name, often with a trailing "-" or nickname) plus
+// EmpId (added by Koenig after the first version of this API; syncPms matches
+// on it). The API ignores any EmpId/EmployeeId sent in the request body — it
+// always returns every row — so EmpId is a match key, not a filter input.
 const MONTH_KEY = /^[A-Z][a-z]{2}-\d{4}$/;
 const EMP_ID_KEY = /^(emp[_ ]?(id|code)|employee[_ ]?(id|code))$/i;
 

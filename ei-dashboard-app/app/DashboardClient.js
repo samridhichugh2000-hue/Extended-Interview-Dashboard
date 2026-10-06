@@ -522,13 +522,22 @@ function Overview({ employees, newJoiners, deptCounts, go, setModal }) {
   // on the PA/PIP Detection screen — this restriction is Overview-only.
   const njActiveEmployees = activeEmployees.filter((e) => isNewJoiner(e.tenure));
 
+  // Overview scores use the same default window as the Worry Index screen (last
+  // 3 months), recomputed from the dated signals rather than the all-time score.
+  const overviewWindow = WORRY_WINDOWS.find((w) => w.key === '3month');
+  const overviewSince = windowSince(overviewWindow.days);
+  const njWindowed = njActiveEmployees.map((e) => {
+    const signalReport = computeSignalReport(e, { since: overviewSince });
+    const signals = signalReport.filter((x) => x.status === 'fired');
+    return { ...e, signalReport, signals, score: computeWorryScore(signals), trendNote: trendNoteFor(signals, overviewWindow.trendPhrase) };
+  });
   // Worst-first — only NJs currently running a negative Worry Index score,
   // the ones that actually need review, not just the first 5 in DB order.
-  const reviewQueue = njActiveEmployees.map(decorate).filter((e) => e.score < 0).sort((a, b) => a.score - b.score);
+  const reviewQueue = njWindowed.map(decorate).filter((e) => e.score < 0).sort((a, b) => a.score - b.score);
   const paPipList = njActiveEmployees.filter((e) => e.status === 'PA Issued' || e.status === 'PIP Issued').map((e) => ({ name: e.name, due: e.due, type: e.status === 'PIP Issued' ? 'PIP' : 'PA', active: e.active, ...STATUS[e.status] }));
   // Real band breakdown across every currently-scored employee (was
   // hardcoded mock numbers — 7/11/13/11 — that never reflected live data).
-  const scoredEmployees = njActiveEmployees.filter((e) => e.score != null).map(decorate);
+  const scoredEmployees = njWindowed.filter((e) => e.score != null).map(decorate);
   const bandCounts = { Critical: 0, Low: 0, Medium: 0, Good: 0 };
   for (const e of scoredEmployees) bandCounts[e.bandLabel] = (bandCounts[e.bandLabel] || 0) + 1;
 
@@ -548,7 +557,7 @@ function Overview({ employees, newJoiners, deptCounts, go, setModal }) {
         </div>
         <div onClick={() => go('worryindex')} style={{ cursor: 'pointer', border: '1px solid rgba(244,63,94,0.25)', background: 'linear-gradient(150deg,rgba(244,63,94,0.13),rgba(244,63,94,0.02))', borderRadius: 16, padding: 20, animation: 'floatcard 6s ease-in-out infinite .6s' }}>
           <div style={{ fontSize: 12, color: '#A8AEC4' }}>Worry Index · Critical</div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, margin: '8px 0 12px' }}><span className="disp" style={{ fontSize: 38, fontWeight: 600, letterSpacing: '-0.03em' }}>{bandCounts.Critical}</span><span style={{ fontSize: 11.5, color: '#6E7488' }}>of {scoredEmployees.length} scored NJs</span></div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, margin: '8px 0 12px' }}><span className="disp" style={{ fontSize: 38, fontWeight: 600, letterSpacing: '-0.03em' }}>{bandCounts.Critical}</span><span style={{ fontSize: 11.5, color: '#6E7488' }}>of {scoredEmployees.length} scored NJs · last 3 months</span></div>
           <div style={{ display: 'flex', gap: 4, height: 8 }}>
             <div style={{ flex: bandCounts.Critical || 0.001, background: '#F43F5E', borderRadius: 3 }} />
             <div style={{ flex: bandCounts.Low || 0.001, background: '#F59E0B', borderRadius: 3 }} />
@@ -1890,7 +1899,7 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
   // without a countInWindow (see SIGNAL_DEFS) surface as 'not-windowed'
   // under Weekly/Monthly/6 Months rather than silently keeping their
   // all-time count under a window label that would misrepresent them.
-  const [windowKey, setWindowKey] = useState('monthly');
+  const [windowKey, setWindowKey] = useState('3month');
   // Custom range is a 5th option alongside the WORRY_WINDOWS presets — not
   // itself in that list (it has no fixed `days`), so it's tracked as its
   // own state and only consulted when windowKey === 'custom'.
@@ -2923,7 +2932,7 @@ function EmployeeModal({ emp, onClose }) {
   // Weekly/Monthly/6 Months/All time selector as the Worry Index screen,
   // recomputed the same way (computeSignalReport's `since` option). 'All
   // time' with no `since` reproduces the exact all-time score above.
-  const [windowKey, setWindowKey] = useState('monthly');
+  const [windowKey, setWindowKey] = useState('3month');
   const [customRange, setCustomRange] = useState({ from: '', to: '' });
   const isCustomWindow = windowKey === 'custom';
   const windowDef = WORRY_WINDOWS.find((w) => w.key === windowKey) || WORRY_WINDOWS[0];
