@@ -162,6 +162,8 @@ CREATE TABLE IF NOT EXISTS graph_meetings (
   av_issue INTEGER,               -- 0/1, NULL until a call record is matched
   av_issue_details TEXT,          -- JSON: which streams/metrics tripped the audio/video thresholds
   client_emails TEXT,             -- JSON array of attendee/organizer addresses whose domain isn't @koenig-solutions.com — empty array means no external participant (an internal-only meeting), not "not checked yet"
+  recording_count INTEGER,        -- Teams recordings found for this occurrence (0 = none made), NULL = not checkable (no online_meeting_id) or not checked yet
+  recording_checked_at TEXT,
   synced_at TEXT NOT NULL,
   UNIQUE(employee_id, join_url, scheduled_start)
 );

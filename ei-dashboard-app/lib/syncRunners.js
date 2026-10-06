@@ -4,6 +4,7 @@
 // process.env directly (already populated by Vercel — no dotenv needed here,
 // unlike the standalone CLI scripts these mirror).
 import { getDb } from './db.js';
+import { isExcludedMeeting } from './meetingFilters.js';
 
 // Used by syncSc/syncAssignments/syncMgrFeedback — reconstructs an
 // employee's join date from tenure_days (for recycled-emp-code exclusion),
@@ -1185,14 +1186,15 @@ function findAttendance(reports, email, parseGraphDateTime, scheduledStart) {
 
 export async function recomputeGraphAggregates(db, employeeId) {
   const res = await db.execute({
-    sql: 'SELECT timing_status, av_issue, client_emails FROM graph_meetings WHERE employee_id = ?',
+    sql: 'SELECT subject, timing_status, av_issue, client_emails FROM graph_meetings WHERE employee_id = ?',
     args: [employeeId],
   });
-  const total = res.rows.length;
-  const late = res.rows.filter((r) => r.timing_status === 'Late').length;
-  const missed = res.rows.filter((r) => r.timing_status === 'Did Not Join').length;
-  const avIssues = res.rows.filter((r) => r.av_issue === 1).length;
-  const externalMeetings = res.rows.filter((r) => {
+  const rows = res.rows.filter((r) => !isExcludedMeeting(r.subject));
+  const total = rows.length;
+  const late = rows.filter((r) => r.timing_status === 'Late').length;
+  const missed = rows.filter((r) => r.timing_status === 'Did Not Join').length;
+  const avIssues = rows.filter((r) => r.av_issue === 1).length;
+  const externalMeetings = rows.filter((r) => {
     try { return JSON.parse(r.client_emails || '[]').length > 0; } catch { return false; }
   }).length;
   await db.execute({
@@ -1256,6 +1258,7 @@ export async function syncGraphMeetings() {
       const organizerEmail = event.organizer?.emailAddress?.address;
       const joinUrl = event.onlineMeeting?.joinUrl;
       if (!organizerEmail || !joinUrl) continue;
+      if (isExcludedMeeting(event.subject)) continue; // ILO / tech call / Course Advice
 
       const scheduledStart = parseGraphDateTime(event.start.dateTime);
       const scheduledEnd = event.end?.dateTime ? parseGraphDateTime(event.end.dateTime) : null;
@@ -1318,7 +1321,66 @@ export async function syncGraphMeetings() {
     processed++;
   }
 
-  return { message: `Synced Teams meeting attendance for ${processed} Sales reps (${meetingsSynced} meetings, ${skippedResolved} already resolved and skipped, ${apiErrors} calendar fetch errors, ${noEmail} had no email on file).` };
+  let recordingsNote = '';
+  try { recordingsNote = ` ${(await syncGraphRecordings(db)).message}`; }
+  catch (err) { recordingsNote = ` Recording check failed: ${err.message}`; }
+
+  return { message: `Synced Teams meeting attendance for ${processed} Sales reps + Assistant Technical Managers (${meetingsSynced} meetings, ${skippedResolved} already resolved and skipped, ${apiErrors} calendar fetch errors, ${noEmail} had no email on file).${recordingsNote}` };
+}
+
+// Recording coverage — for every tracked meeting that has resolved to an
+// online meeting (organizer inside this tenant) and has already ended, asks
+// Graph whether a Teams recording exists and stores the count on the row.
+// One lookup per distinct organizer+meeting (recurring series and meetings
+// shared by several reps are fetched once), then each row takes the
+// recordings created around its own scheduled window. A meeting with no
+// recording yet is re-checked for 3 days after it ends (recordings can take a
+// while to publish); older ones are final. Rows with no online_meeting_id
+// stay NULL ("not checkable").
+const RECORDING_RECHECK_MS = 3 * 24 * 60 * 60 * 1000;
+export async function syncGraphRecordings(db = getDb()) {
+  const { resolveUserIdByEmail, getRecordings, parseGraphDateTime } = await import('./graphCallsApi.js');
+  const now = Date.now();
+  const res = await db.execute('SELECT id, subject, organizer_email, online_meeting_id, scheduled_start, scheduled_end, recording_count, recording_checked_at FROM graph_meetings WHERE online_meeting_id IS NOT NULL');
+
+  const groups = new Map();
+  for (const r of res.rows) {
+    if (isExcludedMeeting(r.subject)) continue;
+    const end = new Date(r.scheduled_end || r.scheduled_start).getTime();
+    if (end > now) continue;
+    const settled = r.recording_checked_at && (r.recording_count > 0 || now - end > RECORDING_RECHECK_MS);
+    if (settled) continue;
+    const key = `${r.organizer_email}|${r.online_meeting_id}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  }
+
+  const idCache = new Map();
+  let checked = 0, recorded = 0, errors = 0;
+  for (const rows of groups.values()) {
+    const { organizer_email: email, online_meeting_id: meetingId } = rows[0];
+    let recordings;
+    try {
+      if (!idCache.has(email)) idCache.set(email, resolveUserIdByEmail(email).catch(() => null));
+      const organizerId = await idCache.get(email);
+      if (!organizerId) { errors++; continue; }
+      recordings = await getRecordings(organizerId, meetingId);
+    } catch (err) {
+      errors++;
+      if (err.status !== 404 && err.status !== 403) console.error(`Graph recordings lookup failed for ${email}:`, err.message);
+      continue;
+    }
+    const times = recordings.map((rec) => parseGraphDateTime(rec.createdDateTime)?.getTime()).filter(Boolean);
+    for (const r of rows) {
+      const start = new Date(r.scheduled_start).getTime();
+      const end = new Date(r.scheduled_end || r.scheduled_start).getTime();
+      const count = times.filter((t) => t >= start - 30 * 60 * 1000 && t <= end + 2 * 60 * 60 * 1000).length;
+      await db.execute({ sql: 'UPDATE graph_meetings SET recording_count = ?, recording_checked_at = ? WHERE id = ?', args: [count, new Date().toISOString(), r.id] });
+      checked++;
+      if (count > 0) recorded++;
+    }
+  }
+  return { message: `Recording check: ${checked} meetings checked, ${recorded} have a recording, ${errors} meetings not reachable.` };
 }
 
 // Keeps the callRecords webhook subscription alive — creates one if none is
@@ -1590,6 +1652,7 @@ export const SYNC_RUNNERS = {
   empdetails: syncEmployeeDetails,
   commonindex: syncCommonIndex,
   graphmeetings: syncGraphMeetings,
+  graphrecordings: syncGraphRecordings,
   graphsubscription: syncGraphSubscription,
   externalemails: syncExternalEmails,
   // PA/PIP status normally comes from the standalone 'pip' feed, which runs

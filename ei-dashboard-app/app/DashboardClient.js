@@ -2140,6 +2140,8 @@ function GraphCalls({ meetings: allMeetings, employees, filter, setFilter }) {
   const late = meetings.filter((m) => m.timingStatus === 'Late').length;
   const didNotJoin = meetings.filter((m) => m.timingStatus === 'Did Not Join').length;
   const avIssues = meetings.filter((m) => m.avIssue === true).length;
+  const recorded = meetings.filter((m) => m.recordingCount > 0).length;
+  const notRecorded = meetings.filter((m) => m.recordingCount === 0).length;
 
   const cards = [
     { label: 'Meetings Tracked', count: total, color: '#A5A7FA', filterVal: null },
@@ -2147,6 +2149,8 @@ function GraphCalls({ meetings: allMeetings, employees, filter, setFilter }) {
     { label: 'Late', count: late, color: '#F59E0B', filterVal: 'Late' },
     { label: 'Did Not Join', count: didNotJoin, color: '#F87171', filterVal: 'DidNotJoin' },
     { label: 'A/V Issues', count: avIssues, color: '#F87171', filterVal: 'AvIssue' },
+    { label: 'Recorded', count: recorded, color: '#5EEAD4', filterVal: 'Recorded' },
+    { label: 'Not Recorded', count: notRecorded, color: '#F59E0B', filterVal: 'NotRecorded' },
   ].map((c) => ({ ...c, active: filter === c.filterVal || (!filter && c.filterVal === null) }));
 
   const matchesFilter = (m) => {
@@ -2154,6 +2158,8 @@ function GraphCalls({ meetings: allMeetings, employees, filter, setFilter }) {
     if (filter === 'Late') return m.timingStatus === 'Late';
     if (filter === 'DidNotJoin') return m.timingStatus === 'Did Not Join';
     if (filter === 'AvIssue') return m.avIssue === true;
+    if (filter === 'Recorded') return m.recordingCount > 0;
+    if (filter === 'NotRecorded') return m.recordingCount === 0;
     return true;
   };
 
@@ -2176,20 +2182,22 @@ function GraphCalls({ meetings: allMeetings, employees, filter, setFilter }) {
       late: e.meetings.filter((m) => m.timingStatus === 'Late').length,
       didNotJoin: e.meetings.filter((m) => m.timingStatus === 'Did Not Join').length,
       avIssues: e.meetings.filter((m) => m.avIssue === true).length,
+      recorded: e.meetings.filter((m) => m.recordingCount > 0).length,
+      checkable: e.meetings.filter((m) => m.recordingCount != null).length,
       rosterCount: rosterByEmployee.get(e.employeeId)?.rosterCount ?? null,
       rosterDetails: rosterByEmployee.get(e.employeeId)?.rosterDetails ?? [],
     }))
     .sort((a, b) => a.employeeName.localeCompare(b.employeeName));
 
-  const gridCols = '1.4fr .8fr .8fr .8fr .8fr .8fr 1fr 1.3fr';
+  const gridCols = '1.4fr .8fr .8fr .8fr .8fr .8fr .8fr 1fr 1.3fr';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ border: '1px solid rgba(99,102,241,0.25)', background: 'rgba(99,102,241,0.06)', borderRadius: 12, padding: '12px 16px', fontSize: 12.5, color: '#A8AEC4', lineHeight: 1.5 }}>
-        Sourced from each Sales rep's Outlook calendar and Teams attendance reports via Microsoft Graph — meetings organized by Gunjan Setia (recurring internal briefings) are excluded, everything else stays in, internal and external alike. Audio/video quality only appears once a callRecords webhook notification arrives for that meeting — "No Data" there just means none has landed yet, not a clean call. Roster is a separate feed (Koenig's Get CSM Roster) — click it to see that rep's on-file shift history. A meeting with any non-@koenig-solutions.com attendee or organizer counts as a client meeting (shown in each meeting's detail) and feeds the "External meetings &lt; 1 per week" Worry Index signal — timing/A-V quality here don't feed the score yet.
+        Sourced from each Sales rep's (and Assistant Technical Manager's) Outlook calendar and Teams attendance reports via Microsoft Graph — meetings organized by Gunjan Setia (recurring internal briefings) and meetings titled ILO, tech call or Course Advice are excluded, everything else stays in, internal and external alike. Audio/video quality only appears once a callRecords webhook notification arrives for that meeting — "No Data" there just means none has landed yet, not a clean call. Roster is a separate feed (Koenig's Get CSM Roster) — click it to see that rep's on-file shift history. A meeting with any non-@koenig-solutions.com attendee or organizer counts as a client meeting (shown in each meeting's detail) and feeds the "External meetings &lt; 1 per week" Worry Index signal — timing/A-V quality here don't feed the score yet.
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 10 }}>
         {cards.map((c) => (
           <div key={c.label} onClick={() => setFilter(c.active && c.filterVal !== null ? null : c.filterVal)}
             style={{ cursor: 'pointer', border: `1px solid ${c.active ? c.color : 'rgba(255,255,255,0.09)'}`, background: c.active ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.025)', borderRadius: 12, padding: '13px 14px' }}>
@@ -2222,7 +2230,7 @@ function GraphCalls({ meetings: allMeetings, employees, filter, setFilter }) {
 
       <div style={{ ...card, overflow: 'hidden' }}>
         <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <span>Employee</span><span style={{ textAlign: 'right' }}>Meetings</span><span style={{ textAlign: 'right' }}>On Time</span><span style={{ textAlign: 'right' }}>Late</span><span style={{ textAlign: 'right' }}>Did Not Join</span><span style={{ textAlign: 'right' }}>A/V Issues</span><span style={{ textAlign: 'right' }}>Roster</span><span style={{ textAlign: 'right' }}>Details</span>
+          <span>Employee</span><span style={{ textAlign: 'right' }}>Meetings</span><span style={{ textAlign: 'right' }}>On Time</span><span style={{ textAlign: 'right' }}>Late</span><span style={{ textAlign: 'right' }}>Did Not Join</span><span style={{ textAlign: 'right' }}>A/V Issues</span><span style={{ textAlign: 'right' }}>Recorded</span><span style={{ textAlign: 'right' }}>Roster</span><span style={{ textAlign: 'right' }}>Details</span>
         </div>
         {employeeRows.map((e) => (
           <div key={e.employeeId} className="hoverrow" style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '13px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
@@ -2235,6 +2243,7 @@ function GraphCalls({ meetings: allMeetings, employees, filter, setFilter }) {
             <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: e.late > 0 ? '#F59E0B' : '#6E7488' }}>{e.late}</span>
             <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: e.didNotJoin > 0 ? '#F87171' : '#6E7488' }}>{e.didNotJoin}</span>
             <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: e.avIssues > 0 ? '#F87171' : '#6E7488' }}>{e.avIssues}</span>
+            <span title="Meetings with a Teams recording / meetings whose recording status could be checked (organizer inside Koenig's tenant)" style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: e.recorded > 0 ? '#5EEAD4' : '#6E7488' }}>{e.checkable ? `${e.recorded}/${e.checkable}` : '—'}</span>
             {e.rosterCount ? (
               <span onClick={() => setRosterDetail(e)} style={{ textAlign: 'right', fontSize: 12.5, color: '#A5A7FA', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>{e.rosterCount} shift{e.rosterCount === 1 ? '' : 's'}</span>
             ) : (
@@ -2323,7 +2332,7 @@ function istDayLabel(iso) {
 
 function EmployeeMeetingsModal({ emp, onClose, onSelectMeeting }) {
   const meetings = [...emp.meetings].sort((a, b) => new Date(b.scheduledStart) - new Date(a.scheduledStart));
-  const gridCols = '1.8fr .9fr .9fr .9fr .8fr .9fr';
+  const gridCols = '1.8fr .9fr .9fr .9fr .8fr .9fr .9fr';
 
   const days = new Map();
   for (const m of meetings) {
@@ -2349,7 +2358,7 @@ function EmployeeMeetingsModal({ emp, onClose, onSelectMeeting }) {
                 {istDayLabel(dayMeetings[0].scheduledStart)} <span style={{ color: '#5C6178' }}>· {dayMeetings.length} meeting{dayMeetings.length === 1 ? '' : 's'}</span>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '0 0 6px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-                <span>Meeting</span><span>Time</span><span>Joined</span><span>Timing</span><span style={{ textAlign: 'right' }}>Duration</span><span style={{ textAlign: 'right' }}>A/V Quality</span>
+                <span>Meeting</span><span>Time</span><span>Joined</span><span>Timing</span><span style={{ textAlign: 'right' }}>Duration</span><span style={{ textAlign: 'right' }}>A/V Quality</span><span style={{ textAlign: 'right' }}>Recording</span>
               </div>
               {dayMeetings.map((m) => (
                 <div key={m.id} className="hoverrow" onClick={() => onSelectMeeting(m)} style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '11px 0', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 12.5, cursor: 'pointer' }}>
@@ -2365,6 +2374,9 @@ function EmployeeMeetingsModal({ emp, onClose, onSelectMeeting }) {
                   <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: '#C7CBDA' }}>{fmtDuration(m.attendanceSeconds)}</span>
                   <span style={{ textAlign: 'right', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, justifySelf: 'end', background: m.avIssue == null ? 'rgba(255,255,255,0.05)' : m.avIssue ? 'rgba(244,63,94,0.14)' : 'rgba(20,184,166,0.14)', color: m.avIssue == null ? '#6E7488' : m.avIssue ? '#F87171' : '#5EEAD4', border: `1px solid ${m.avIssue == null ? 'rgba(255,255,255,0.12)' : m.avIssue ? 'rgba(244,63,94,0.35)' : 'rgba(20,184,166,0.35)'}` }}>
                     {m.avIssue == null ? 'No Data' : m.avIssue ? 'Issue' : 'Clean'}
+                  </span>
+                  <span style={{ textAlign: 'right', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, justifySelf: 'end', background: m.recordingCount > 0 ? 'rgba(20,184,166,0.14)' : 'rgba(255,255,255,0.05)', color: m.recordingCount > 0 ? '#5EEAD4' : m.recordingCount === 0 ? '#F59E0B' : '#6E7488', border: `1px solid ${m.recordingCount > 0 ? 'rgba(20,184,166,0.35)' : 'rgba(255,255,255,0.12)'}` }}>
+                    {m.recordingCount == null ? 'N/A' : m.recordingCount > 0 ? 'Recorded' : 'None'}
                   </span>
                 </div>
               ))}
@@ -2390,6 +2402,7 @@ function GraphMeetingModal({ meeting: m, onClose }) {
     ['Left at', fmtIst(m.leftAt)],
     ['Delay vs. scheduled start', m.timingStatus === 'Did Not Join' ? '—' : fmtDelay(m.delaySeconds)],
     ['Attendance duration', fmtDuration(m.attendanceSeconds)],
+    ['Recording', m.recordingCount == null ? 'Not checkable — organizer outside Koenig tenant, or not checked yet' : m.recordingCount > 0 ? `Yes (${m.recordingCount})` : 'No recording made'],
     ['Call record matched', m.callRecordId || 'Not yet — no callRecords notification received for this meeting'],
   ];
   const problems = [...(m.avIssueDetails?.audioProblems || []).map((p) => ({ ...p, kind: 'Audio' })), ...(m.avIssueDetails?.videoProblems || []).map((p) => ({ ...p, kind: 'Video' }))];

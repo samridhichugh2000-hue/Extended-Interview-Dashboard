@@ -88,6 +88,8 @@ for (const stmt of [
   'ALTER TABLE employees ADD COLUMN av_issue_count INTEGER',
   'ALTER TABLE employees ADD COLUMN external_meetings_count INTEGER',
   'ALTER TABLE graph_meetings ADD COLUMN client_emails TEXT',
+  'ALTER TABLE graph_meetings ADD COLUMN recording_count INTEGER',
+  'ALTER TABLE graph_meetings ADD COLUMN recording_checked_at TEXT',
 ]) {
   try {
     await db.execute(stmt);

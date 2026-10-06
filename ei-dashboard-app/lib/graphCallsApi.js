@@ -94,6 +94,15 @@ export async function getAttendanceReports(organizerId, meetingId) {
   return Promise.all(reports.map((r) => graphJson(`${base}/${r.id}?$expand=attendanceRecords`)));
 }
 
+// Teams recordings for an online meeting (needs OnlineMeetingRecording.Read.All).
+// A recurring meeting keeps one id across occurrences, so this lists every
+// occurrence's recording — callers match by createdDateTime. Empty list when
+// nobody pressed record; 403/404 throws like the other lookups.
+export async function getRecordings(organizerId, meetingId) {
+  const list = await graphJson(`${GRAPH_BASE}/users/${organizerId}/onlineMeetings/${meetingId}/recordings`);
+  return list.value || [];
+}
+
 // callRecord.organizer only exposes an AAD object id (no email/UPN), while
 // graph_meetings.organizer_email comes from the calendar side — resolve the
 // id to an address so the two can be matched. Returns null for a
