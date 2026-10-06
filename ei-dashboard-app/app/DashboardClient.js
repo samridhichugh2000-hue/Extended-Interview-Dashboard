@@ -1590,7 +1590,9 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
     .filter((e) => !filter || e[algoKey][tabKey] === filter)
     .filter((e) => !bandFilter || e[algoKey].band === bandFilter)
     .filter((e) => !statusFilter || (statusFilter === 'missing' ? PA_ALGO_MISSING_STATUSES.includes(e[algoKey].status) : e[algoKey].status === statusFilter))
-    .filter((e) => !firedOnly || e[algoKey].status === 'fired' || e[algoKey].negFeedbackSuggestion)
+    // The "needs attention only" default must not hide the rows a status card
+    // was clicked to show (Missing data / Clear are never 'fired').
+    .filter((e) => statusFilter || !firedOnly || e[algoKey].status === 'fired' || e[algoKey].negFeedbackSuggestion)
     .filter((e) => !q || e.name.toLowerCase().includes(q) || String(e.id).toLowerCase().includes(q))
     .map(decorate)
     // Tenure band order — youngest first (0-3 months, then 3-6, etc.),
