@@ -5,6 +5,10 @@
       "schedule": "30 3 * * *"
     },
     {
+      "path": "/api/sync/rcfullybooked",
+      "schedule": "30 2 * * *"
+    },
+    {
       "path": "/api/sync/weeklyresponsereport",
       "schedule": "30 12 * * 3"
     }

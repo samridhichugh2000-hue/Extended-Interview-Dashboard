@@ -283,3 +283,51 @@ export async function getResponseByToken(token) {
     q1: r.q1, a1: r.a1, q2: r.q2, a2: r.a2,
   };
 }
+
+// ---- home-page payload slimming ----
+// The dashboard used to ship every employee's full *_details lists to the
+// browser (~38 MB). The client only needs a few date fields from the big
+// ones to recompute windowed Worry Index signals (lib/data.js) and the "No SC
+// within 30 days" filter, so the page gets those trimmed to just the keys
+// that code reads; the full rows are fetched per employee when a popup that
+// lists them opens (getEmployeeDetails, via /api/employees/[id]/details).
+// If lib/data.js starts reading another key from one of these lists, add it
+// to SLIM_KEYS or that signal will silently count zero.
+const SLIM_KEYS = {
+  scDetails: ['createdOn'],
+  skillsDetails: ['skillAvailableDate'],
+  inHouseSkillsDetails: ['markDate'],
+  assignmentsDetails: ['startDate', 'endDate'],
+  negFeedbackDetails: ['feedbackDate'],
+};
+// Never read by the client at all.
+const CLIENT_UNUSED = ['rcMainAssignmentsDetails', 'externalEmailDetails', 'rosterDetails'];
+
+export function slimEmployeesForClient(employees) {
+  return employees.map((e) => {
+    const out = { ...e };
+    for (const k of CLIENT_UNUSED) delete out[k];
+    for (const [field, keys] of Object.entries(SLIM_KEYS)) {
+      out[field] = (e[field] || []).map((r) => Object.fromEntries(keys.map((k) => [k, r?.[k] ?? null])));
+    }
+    return out;
+  });
+}
+
+export async function getEmployeeDetails(id) {
+  const db = getDb();
+  const res = await db.execute({
+    sql: 'SELECT sc_details, neg_feedback_details, assignments_details, skills_details, in_house_skills_details FROM employees WHERE id = ?',
+    args: [id],
+  });
+  const e = res.rows[0];
+  if (!e) return null;
+  const parse = (v) => (v ? JSON.parse(v) : []);
+  return {
+    scDetails: parse(e.sc_details),
+    negFeedbackDetails: parse(e.neg_feedback_details),
+    assignmentsDetails: parse(e.assignments_details),
+    skillsDetails: parse(e.skills_details),
+    inHouseSkillsDetails: parse(e.in_house_skills_details),
+  };
+}

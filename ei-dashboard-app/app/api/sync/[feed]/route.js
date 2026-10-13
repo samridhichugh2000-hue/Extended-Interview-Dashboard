@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { SYNC_RUNNERS } from '../../../../lib/syncRunners';
-import { recordJobRun, recordJobStarted } from '../../../../lib/jobStatus';
+import { recordJobRun, recordJobStarted, recordFeedRun } from '../../../../lib/jobStatus';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -51,10 +51,12 @@ async function handle(request, { params }) {
   if (TRACKED_JOBS.has(feed)) await recordJobStarted(feed);
   try {
     const result = await runner();
+    await recordFeedRun(feed, true, result?.message);
     if (TRACKED_JOBS.has(feed)) await recordJobRun(feed, true, result?.message);
     return NextResponse.json({ feed, startedAt, finishedAt: new Date().toISOString(), ok: true, ...result });
   } catch (err) {
     if (TRACKED_JOBS.has(feed)) await recordJobRun(feed, false, err.message);
+    await recordFeedRun(feed, false, err.message);
     return NextResponse.json({ feed, startedAt, finishedAt: new Date().toISOString(), ok: false, error: err.message }, { status: 500 });
   }
 }

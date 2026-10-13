@@ -6,9 +6,12 @@
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import path from 'path';
+import { config } from 'dotenv';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.join(__dirname, '..');
+config({ path: path.join(appDir, '.env.local') });
+const { recordFeedRun } = await import('../lib/jobStatus.js');
 
 const SCRIPTS = [
   'sync-koenig.mjs',
@@ -47,9 +50,15 @@ function run(script) {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [path.join(__dirname, script)], {
       cwd: appDir,
-      stdio: 'inherit',
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
-    child.on('close', (code) => resolve(code));
+    // Tee output to the log as before, but keep the tail so a failed feed's
+    // reason can be recorded for the dashboard's sync-status panel.
+    let tail = '';
+    const keep = (stream, sink) => stream.on('data', (d) => { sink.write(d); tail = (tail + d.toString()).slice(-1500); });
+    keep(child.stdout, process.stdout);
+    keep(child.stderr, process.stderr);
+    child.on('close', (code) => resolve({ code, tail }));
   });
 }
 
@@ -59,8 +68,10 @@ console.log(`\n=== sync-all starting at ${started} ===`);
 const results = [];
 for (const script of SCRIPTS) {
   console.log(`\n--- ${script} ---`);
-  const code = await run(script);
+  const { code, tail } = await run(script);
   results.push({ script, code });
+  const lines = tail.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !/MODULE_TYPELESS|Reparsing|To eliminate|trace-warnings|injected env|dotenv/i.test(l));
+  await recordFeedRun(script, code === 0, code === 0 ? lines.filter((l) => /^Synced|^Updated/i.test(l)).pop() || lines[lines.length - 1] : lines.filter((l) => /fail|error/i.test(l)).slice(-2).join(' | ') || `exit code ${code}`);
   if (code !== 0) console.error(`${script} exited with code ${code} — continuing with remaining syncs.`);
 }
 

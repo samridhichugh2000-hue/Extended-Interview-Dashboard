@@ -53,13 +53,24 @@ export async function getTrainerRcSchedule(traineeEmail, fromDate, toDate) {
     return res.json();
   };
 
-  let token = await getToken();
-  let json = await call(token);
-
-  if (json.statuscode !== 200) {
-    token = await getToken({ forceRefresh: true });
-    json = await call(token);
-    if (json.statuscode !== 200) throw new Error(`Koenig Trainer RC common API error: ${json.message}`);
+  // Koenig intermittently answers "Execution Timeout Expired" / drops the
+  // connection under load — retry those with backoff before giving up.
+  const isTransient = (m) => /timeout|fetch failed|ECONNRESET|ETIMEDOUT/i.test(m || '');
+  let json;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      let token = await getToken();
+      json = await call(token);
+      if (json.statuscode !== 200) {
+        token = await getToken({ forceRefresh: true });
+        json = await call(token);
+        if (json.statuscode !== 200) throw new Error(`Koenig Trainer RC common API error: ${json.message}`);
+      }
+      break;
+    } catch (e) {
+      if (attempt >= 3 || !isTransient(e.message)) throw e;
+      await new Promise((r) => setTimeout(r, 2000 * attempt));
+    }
   }
 
   const rows = typeof json.content === 'string' ? JSON.parse(json.content) : json.content;

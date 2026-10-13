@@ -91,3 +91,49 @@ export async function getFailedJobRuns() {
     return [];
   }
 }
+
+// ---- per-feed freshness (powers the "i" data-sync panel on the dashboard) ----
+// One row per data feed, overwritten on every run, written by BOTH the local
+// full-sync script (scripts/sync-all.mjs) and the Vercel sync route. Feed keys
+// are normalised (lowercase, letters/digits only) so "inhouse-skills" (script)
+// and "inhouseskills" (route) land on the same row.
+export const normalizeFeedKey = (s) => String(s).toLowerCase().replace(/^sync-/, '').replace(/\.mjs$/, '').replace(/[^a-z0-9]/g, '');
+
+async function ensureFeedTable(db) {
+  await db.execute(`CREATE TABLE IF NOT EXISTS feed_runs (
+    feed TEXT PRIMARY KEY,
+    status TEXT NOT NULL,
+    message TEXT,
+    ran_at TEXT NOT NULL,
+    last_ok_at TEXT
+  )`);
+}
+
+export async function recordFeedRun(feed, ok, message) {
+  try {
+    const db = getDb();
+    await ensureFeedTable(db);
+    const now = new Date().toISOString();
+    await db.execute({
+      sql: `INSERT INTO feed_runs (feed, status, message, ran_at, last_ok_at) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(feed) DO UPDATE SET status = excluded.status, message = excluded.message, ran_at = excluded.ran_at,
+              last_ok_at = CASE WHEN excluded.status = 'ok' THEN excluded.ran_at ELSE feed_runs.last_ok_at END`,
+      args: [normalizeFeedKey(feed), ok ? 'ok' : 'error', message ? String(message).slice(0, 300) : null, now, ok ? now : null],
+    });
+  } catch (err) {
+    console.error(`recordFeedRun(${feed}) failed:`, err.message);
+  }
+}
+
+export async function getFeedRuns() {
+  try {
+    const db = getDb();
+    await ensureFeedTable(db);
+    const res = await db.execute('SELECT feed, status, message, ran_at, last_ok_at FROM feed_runs ORDER BY feed');
+    // plain objects — libsql Row proxies break RSC serialization (see above)
+    return res.rows.map((r) => ({ feed: r.feed, status: r.status, message: r.message, ran_at: r.ran_at, last_ok_at: r.last_ok_at }));
+  } catch (err) {
+    console.error('getFeedRuns failed:', err.message);
+    return [];
+  }
+}

@@ -396,7 +396,7 @@ function MissingFilterChips({ defs, active, onToggle }) {
   );
 }
 
-export default function DashboardClient({ employees, responses, week, newJoiners, deptCounts, failedJobs, graphMeetings }) {
+export default function DashboardClient({ employees, responses, week, newJoiners, deptCounts, failedJobs, graphMeetings, feedRuns }) {
   const [screen, setScreen] = useState('overview');
   const [dept, setDept] = useState('Sales');
   const [filter, setFilter] = useState(null);
@@ -421,11 +421,80 @@ export default function DashboardClient({ employees, responses, week, newJoiners
         </div>
       </div>
       {modal && <EmployeeModal emp={modal} onClose={() => setModal(null)} />}
+      <SyncStatus feedRuns={feedRuns} />
     </div>
   );
 }
 
+// The home page ships only date stubs for the big per-employee lists (see
+// slimEmployeesForClient in lib/queries.js); popups that list the actual rows
+// load them here first. Cached per employee for the life of the page.
+const detailsCache = new Map();
+function DetailsGate({ emp, children }) {
+  const [full, setFull] = useState(() => detailsCache.get(emp.id) || null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    if (detailsCache.has(emp.id)) { setFull(detailsCache.get(emp.id)); return; }
+    let cancelled = false;
+    fetch(`/api/employees/${encodeURIComponent(emp.id)}/details`)
+      .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then((d) => { detailsCache.set(emp.id, d); if (!cancelled) setFull(d); })
+      .catch(() => { if (!cancelled) setFailed(true); });
+    return () => { cancelled = true; };
+  }, [emp.id]);
+  if (!full) {
+    return (
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60, color: '#9BA1B8', fontSize: 13 }}>
+        {failed ? 'Could not load details — close and try again.' : 'Loading details…'}
+      </div>
+    );
+  }
+  return children({ ...emp, ...full });
+}
+
 /* ---------- app chrome ---------- */
+
+// Small corner "i" — click for when each API feed last synced. Fed by the
+// feed_runs table (lib/jobStatus.js), written on every sync run. A feed is
+// flagged stale if its last success is over 36h old (the full sync is daily).
+const FEED_STALE_HOURS = 36;
+function SyncStatus({ feedRuns }) {
+  const [open, setOpen] = useState(false);
+  const runs = feedRuns || [];
+  const fmt = (iso) => (iso ? new Date(iso).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) + ' IST' : 'never');
+  const rows = runs.map((r) => {
+    const stale = !r.last_ok_at || Date.now() - new Date(r.last_ok_at).getTime() > FEED_STALE_HOURS * 3600000;
+    const state = r.status === 'error' ? 'error' : stale ? 'stale' : 'ok';
+    return { ...r, state };
+  });
+  const bad = rows.filter((r) => r.state !== 'ok').length;
+  const COLORS = { ok: '#34D399', stale: '#FBBF24', error: '#F87171' };
+  return (
+    <>
+      <div onClick={() => setOpen((o) => !o)} title="Data sync status"
+        style={{ position: 'fixed', right: 18, bottom: 18, zIndex: 50, width: 26, height: 26, borderRadius: '50%', cursor: 'pointer', background: 'rgba(20,24,38,0.9)', border: `1px solid ${bad ? COLORS.error : 'rgba(255,255,255,0.18)'}`, color: bad ? COLORS.error : '#9BA1B8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontStyle: 'italic', fontFamily: 'serif', fontWeight: 700 }}>i</div>
+      {open && (
+        <div style={{ position: 'fixed', right: 18, bottom: 52, zIndex: 50, width: 380, maxHeight: '70vh', overflowY: 'auto', background: '#12151F', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, padding: '12px 14px', boxShadow: '0 12px 40px rgba(0,0,0,0.5)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <div className="mono" style={{ fontSize: 10.5, letterSpacing: '.1em', color: '#8A90A8', textTransform: 'uppercase' }}>Data sync status</div>
+            <span onClick={() => setOpen(false)} style={{ cursor: 'pointer', color: '#8A90A8', fontSize: 14, lineHeight: 1 }}>×</span>
+          </div>
+          {rows.length === 0 && <div style={{ fontSize: 12, color: '#8A90A8' }}>No sync runs recorded yet — this fills in after the next sync.</div>}
+          {rows.map((r) => (
+            <div key={r.feed} style={{ padding: '6px 0', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: COLORS[r.state], flex: 'none' }} />
+                <span style={{ flex: 1, color: '#E6E8F2' }}>{r.feed}</span>
+                <span style={{ color: '#8A90A8', fontSize: 11.5 }}>{fmt(r.last_ok_at)}</span>
+              </div>
+              {r.state === 'error' && <div style={{ fontSize: 11, color: '#F0AFAF', marginLeft: 15 }}>Last attempt {fmt(r.ran_at)} failed: {r.message || 'unknown error'}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
 
 // Surfaces the last-known failure for weeklyreport / weeklyresponsereport /
 // report15 (see lib/jobStatus.js) — one row per job, so at most 3 lines.
@@ -907,7 +976,10 @@ function AuditRemarksModal({ emp, onClose }) {
   );
 }
 
-function ScListModal({ emp, onClose }) {
+function ScListModal(props) {
+  return <DetailsGate emp={props.emp}>{(emp) => <ScListModalBody {...props} emp={emp} />}</DetailsGate>;
+}
+function ScListModalBody({ emp, onClose }) {
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 560, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
@@ -1267,7 +1339,10 @@ function ExamSummaryModal({ emp, onClose }) {
   );
 }
 
-function NegFeedbackModal({ emp, onClose }) {
+function NegFeedbackModal(props) {
+  return <DetailsGate emp={props.emp}>{(emp) => <NegFeedbackModalBody {...props} emp={emp} />}</DetailsGate>;
+}
+function NegFeedbackModalBody({ emp, onClose }) {
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 600, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
@@ -1296,7 +1371,10 @@ function NegFeedbackModal({ emp, onClose }) {
   );
 }
 
-function AssignmentsModal({ emp, onClose }) {
+function AssignmentsModal(props) {
+  return <DetailsGate emp={props.emp}>{(emp) => <AssignmentsModalBody {...props} emp={emp} />}</DetailsGate>;
+}
+function AssignmentsModalBody({ emp, onClose }) {
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 680, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
@@ -1327,7 +1405,10 @@ function AssignmentsModal({ emp, onClose }) {
   );
 }
 
-function SkillsModal({ emp, onClose }) {
+function SkillsModal(props) {
+  return <DetailsGate emp={props.emp}>{(emp) => <SkillsModalBody {...props} emp={emp} />}</DetailsGate>;
+}
+function SkillsModalBody({ emp, onClose }) {
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 560, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
@@ -1355,7 +1436,10 @@ function SkillsModal({ emp, onClose }) {
   );
 }
 
-function InHouseSkillsModal({ emp, onClose }) {
+function InHouseSkillsModal(props) {
+  return <DetailsGate emp={props.emp}>{(emp) => <InHouseSkillsModalBody {...props} emp={emp} />}</DetailsGate>;
+}
+function InHouseSkillsModalBody({ emp, onClose }) {
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 680, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
