@@ -1,5 +1,6 @@
 import { graphFetch } from './graphAuth.js';
 import { isExcludedMeeting } from './meetingFilters.js';
+import { classifyEmail, getCachedClassifications } from './classifyEmail.js';
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 
@@ -96,6 +97,18 @@ function isRealPerson(address) {
       .catch(() => true));
   }
   return personCache.get(address);
+}
+
+
+const CLASSIFY_PARALLEL = 4;
+// Newest part of a message only: the plain-text body cut at the first quoted
+// reply header ("From: … Sent: …", "On … wrote:", "-----Original Message-----").
+async function fetchLatestText(user, id) {
+  const res = await graphFetch(`${user}/messages/${encodeURIComponent(id)}?$select=body`, { headers: { Prefer: 'outlook.body-content-type="text"' } });
+  if (!res.ok) return '';
+  const body = (await res.json()).body?.content || '';
+  const cut = body.search(/\r?\n\s*(From:\s.+|On .{5,120} wrote:|-{3,}\s*Original Message\s*-{3,})/i);
+  return (cut > 40 ? body.slice(0, cut) : body).replace(/\s+/g, ' ').trim();
 }
 
 // Threads in `email`'s Inbox (last UNREPLIED_LOOKBACK_DAYS days, older than
@@ -205,6 +218,25 @@ export async function getUnrepliedThreads(email, { days = UNREPLIED_LOOKBACK_DAY
       webLink: m.webLink || null,
     });
   }
+  // Read each thread's last message and keep only those that really need a
+  // reply — reports, "ok"/"thanks" and FYI mail are set aside (and shown
+  // separately in the live view), not counted.
+  const cached = await getCachedClassifications(unreplied.map((m) => m.id));
+  let nextItem = 0;
+  await Promise.all(Array.from({ length: Math.min(CLASSIFY_PARALLEL, unreplied.length) }, async () => {
+    while (nextItem < unreplied.length) {
+      const m = unreplied[nextItem++];
+      let verdict = cached.get(m.id);
+      if (!verdict) {
+        const text = await fetchLatestText(user, m.id).catch(() => '');
+        verdict = await classifyEmail({ id: m.id, subject: m.subject, from: m.fromAddress, text });
+      }
+      m.category = verdict.label;
+      m.categoryReason = verdict.reason;
+    }
+  }));
   unreplied.sort((a, b) => b.receivedDateTime.localeCompare(a.receivedDateTime));
-  return { threadsConsidered: latestByConversation.size, eligibleMessages, unreplied };
+  const needsResponse = unreplied.filter((m) => m.category === 'needs_response');
+  const notNeeded = unreplied.filter((m) => m.category !== 'needs_response');
+  return { threadsConsidered: latestByConversation.size, eligibleMessages, unreplied: needsResponse, notNeeded };
 }

@@ -3,7 +3,7 @@ import { getDb } from '../../../../lib/db';
 import { getUnrepliedThreads, UNREPLIED_LOOKBACK_DAYS, UNREPLIED_GRACE_HOURS } from '../../../../lib/graphUnreplied';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+export const maxDuration = 120; // reads each candidate mail and has it classified
 
 // GET /api/outlook/unreplied?employeeId=EMP123
 // Live read of that employee's unreplied threads, triggered by "Load emails"
@@ -20,11 +20,11 @@ export async function GET(request) {
   if (!emp?.email) return NextResponse.json({ ok: false, error: 'No active employee with an email on file for that id.' }, { status: 404 });
 
   try {
-    const { threadsConsidered, eligibleMessages, unreplied } = await getUnrepliedThreads(emp.email);
+    const { threadsConsidered, eligibleMessages, unreplied, notNeeded } = await getUnrepliedThreads(emp.email);
     return NextResponse.json({
       ok: true, employeeId: emp.id, name: emp.name,
       lookbackDays: UNREPLIED_LOOKBACK_DAYS, graceHours: UNREPLIED_GRACE_HOURS,
-      threadsConsidered, eligibleMessages, unrepliedCount: unreplied.length, unreplied,
+      threadsConsidered, eligibleMessages, unrepliedCount: unreplied.length, unreplied, notNeeded,
     });
   } catch (err) {
     return NextResponse.json({ ok: false, error: err.message }, { status: err.status || 500 });

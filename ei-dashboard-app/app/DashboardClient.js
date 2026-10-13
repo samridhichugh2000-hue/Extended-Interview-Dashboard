@@ -2376,7 +2376,7 @@ function UnrepliedEmailsPanel({ employees }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ border: '1px solid rgba(99,102,241,0.25)', background: 'rgba(99,102,241,0.06)', borderRadius: 12, padding: '12px 16px', fontSize: 12.5, color: '#A8AEC4', lineHeight: 1.5 }}>
-        Counts come from each employee's Outlook Inbox via Microsoft Graph: email threads addressed to them directly (not Cc, not lists or broadcasts) received in the last 14 days that have gone 7 days or more (weekends included) with no reply from them. Advertising, newsletters and system mail (bulk-mail headers, no-reply senders, OTPs, ILO / Course Advice notices, calendar responses, Outlook's "Other" tab) are left out. Only the counts are stored — emails are fetched live when you click "Load emails".
+        Counts come from each employee's Outlook Inbox via Microsoft Graph: email threads addressed to them directly (not Cc, not lists or broadcasts) received in the last 14 days that have gone 7 days or more (weekends included) with no reply from them. Advertising, newsletters and system mail (bulk-mail headers, no-reply senders, OTPs, ILO / Course Advice notices, calendar responses, Outlook's "Other" tab) are left out. The last message of each remaining thread is then read (by AI) and only counts if it actually needs a response — reports, "ok"/"thanks" acknowledgements and FYI mail are set aside and listed separately. Only the counts and a one-line verdict per mail are stored — emails are fetched live when you click "Load emails".
         {lastSynced ? ` Counts last refreshed ${fmtIst(lastSynced)}.` : ''}
       </div>
 
@@ -2470,12 +2470,27 @@ function UnrepliedEmailsModal({ emp, onClose }) {
                   {m.cc.length > 0 && <div><span style={{ color: '#8A90A8' }}>Cc </span><span style={{ color: '#C7CBDA' }}>{m.cc.join(', ')}</span></div>}
                   <div><span style={{ color: '#8A90A8' }}>Status </span><span style={{ color: '#C7CBDA' }}>{m.isRead ? 'Read, not replied' : 'Unread'}</span></div>
                   <div style={{ color: '#A8AEC4', lineHeight: 1.5, marginTop: 4 }}>{m.preview || '(no preview)'}</div>
+                  {m.categoryReason && <div style={{ fontSize: 11.5, color: '#6E7488' }}>Read as: needs a response — {m.categoryReason}</div>}
                   {m.webLink && <a href={m.webLink} target="_blank" rel="noreferrer" style={{ color: '#A5A7FA', marginTop: 4 }}>Open in Outlook ↗</a>}
                 </div>
               )}
             </div>
           ))}
           {!state.loading && !state.error && !list.length && <div style={{ fontSize: 12.5, color: '#6E7488', paddingTop: 12 }}>Nothing awaiting a reply.</div>}
+          {(state.data?.notNeeded || []).length > 0 && (
+            <div style={{ marginTop: 18 }}>
+              <div className="mono" style={{ fontSize: 10, letterSpacing: '.12em', color: '#5C6178', textTransform: 'uppercase', marginBottom: 6 }}>
+                Read and set aside — no reply needed ({state.data.notNeeded.length})
+              </div>
+              {state.data.notNeeded.map((m) => (
+                <div key={m.id} style={{ display: 'grid', gridTemplateColumns: '1.8fr .9fr 1.5fr', gap: 10, padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 12, opacity: 0.8 }}>
+                  <span style={{ color: '#A8AEC4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.subject}>{m.subject}</span>
+                  <span style={{ fontSize: 10.5, color: '#8A90A8', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 6, padding: '2px 7px', justifySelf: 'start' }}>{{ acknowledgement: 'Acknowledgement', report_fyi: 'Report / FYI', information: 'Information only' }[m.category] || m.category}</span>
+                  <span style={{ color: '#6E7488', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.categoryReason}>{m.categoryReason}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
