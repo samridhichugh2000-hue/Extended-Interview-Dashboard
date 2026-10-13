@@ -77,3 +77,16 @@ export function isPastWednesdayCheckIn(weekStr) {
 export function isMondayIst(date = new Date()) {
   return istCalendarMidnightUtc(date).getUTCDay() === 1;
 }
+
+// True only on Sunday, IST — the day the RC fully-booked precheck runs, for
+// the Monday-Sunday week that starts the next morning (see
+// syncTrainerFullyBooked in lib/syncRunners.js).
+export function isSundayIst(date = new Date()) {
+  return istCalendarMidnightUtc(date).getUTCDay() === 0;
+}
+
+// ISO week of the following IST calendar day — on a Sunday that's the week
+// whose Monday check-in email is about to go out.
+export function nextIstDayIsoWeek(date = new Date()) {
+  return getIsoWeek(new Date(date.getTime() + 86400000));
+}

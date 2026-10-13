@@ -852,26 +852,27 @@ export async function syncTrainerRc() {
 }
 
 // Precomputes whether each active Trainer is "fully booked" (40+ Scheduled
-// Class hours) for the current ISO week, so weeklyReportRunner's Monday
+// Class hours) for the coming ISO week, so weeklyReportRunner's Monday
 // check-in send (excludeFullyBookedTrainers) can just read the result off
 // the employees row instead of calling Koenig's RC Schedule API live, once
 // per Trainer, inside its own 60s-limited request — that inline loop is what
 // timed the whole 2026-09-28 Monday send out before any NJ/PA/PIP check-in
-// email went out. Meant to run on its own external cron-job.org schedule
-// ~8AM IST, ahead of weeklyreport's 9AM IST native-Vercel-Cron send (Hobby's
-// 2-cron cap is already spent on weeklyreport + weeklyresponsereport — see
-// vercel.json). Same Monday-only gate as the sends themselves — a no-op the
-// other six days, so there's nothing to fail open on.
+// email went out. Runs on Vercel Cron (vercel.json) every Sunday at 18:00 and 21:30 IST for the
+// coming Monday-Sunday week — the second run refreshes the first. A no-op on
+// every other day.
 export async function syncTrainerFullyBooked() {
-  const { getIsoWeek, weekDateRange, istDateKey, isMondayIst } = await import('./weekUtils.js');
-  if (!isMondayIst()) {
-    return { message: 'Skipped — RC fully-booked check only runs Monday (IST), ahead of the weekly check-in send.' };
+  const { nextIstDayIsoWeek, weekDateRange, istDateKey, isSundayIst } = await import('./weekUtils.js');
+  // Runs on Sunday (IST) for the week that starts the next morning, so
+  // Monday's check-in send finds the result already stored instead of
+  // depending on a job finishing in the hour before it.
+  if (!isSundayIst()) {
+    return { message: 'Skipped — RC fully-booked check only runs Sunday (IST), for the coming Monday-Sunday week.' };
   }
 
   const db = getDb();
   const { getTrainerRcSchedule, totalScHours } = await import('./koenigTrainerRcApi.js');
 
-  const week = getIsoWeek(new Date());
+  const week = nextIstDayIsoWeek(new Date());
   const { start, end } = weekDateRange(week);
   const fromDate = istDateKey(start);
   const toDate = istDateKey(end);

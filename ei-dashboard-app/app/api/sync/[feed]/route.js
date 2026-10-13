@@ -3,7 +3,7 @@ import { SYNC_RUNNERS } from '../../../../lib/syncRunners';
 import { recordJobRun, recordJobStarted, recordFeedRun } from '../../../../lib/jobStatus';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+export const maxDuration = 300; // Vercel Pro ceiling; most feeds finish well under 60s
 
 // Only these are surfaced on the dashboard's failure banner. weeklyreport/
 // weeklyresponsereport are email jobs; trainerrc and rcfullybooked are

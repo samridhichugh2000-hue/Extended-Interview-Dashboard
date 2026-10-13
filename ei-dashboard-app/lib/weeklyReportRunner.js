@@ -127,9 +127,8 @@ async function sendCheckIns({ db, week, employees, questionsByTeam, baseUrl, sub
 // they pass through untouched.
 //
 // Reads the precomputed rc_fully_booked_week/rc_fully_booked_sc_hours
-// columns (from the 'rcfullybooked' sync feed, run ~8AM IST via its own
-// external cron-job.org schedule — see syncTrainerFullyBooked in
-// lib/syncRunners.js) instead of calling Koenig's RC Schedule API live, per
+// columns (from the 'rcfullybooked' sync feed, run Sunday evening IST by Vercel Cron
+// for the coming week — see syncTrainerFullyBooked in lib/syncRunners.js) instead of calling Koenig's RC Schedule API live, per
 // Trainer, inside this request. That inline loop is what timed the whole
 // 2026-09-28 Monday send out at the 60s function limit before any NJ/PA/PIP
 // check-in email went out. Fails open per employee — a missing or stale

@@ -17,10 +17,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 config({ path: path.join(__dirname, '..', '.env.local') });
 
 const { getTrainerRcSchedule, totalScHours } = await import('../lib/koenigTrainerRcApi.js');
-const { getIsoWeek, weekDateRange, istDateKey, isMondayIst } = await import('../lib/weekUtils.js');
+const { getIsoWeek, weekDateRange, istDateKey, isSundayIst, nextIstDayIsoWeek } = await import('../lib/weekUtils.js');
 
-if (!isMondayIst()) {
-  console.log('Skipped — RC fully-booked check only runs Monday (IST), ahead of the weekly check-in send.');
+if (!isSundayIst()) {
+  console.log('Skipped — RC fully-booked check only runs Sunday (IST), for the coming Monday-Sunday week.');
   process.exit(0);
 }
 
@@ -29,7 +29,7 @@ const db = createClient({
   authToken: process.env.TURSO_AUTH_TOKEN,
 });
 
-const week = getIsoWeek(new Date());
+const week = nextIstDayIsoWeek(new Date());
 const { start, end } = weekDateRange(week);
 const fromDate = istDateKey(start);
 const toDate = istDateKey(end);
