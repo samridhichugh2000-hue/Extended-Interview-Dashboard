@@ -1685,7 +1685,7 @@ export async function syncGraphSubscription() {
 // marketing cost)" feed (syncPms), which stays the one the PA Algo uses.
 export async function syncTrueNr() {
   const db = getDb();
-  const { getTrueNr } = await import('./koenigTrueNrApi.js');
+  const { getTrueNrAll } = await import('./koenigTrueNrApi.js');
 
   const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
   const monthIdx = (key) => {
@@ -1693,32 +1693,38 @@ export async function syncTrueNr() {
     return m ? parseInt(m[2], 10) * 12 + MONTHS.indexOf(m[1].toLowerCase()) : -1;
   };
 
-  const salesEmployees = await db.execute("SELECT id, true_nr_details FROM employees WHERE team = 'Sales' AND active = 1");
+  // One call: every month from 17 months back through the end of the current
+  // month (same trailing history as the NR feed). The end date is capped at
+  // the current month because a later one also returns forward-booked months.
+  const now = new Date();
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const startDate = iso(new Date(now.getFullYear(), now.getMonth() - 17, 1));
+  const endDate = iso(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+  const rows = await getTrueNrAll(startDate, endDate);
+  if (!rows.length) throw new Error('True NR API returned no rows — leaving existing data untouched.');
+  const byEmpId = new Map(rows.filter((r) => r.empId != null).map((r) => [r.empId, r]));
+
+  const salesEmployees = await db.execute("SELECT id FROM employees WHERE team = 'Sales' AND active = 1");
 
   const statements = [];
   let updated = 0;
-  let empty = 0;
-  let apiErrors = 0;
-  await mapWithConcurrency(salesEmployees.rows, 8, async (emp) => {
-    try {
-      const fresh = await getTrueNr(emp.id.replace('EMP', ''));
-      if (!fresh.length) { empty++; return; }
-      const merged = new Map((emp.true_nr_details ? JSON.parse(emp.true_nr_details) : []).map((m) => [m.month, m.trueNr]));
-      for (const m of fresh) merged.set(m.month, m.trueNr);
-      const details = [...merged.entries()]
-        .map(([month, trueNr]) => ({ month, trueNr }))
-        .sort((a, b) => monthIdx(a.month) - monthIdx(b.month));
-      statements.push({ sql: 'UPDATE employees SET true_nr_details = ? WHERE id = ?', args: [JSON.stringify(details), emp.id] });
-      updated++;
-    } catch (err) {
-      console.error(`True NR sync failed for ${emp.id}:`, err.message);
-      apiErrors++;
-    }
-  });
+  let missing = 0;
+  for (const emp of salesEmployees.rows) {
+    const row = byEmpId.get(parseInt(String(emp.id).replace(/\D/g, ''), 10));
+    if (!row) { missing++; continue; }
+    // Skip months before the employee joined (the API pads them with 0.00).
+    const dojIdx = row.doj ? (() => { const d = new Date(row.doj); return Number.isNaN(d.getTime()) ? -1 : d.getFullYear() * 12 + d.getMonth(); })() : -1;
+    const details = Object.entries(row.monthlyRevenue)
+      .filter(([month]) => monthIdx(month) >= 0 && monthIdx(month) >= dojIdx)
+      .map(([month, trueNr]) => ({ month, trueNr }))
+      .sort((a, b) => monthIdx(a.month) - monthIdx(b.month));
+    statements.push({ sql: 'UPDATE employees SET true_nr_details = ? WHERE id = ?', args: [JSON.stringify(details), emp.id] });
+    updated++;
+  }
 
   if (statements.length) await db.batch(statements, 'write');
 
-  return { message: `Synced True NR for ${updated} Sales employees (${empty} returned no rows, ${apiErrors} API errors).` };
+  return { message: `Synced True NR for ${updated} Sales employees (${missing} not in the API), ${startDate} to ${endDate}.` };
 }
 
 export const SYNC_RUNNERS = {
