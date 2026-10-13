@@ -3111,6 +3111,121 @@ function DailyTrendChart({ data }) {
 
 /* ---------- modal ---------- */
 
+// "Score history" popup: the daily EI Index snapshots (lib/eiSnapshots.js)
+// for one employee — a small trend line, and a side-by-side of any past day
+// against today's live break-up. Only opened from the employee modal, so it
+// takes no space on the main screens. Snapshots hold All time and 3-month
+// scores only.
+function EiHistoryModal({ emp, startWindow, onClose }) {
+  const [win, setWin] = useState(startWindow === 'all' ? 'all' : '3month');
+  const [compareDate, setCompareDate] = useState(null);
+  const [data, setData] = useState(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setFailed(false);
+    fetch(`/api/employees/${encodeURIComponent(emp.id)}/ei-history?window=${win}${compareDate ? `&date=${compareDate}` : ''}`)
+      .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then((d) => { if (!cancelled) setData(d); })
+      .catch(() => { if (!cancelled) setFailed(true); });
+    return () => { cancelled = true; };
+  }, [emp.id, win, compareDate]);
+
+  const history = data?.history || [];
+  // Default comparison: the snapshot closest to a week ago (else the oldest).
+  useEffect(() => {
+    if (compareDate || history.length < 2) return;
+    const target = Date.now() - 7 * 86400000;
+    const older = history.slice(0, -1);
+    const pick = older.reduce((best, h) => (Math.abs(new Date(h.date) - target) < Math.abs(new Date(best.date) - target) ? h : best), older[0]);
+    setCompareDate(pick.date);
+  }, [history.length, compareDate]);
+
+  const since = win === 'all' ? null : windowSince(91);
+  const nowReport = computeSignalReport(emp, since ? { since } : {});
+  const nowScore = computeWorryScore(nowReport.filter((s) => s.status === 'fired'));
+  const then = data?.snapshot;
+  const thenByLabel = new Map((then?.signals || []).map((s) => [s.l, s]));
+  const fmt = (n) => (n > 0 ? `+${n}` : `${n}`);
+  const cell = (status, count, pts) => status === 'fired' ? `${count > 1 ? `×${count} · ` : ''}${fmt(Math.round(pts * 100) / 100)}` : status === 'clear' ? '0' : '—';
+  const rows = nowReport.map((s) => {
+    const t = thenByLabel.get(s.label);
+    const tp = t && t.s === 'fired' ? t.p : 0;
+    const np = s.status === 'fired' ? s.pts : 0;
+    return { label: s.label, then: t ? cell(t.s, t.n, t.p) : '—', now: cell(s.status, s.count, s.pts), delta: Math.round((np - tp) * 100) / 100, changed: t && (np !== tp) };
+  });
+
+  // Trend line: stored days plus today's live score as the last point.
+  const pts = [...history.map((h) => h.score), nowScore].filter((v) => v != null);
+  const W = 560, H = 70;
+  const lo = Math.min(...pts), hi = Math.max(...pts), span = hi - lo || 1;
+  const path = pts.map((v, i) => `${(i / Math.max(1, pts.length - 1)) * W},${H - 6 - ((v - lo) / span) * (H - 12)}`).join(' ');
+  const winBtn = (key, label) => (
+    <div key={key} onClick={() => { setWin(key); setCompareDate(null); setData(null); }} style={{ cursor: 'pointer', border: `1px solid ${win === key ? 'rgba(20,184,166,0.45)' : 'rgba(255,255,255,0.1)'}`, background: win === key ? 'rgba(20,184,166,0.12)' : 'transparent', color: win === key ? '#5EEAD4' : '#8A90A8', borderRadius: 999, padding: '4px 11px', fontSize: 11.5 }}>{label}</div>
+  );
+
+  return (
+    <div onClick={(e) => { e.stopPropagation(); onClose(); }} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 70 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 680, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — EI Index history</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>Daily snapshots · compare any past day with today</div>
+          </div>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+        </div>
+        <div style={{ padding: '16px 24px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            {winBtn('all', 'All time')}{winBtn('3month', '3 months')}
+          </div>
+          {failed && <div style={{ fontSize: 12.5, color: '#F87171' }}>Could not load history — close and try again.</div>}
+          {!data && !failed && <div style={{ fontSize: 12.5, color: '#6E7488' }}>Loading history…</div>}
+          {data && history.length < 2 && (
+            <div style={{ fontSize: 12.5, color: '#8A90A8', lineHeight: 1.55 }}>
+              History is still building — {history.length ? `first snapshot recorded ${history[0].date}` : 'no snapshot recorded yet'}. A snapshot is saved every day; the comparison appears from the second day onwards.
+            </div>
+          )}
+          {data && history.length >= 2 && (
+            <>
+              <div>
+                <svg width="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ display: 'block', height: 70 }}>
+                  <polyline fill="none" stroke="#5EEAD4" strokeWidth="2" points={path} vectorEffect="non-scaling-stroke" />
+                </svg>
+                <div className="mono" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, color: '#5C6178', marginTop: 4 }}>
+                  <span>{history[0].date} · {history[0].score}</span><span>low {lo} · high {hi}</span><span>today · {nowScore}</span>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 12.5, color: '#A8AEC4' }}>
+                Compare today with
+                <select value={compareDate || ''} onChange={(ev) => { setCompareDate(ev.target.value); setData((d) => d && { ...d, snapshot: null }); }} style={{ border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '5px 9px', fontSize: 12, color: '#E4E6F0', colorScheme: 'dark' }}>
+                  {history.map((h) => <option key={h.date} value={h.date}>{h.date} (score {h.score})</option>)}
+                </select>
+                {then && <span style={{ color: nowScore - then.score >= 0 ? '#5EEAD4' : '#F87171' }}>{then.score} → {nowScore} ({fmt(Math.round((nowScore - then.score) * 100) / 100)})</span>}
+              </div>
+              {then && (
+                <div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.6fr .8fr .8fr .6fr', gap: 8, padding: '0 0 6px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                    <span>Parameter</span><span style={{ textAlign: 'right' }}>{then.date}</span><span style={{ textAlign: 'right' }}>Today</span><span style={{ textAlign: 'right' }}>Change</span>
+                  </div>
+                  {rows.map((r) => (
+                    <div key={r.label} style={{ display: 'grid', gridTemplateColumns: '1.6fr .8fr .8fr .6fr', gap: 8, padding: '7px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 12.5, opacity: r.changed || r.now !== '—' ? 1 : 0.5 }}>
+                      <span style={{ color: '#C7CBDA' }}>{r.label}</span>
+                      <span className="mono" style={{ textAlign: 'right', color: '#8A90A8' }}>{r.then}</span>
+                      <span className="mono" style={{ textAlign: 'right', color: '#C7CBDA' }}>{r.now}</span>
+                      <span className="mono" style={{ textAlign: 'right', color: r.delta > 0 ? '#5EEAD4' : r.delta < 0 ? '#F87171' : '#5C6178' }}>{r.delta ? fmt(r.delta) : '·'}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EmployeeModal({ emp, onClose }) {
   const { pending, closeEmployee, openAlertPreview, alertModal } = useEmployeeActions();
   // Header, status pill and the Alert action below always read the true
@@ -3134,6 +3249,7 @@ function EmployeeModal({ emp, onClose }) {
   // recomputed the same way (computeSignalReport's `since` option). 'All
   // time' with no `since` reproduces the exact all-time score above.
   const [windowKey, setWindowKey] = useState('3month');
+  const [eiHistoryOpen, setEiHistoryOpen] = useState(false);
   const [customRange, setCustomRange] = useState({ from: '', to: '' });
   const isCustomWindow = windowKey === 'custom';
   const windowDef = WORRY_WINDOWS.find((w) => w.key === windowKey) || WORRY_WINDOWS[0];
@@ -3193,6 +3309,8 @@ function EmployeeModal({ emp, onClose }) {
                 </div>
               )}
               <div style={{ marginTop: 12, fontSize: 12.5, color: '#8A90A8', lineHeight: 1.55 }}>{trendNote}</div>
+              <div onClick={() => setEiHistoryOpen(true)} style={{ marginTop: 10, fontSize: 11.5, color: '#A5A7FA', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3, width: 'fit-content' }}>Score history</div>
+              {eiHistoryOpen && <EiHistoryModal emp={emp} startWindow={windowKey} onClose={() => setEiHistoryOpen(false)} />}
             </div>
             <div>
               <div className="mono" style={{ fontSize: 10, letterSpacing: '.12em', color: '#5C6178', textTransform: 'uppercase', marginBottom: 10 }}>Signal breakdown — every parameter for {emp.team}</div>

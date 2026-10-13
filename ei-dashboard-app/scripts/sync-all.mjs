@@ -45,6 +45,7 @@ const SCRIPTS = [
   'sync-graph-subscription.mjs',
   'sync-external-emails.mjs',
   'sync-unreplied-emails.mjs',
+  'snapshot-ei.mjs',
 ];
 
 function run(script) {

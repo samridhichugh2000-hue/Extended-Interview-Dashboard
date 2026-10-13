@@ -15,6 +15,10 @@
     {
       "path": "/api/sync/weeklyresponsereport",
       "schedule": "30 12 * * 3"
+    },
+    {
+      "path": "/api/sync/eisnapshot",
+      "schedule": "30 17 * * *"
     }
   ]
 }

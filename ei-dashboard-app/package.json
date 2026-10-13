@@ -25,6 +25,7 @@
     "sync:inhouseskills": "node scripts/sync-inhouse-skills.mjs",
     "sync:techcalls": "node scripts/sync-techcalls.mjs",
     "sync:techcalls-trainer": "node scripts/sync-techcalls-trainer.mjs",
+    "snapshot:ei": "node scripts/snapshot-ei.mjs",
     "sync:tbt": "node scripts/sync-tbt.mjs",
     "sync:shoddy": "node scripts/sync-shoddy.mjs",
     "sync:polls": "node scripts/sync-polls.mjs",

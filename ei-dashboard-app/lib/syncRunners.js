@@ -1726,6 +1726,7 @@ export const SYNC_RUNNERS = {
   pip: syncPip,
   pms: syncPms,
   truenr: syncTrueNr,
+  eisnapshot: async () => (await import("./eiSnapshots.js")).takeEiSnapshot(),
   audit: syncAudit,
   sc: syncSc,
   csmroster: syncCsmRoster,
