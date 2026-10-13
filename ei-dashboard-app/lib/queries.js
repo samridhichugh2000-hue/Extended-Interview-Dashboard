@@ -108,6 +108,7 @@ export async function getEmployees() {
       techCallsCount: e.tech_calls_count,
       techCallsDetails: e.tech_calls_details ? JSON.parse(e.tech_calls_details) : [],
       techCallsConverted: e.tech_calls_converted,
+      techCallsConvertedDetails: e.tech_calls_converted_details ? JSON.parse(e.tech_calls_converted_details) : [],
       tbtCount: e.tbt_count,
       tbtDetails: e.tbt_details ? JSON.parse(e.tbt_details) : [],
       shoddyNegCount: e.shoddy_neg_count,
@@ -298,6 +299,7 @@ const SLIM_KEYS = {
   scDetails: ['createdOn'],
   skillsDetails: ['skillAvailableDate'],
   inHouseSkillsDetails: ['markDate'],
+  techCallsConvertedDetails: ['date', 'converted'],
   assignmentsDetails: ['startDate', 'endDate'],
   negFeedbackDetails: ['feedbackDate'],
 };
@@ -318,7 +320,7 @@ export function slimEmployeesForClient(employees) {
 export async function getEmployeeDetails(id) {
   const db = getDb();
   const res = await db.execute({
-    sql: 'SELECT sc_details, neg_feedback_details, assignments_details, skills_details, in_house_skills_details FROM employees WHERE id = ?',
+    sql: 'SELECT sc_details, neg_feedback_details, assignments_details, skills_details, in_house_skills_details, tech_calls_converted_details FROM employees WHERE id = ?',
     args: [id],
   });
   const e = res.rows[0];
@@ -330,5 +332,6 @@ export async function getEmployeeDetails(id) {
     assignmentsDetails: parse(e.assignments_details),
     skillsDetails: parse(e.skills_details),
     inHouseSkillsDetails: parse(e.in_house_skills_details),
+    techCallsConvertedDetails: parse(e.tech_calls_converted_details),
   };
 }

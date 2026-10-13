@@ -981,26 +981,37 @@ export async function syncTechCalls() {
 
 export async function syncTechCallsTrainer() {
   const db = getDb();
-  const { getConvertedTechCalls } = await import('./koenigTechCallConvertedApi.js');
+  const { getTrainerTechCalls } = await import('./koenigTrainerTechCallsApi.js');
 
-  const trainerEmployees = await db.execute("SELECT id, email FROM employees WHERE team = 'Trainer'");
+  // The feed needs a date range and ignores its EmpCode filter, so pull every
+  // trainer's calls for the last two years in one request and group by code.
+  const end = new Date(Date.now() + 5.5 * 3600000); // IST today
+  const start = new Date(end);
+  start.setUTCFullYear(start.getUTCFullYear() - 2);
+  const iso = (d) => d.toISOString().slice(0, 10);
+  const calls = await getTrainerTechCalls(iso(start), iso(end));
+  if (!calls.length) throw new Error('Trainer tech calls API returned no rows — leaving existing data untouched.');
 
+  const byCode = new Map();
+  for (const c of calls) {
+    if (!byCode.has(c.empCode)) byCode.set(c.empCode, []);
+    byCode.get(c.empCode).push({ callId: c.callId, name: c.name, date: c.date, client: c.client, converted: c.converted });
+  }
+
+  const trainers = await db.execute("SELECT id FROM employees WHERE team = 'Trainer'");
   const statements = [];
-  let updated = 0;
-  let noEmail = 0;
-  let unmatched = 0;
-  await mapWithConcurrency(trainerEmployees.rows, SYNC_CONCURRENCY, async (emp) => {
-    if (!emp.email) { noEmail++; return; }
-    const result = await getConvertedTechCalls(emp.email);
-    if (!result) { unmatched++; return; }
-
-    statements.push({ sql: 'UPDATE employees SET tech_calls_converted = ? WHERE id = ?', args: [result.converted, emp.id] });
-    updated++;
-  });
-
+  let withCalls = 0;
+  for (const emp of trainers.rows) {
+    const list = byCode.get(String(emp.id).replace(/^EMP/i, '')) || [];
+    if (list.length) withCalls++;
+    statements.push({
+      sql: 'UPDATE employees SET tech_calls_converted = ?, tech_calls_converted_details = ? WHERE id = ?',
+      args: [list.filter((c) => c.converted).length, JSON.stringify(list), emp.id],
+    });
+  }
   if (statements.length) await db.batch(statements, 'write');
 
-  return { message: `Synced converted tech calls for ${updated} Trainer employees (${unmatched} unmatched, ${noEmail} no email).` };
+  return { message: `Synced trainer tech calls — ${calls.length} calls, ${withCalls} of ${trainers.rows.length} Trainer employees have at least one.` };
 }
 
 export async function syncTbt() {

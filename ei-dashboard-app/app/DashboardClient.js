@@ -1113,24 +1113,43 @@ function TechCallsModal({ emp, onClose }) {
   );
 }
 
-// This feed only ever returns a single summary count — no per-call list
-// exists to drill into, unlike the Sales tech-call feed.
-function TechCallsConvertedModal({ emp, onClose }) {
+// Per-call list (name, date, client, converted or not) from the Trainer Tech
+// Calls API — the last two years of calls; the headline count is the converted ones.
+function TechCallsConvertedModal(props) {
+  return <DetailsGate emp={props.emp}>{(emp) => <TechCallsConvertedModalBody {...props} emp={emp} />}</DetailsGate>;
+}
+function TechCallsConvertedModalBody({ emp, onClose }) {
+  const fmt = (d) => {
+    if (!d) return null;
+    const [y, m, day] = d.split('-');
+    return `${day} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m) - 1]} ${y}`;
+  };
+  const calls = [...(emp.techCallsConvertedDetails || [])].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 440, border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
-        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — tech calls converted</div>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 600, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — tech calls</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>{calls.length} tech {calls.length === 1 ? 'call' : 'calls'} · {emp.techCallsConverted} converted</div>
+          </div>
           <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
         </div>
-        <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 12, padding: '18px 20px', textAlign: 'center' }}>
-            <div className="disp" style={{ fontSize: 34, fontWeight: 600, color: '#5EEAD4' }}>{emp.techCallsConverted}</div>
-            <div style={{ fontSize: 11.5, color: '#A8AEC4', marginTop: 4 }}>Converted tech calls</div>
-          </div>
-          <div style={{ fontSize: 12, color: '#6E7488', lineHeight: 1.5 }}>
-            The source API only reports a total converted count for this feed — no per-call date or detail is available to show.
-          </div>
+        <div style={{ padding: '8px 24px 20px' }}>
+          {calls.map((c, i) => (
+            <div key={c.callId ?? i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 12.5 }}>
+              <div style={{ color: '#C7CBDA' }}>
+                {c.name || `Call #${c.callId}`}
+                <div style={{ fontSize: 10.5, color: '#6E7488', marginTop: 3 }}>
+                  {[fmt(c.date), c.client].filter(Boolean).join(' · ') || '—'}
+                </div>
+              </div>
+              <span style={{ flex: 'none', fontSize: 10.5, color: c.converted ? '#5EEAD4' : '#8A90A8', border: `1px solid ${c.converted ? '#5EEAD455' : 'rgba(255,255,255,0.14)'}`, borderRadius: 6, padding: '3px 7px' }}>
+                {c.converted ? 'Converted' : 'Not converted'}
+              </span>
+            </div>
+          ))}
+          {!calls.length && <div style={{ fontSize: 12.5, color: '#6E7488', paddingTop: 12 }}>No tech call records on file.</div>}
         </div>
       </div>
     </div>

@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS employees (
   tech_calls_count INTEGER,     -- count of tech calls attended (Sales only)
   tech_calls_details TEXT,      -- JSON array of raw call records (field names unconfirmed — no live sample data)
   tech_calls_converted INTEGER, -- count of tech calls converted (Trainer only)
+  tech_calls_converted_details TEXT, -- JSON [{callId,name,date,client,converted}] for Trainer tech calls
   tbt_count INTEGER,            -- count of TBTs requested (Trainer only)
   tbt_details TEXT,             -- JSON array of {topic, requestedOn, tbtDate}
   shoddy_neg_count INTEGER,      -- count of negative shoddy incidents (Sales/Trainer/PT)
