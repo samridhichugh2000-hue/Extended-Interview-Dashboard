@@ -984,10 +984,10 @@ export async function syncTechCallsTrainer() {
   const { getTrainerTechCalls } = await import('./koenigTrainerTechCallsApi.js');
 
   // The feed needs a date range and ignores its EmpCode filter, so pull every
-  // trainer's calls for the last two years in one request and group by code.
+  // trainer's calls for the last 6 months in one request and group by code.
   const end = new Date(Date.now() + 5.5 * 3600000); // IST today
   const start = new Date(end);
-  start.setUTCFullYear(start.getUTCFullYear() - 2);
+  start.setUTCMonth(start.getUTCMonth() - 6);
   const iso = (d) => d.toISOString().slice(0, 10);
   const calls = await getTrainerTechCalls(iso(start), iso(end));
   if (!calls.length) throw new Error('Trainer tech calls API returned no rows — leaving existing data untouched.');

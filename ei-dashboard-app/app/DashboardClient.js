@@ -1114,7 +1114,7 @@ function TechCallsModal({ emp, onClose }) {
 }
 
 // Per-call list (name, date, client, converted or not) from the Trainer Tech
-// Calls API — the last two years of calls; the headline count is the converted ones.
+// Calls API — the last 6 months of calls; the headline count is the converted ones.
 function TechCallsConvertedModal(props) {
   return <DetailsGate emp={props.emp}>{(emp) => <TechCallsConvertedModalBody {...props} emp={emp} />}</DetailsGate>;
 }
