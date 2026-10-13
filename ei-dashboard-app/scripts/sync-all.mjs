@@ -17,6 +17,7 @@ const SCRIPTS = [
   'sync-koenig.mjs',
   'sync-pip.mjs',
   'sync-pms.mjs',
+  'sync-truenr.mjs',
   'sync-audit.mjs',
   'sync-sc.mjs',
   'sync-csm-roster.mjs',

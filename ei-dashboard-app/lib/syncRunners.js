@@ -1666,10 +1666,55 @@ export async function syncGraphSubscription() {
   return { message: `Created callRecords subscription ${created.id}, valid until ${created.expirationDateTime}.` };
 }
 
+// "True NR" (net of salary and marketing cost) from the OLD Get Employee NR
+// API, per active Sales employee. The API only returns the last ~3 months per
+// call, so each run MERGES what it gets into employees.true_nr_details —
+// newer values overwrite the same month, older stored months are kept — and
+// the history grows over time. Shown next to the newer "NR (before salary and
+// marketing cost)" feed (syncPms), which stays the one the PA Algo uses.
+export async function syncTrueNr() {
+  const db = getDb();
+  const { getTrueNr } = await import('./koenigTrueNrApi.js');
+
+  const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  const monthIdx = (key) => {
+    const m = /^([A-Za-z]{3})[a-z]*-(\d{4})$/.exec(String(key));
+    return m ? parseInt(m[2], 10) * 12 + MONTHS.indexOf(m[1].toLowerCase()) : -1;
+  };
+
+  const salesEmployees = await db.execute("SELECT id, true_nr_details FROM employees WHERE team = 'Sales' AND active = 1");
+
+  const statements = [];
+  let updated = 0;
+  let empty = 0;
+  let apiErrors = 0;
+  await mapWithConcurrency(salesEmployees.rows, 8, async (emp) => {
+    try {
+      const fresh = await getTrueNr(emp.id.replace('EMP', ''));
+      if (!fresh.length) { empty++; return; }
+      const merged = new Map((emp.true_nr_details ? JSON.parse(emp.true_nr_details) : []).map((m) => [m.month, m.trueNr]));
+      for (const m of fresh) merged.set(m.month, m.trueNr);
+      const details = [...merged.entries()]
+        .map(([month, trueNr]) => ({ month, trueNr }))
+        .sort((a, b) => monthIdx(a.month) - monthIdx(b.month));
+      statements.push({ sql: 'UPDATE employees SET true_nr_details = ? WHERE id = ?', args: [JSON.stringify(details), emp.id] });
+      updated++;
+    } catch (err) {
+      console.error(`True NR sync failed for ${emp.id}:`, err.message);
+      apiErrors++;
+    }
+  });
+
+  if (statements.length) await db.batch(statements, 'write');
+
+  return { message: `Synced True NR for ${updated} Sales employees (${empty} returned no rows, ${apiErrors} API errors).` };
+}
+
 export const SYNC_RUNNERS = {
   koenig: syncKoenig,
   pip: syncPip,
   pms: syncPms,
+  truenr: syncTrueNr,
   audit: syncAudit,
   sc: syncSc,
   csmroster: syncCsmRoster,

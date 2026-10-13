@@ -371,6 +371,48 @@ function IncludeInactiveToggle({ value, onChange }) {
 // two populations were only ever visually distinguishable by scanning
 // "day X of 180" per row. Defaults to New Joiners only, since that's this
 // dashboard's original/primary scope; toggling off broadens to everyone.
+function NrModeToggle({ value, onChange }) {
+  const opt = (key, label) => (
+    <span onClick={() => onChange(key)} style={{ cursor: 'pointer', padding: '10px 12px', fontSize: 12.5, whiteSpace: 'nowrap', background: value === key ? 'rgba(99,102,241,0.22)' : 'transparent', color: value === key ? '#FFFFFF' : '#9BA1B8' }}>{label}</span>
+  );
+  return (
+    <div title="True NR = net of salary and marketing cost (old NR API). NR = before salary and marketing cost." style={{ display: 'flex', alignItems: 'center', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, overflow: 'hidden' }}>
+      {opt('nr', 'NR (before salary & mktg cost)')}
+      {opt('true', 'True NR')}
+    </div>
+  );
+}
+
+function NrComparison({ emp }) {
+  const nrByMonth = new Map((emp.nrMonthlyDetails || []).map((m) => [m.month, m.nr]));
+  const trueByMonth = new Map((emp.trueNrDetails || []).map((m) => [m.month, m.trueNr]));
+  const rows = [5, 4, 3, 2, 1, 0].map((ago) => {
+    const month = nrMonthKey(ago);
+    const nr = nrByMonth.has(month) ? nrByMonth.get(month) : null;
+    const tn = trueByMonth.has(month) ? trueByMonth.get(month) : null;
+    return { month, nr, tn, cost: nr != null && tn != null ? nr - tn : null };
+  });
+  const inr = (n) => (n == null ? '—' : (n < 0 ? '−₹' : '₹') + Math.abs(n).toLocaleString('en-IN'));
+  const cols = '1fr 1.4fr 1fr 1fr';
+  return (
+    <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, padding: 18, background: 'rgba(255,255,255,0.02)', marginBottom: 16 }}>
+      <div className="disp" style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Month-wise NR</div>
+      <div style={{ fontSize: 11.5, color: '#6E7488', marginBottom: 12 }}>True NR is net of salary and marketing cost. Koenig returns only the latest ~3 months of it, so older months fill in over time.</div>
+      <div className="mono" style={{ display: 'grid', gridTemplateColumns: cols, gap: 8, fontSize: 10, letterSpacing: '.08em', color: '#5C6178', textTransform: 'uppercase', paddingBottom: 6 }}>
+        <span>Month</span><span style={{ textAlign: 'right' }}>NR (before salary &amp; mktg cost)</span><span style={{ textAlign: 'right' }}>True NR</span><span style={{ textAlign: 'right' }}>Cost deducted</span>
+      </div>
+      {rows.map((r) => (
+        <div key={r.month} style={{ display: 'grid', gridTemplateColumns: cols, gap: 8, padding: '7px 0', borderTop: '1px solid rgba(255,255,255,0.05)', fontSize: 12.5 }}>
+          <span className="mono" style={{ color: '#8A90A8' }}>{r.month}</span>
+          <span style={{ textAlign: 'right', color: '#C7CBDA' }}>{inr(r.nr)}</span>
+          <span style={{ textAlign: 'right', color: r.tn == null ? '#6E7488' : r.tn < 0 ? '#F87171' : '#5EEAD4' }}>{inr(r.tn)}</span>
+          <span style={{ textAlign: 'right', color: '#8A90A8' }}>{inr(r.cost)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function NjOnlyToggle({ value, onChange }) {
   return (
     <div onClick={() => onChange(!value)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, border: `1px solid ${value ? 'rgba(20,184,166,0.45)' : 'rgba(255,255,255,0.1)'}`, background: value ? 'rgba(20,184,166,0.14)' : 'rgba(255,255,255,0.03)', color: value ? '#FFFFFF' : '#9BA1B8', borderRadius: 10, padding: '10px 14px', fontSize: 13, flex: 'none' }}>
@@ -453,6 +495,22 @@ function DetailsGate({ emp, children }) {
 }
 
 /* ---------- app chrome ---------- */
+
+// "True NR" (old Get Employee NR API: net of salary and marketing cost) sits
+// next to the newer "NR (before salary and marketing cost)" feed. True NR only
+// has the months Koenig has returned so far (~3 per sync, accumulated), so
+// older months show "—".
+const NR_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const nrMonthKey = (monthsAgo) => {
+  const d = new Date(new Date().getFullYear(), new Date().getMonth() - monthsAgo, 1);
+  return `${NR_MONTHS[d.getMonth()]}-${d.getFullYear()}`;
+};
+const fmtLakhs = (n) => '₹' + (n / 100000).toFixed(1) + 'L';
+// Trailing six calendar months (M1 oldest .. M6 current), same layout as the NR columns.
+const trueNrSix = (e) => {
+  const byMonth = new Map((e.trueNrDetails || []).map((m) => [m.month, m.trueNr]));
+  return [5, 4, 3, 2, 1, 0].map((ago) => (byMonth.has(nrMonthKey(ago)) ? fmtLakhs(byMonth.get(nrMonthKey(ago))) : '—'));
+};
 
 // Small corner "i" — click for when each API feed last synced. Fed by the
 // feed_runs table (lib/jobStatus.js), written on every sync run. A feed is
@@ -685,6 +743,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
   const [search, setSearch] = useState('');
   const [includeInactive, setIncludeInactive] = useState(false);
   const [njOnly, setNjOnly] = useState(true);
+  const [nrMode, setNrMode] = useState('nr'); // Sales only: 'nr' | 'true'
   const [missing, setMissing] = useState([]);
   const toggleMissing = (key) => setMissing((m) => (m.includes(key) ? m.filter((k) => k !== key) : [...m, key]));
   const { openAlertPreview, alertModal } = useEmployeeActions();
@@ -750,7 +809,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
   const rows = filtered.map((e) => {
     const d = decorate(e);
     const cells = baseHeads.map((_, i) => ({
-      value: e.v[i],
+      value: dept === 'Sales' && nrMode === 'true' ? trueNrSix(e)[i] : e.v[i],
       color: i === baseHeads.length - 1 ? (e.score < 0 ? '#F87171' : '#5EEAD4') : '#C7CBDA',
       onClick: null,
     }));
@@ -884,6 +943,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
           placeholder="Search by name or employee ID…"
           style={{ flex: 1, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#E4E6F0', outline: 'none' }}
         />
+        {dept === 'Sales' && <NrModeToggle value={nrMode} onChange={setNrMode} />}
         <NjOnlyToggle value={njOnly} onChange={setNjOnly} />
         <IncludeInactiveToggle value={includeInactive} onChange={setIncludeInactive} />
         <div onClick={() => setFilter(null)} style={{ border: '1px solid rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.1)', color: '#A5A7FA', borderRadius: 10, padding: '10px 14px', fontSize: 13, cursor: 'pointer', flex: 'none' }}>
@@ -896,7 +956,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
       <div style={{ ...card, overflow: 'hidden' }}>
         <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           <span>Employee</span><span>DOJ</span><span>Manager</span><span>Day</span>
-          {mh.map((h) => <span key={h} style={{ textAlign: 'right' }}>{h}</span>)}
+          {mh.map((h) => <span key={h} style={{ textAlign: 'right' }}>{dept === 'Sales' && nrMode === 'true' ? h.replace(' NR', ' True NR') : h}</span>)}
           <span>Status</span><span></span>
         </div>
         {rows.map((e) => (
@@ -3122,6 +3182,7 @@ function EmployeeModal({ emp, onClose }) {
               </div>
             </div>
           </div>
+          {emp.team === 'Sales' && <NrComparison emp={emp} />}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, padding: 18, background: 'rgba(255,255,255,0.02)' }}>
               <div className="disp" style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Weekly progress emails</div>
