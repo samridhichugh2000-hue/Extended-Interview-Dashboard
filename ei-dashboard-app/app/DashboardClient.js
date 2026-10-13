@@ -2758,9 +2758,13 @@ function EmployeeMeetingsModal({ emp, onClose, onSelectMeeting }) {
                     )}
                   </div>
                   <span className="mono" style={{ fontSize: 11.5, color: '#8A90A8' }}>{fmtIstTime(m.scheduledStart)}</span>
+                  {m.attendanceUnavailable ? (
+                    <span style={{ gridColumn: "3 / 6", fontSize: 11.5, color: "#F59E0B" }}>Organizer not covered by Teams policy</span>
+                  ) : (<>
                   <span className="mono" style={{ fontSize: 11.5, color: '#8A90A8' }}>{fmtIstTime(m.joinedAt)}</span>
                   <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: `${TIMING_COLORS[m.timingStatus]}1F`, color: TIMING_COLORS[m.timingStatus], border: `1px solid ${TIMING_COLORS[m.timingStatus]}55` }}>{m.timingStatus}</span>
                   <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: '#C7CBDA' }}>{fmtDuration(m.attendanceSeconds)}</span>
+                  </>)}
                   <span style={{ textAlign: 'right', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, justifySelf: 'end', background: m.avIssue == null ? 'rgba(255,255,255,0.05)' : m.avIssue ? 'rgba(244,63,94,0.14)' : 'rgba(20,184,166,0.14)', color: m.avIssue == null ? '#6E7488' : m.avIssue ? '#F87171' : '#5EEAD4', border: `1px solid ${m.avIssue == null ? 'rgba(255,255,255,0.12)' : m.avIssue ? 'rgba(244,63,94,0.35)' : 'rgba(20,184,166,0.35)'}` }}>
                     {m.avIssue == null ? 'No Data' : m.avIssue ? 'Issue' : 'Clean'}
                   </span>

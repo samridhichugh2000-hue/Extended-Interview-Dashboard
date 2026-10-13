@@ -234,6 +234,10 @@ export async function getGraphMeetings() {
     attendanceSeconds: r.attendance_seconds,
     delaySeconds: r.delay_seconds,
     timingStatus: r.timing_status,
+    // No online meeting could be resolved for the organizer (Teams application
+    // access policy doesn't cover them, or they are outside the tenant), so no
+    // attendance report is obtainable.
+    attendanceUnavailable: !r.online_meeting_id && r.timing_status === 'No Data',
     callRecordId: r.call_record_id,
     avIssue: r.av_issue == null ? null : !!r.av_issue,
     avIssueDetails: r.av_issue_details ? JSON.parse(r.av_issue_details) : null,
