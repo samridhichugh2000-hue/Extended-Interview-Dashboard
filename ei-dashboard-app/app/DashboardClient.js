@@ -506,7 +506,7 @@ function describeTrend(metric, trend, avg, fmtVal) {
   if (flat) return { arrow: '▬', text: 'steady (no real movement)', color: '#8A90A8', flat: true };
   const up = trend.slope > 0;
   const good = metric.good === 'up' ? up : !up;
-  return { arrow: up ? '▲' : '▼', text: `${up ? 'rising' : 'falling'} about ${per} every month`, color: good ? '#5EEAD4' : '#FB923C', flat: false };
+  return { arrow: up ? '▲' : '▼', text: `${up ? 'rising' : 'falling'} about ${per} every month`, color: good ? '#5EEAD4' : '#F87171', flat: false };
 }
 
 // One metric over time with the appraisal marked. Purple line = monthly value
@@ -537,8 +537,8 @@ function AppraisalChart({ series, metric, appraisalDate, win, change, fmtVal }) 
     const a = f.pts[0].x, b = f.pts[f.pts.length - 1].x;
     return <line x1={x(a)} y1={y(f.t.slope * a + f.t.intercept)} x2={x(b)} y2={y(f.t.slope * b + f.t.intercept)} stroke={color} strokeWidth="2.5" strokeDasharray="6 4" />;
   };
-  const verdictColor = !change || change.delta === 0 ? '#8A90A8' : ((metric.good === 'up' ? change.delta > 0 : change.delta < 0) ? '#5EEAD4' : '#FB923C');
-  const verdict = !change ? 'Not enough history' : change.delta === 0 ? 'No change' : change.delta > 0 ? 'Higher' : 'Lower';
+  const verdictColor = !change || change.delta === 0 ? '#8A90A8' : ((metric.good === 'up' ? change.delta > 0 : change.delta < 0) ? '#5EEAD4' : '#F87171');
+  const verdict = !change ? 'Not enough history' : change.delta === 0 ? 'No change' : ((metric.good === 'up' ? change.delta > 0 : change.delta < 0) ? 'Improved' : 'Worsened');
   const zone = (s) => (s.idx >= win.before[0] && s.idx <= win.before[1]) ? 'in the compared months BEFORE the appraisal' : (s.idx >= win.after[0] && s.idx <= win.after[1]) ? 'in the compared months AFTER the appraisal' : s.idx < apPos ? 'before the appraisal (not compared)' : 'after the appraisal (not compared)';
   const ticks = [0, 1, 2, 3].map((i) => lo + (span * i) / 3);
   const labelEvery = Math.ceil(series.length / 8);
@@ -630,7 +630,7 @@ function AnalysisModal({ emp, months, onClose, onOpenEmployee }) {
         </div>
         <div style={{ padding: '16px 24px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ fontSize: 13, color: '#C7CBDA', lineHeight: 1.6, border: '1px solid rgba(255,255,255,0.09)', borderRadius: 12, padding: '12px 16px', background: 'rgba(99,102,241,0.07)' }}>
-            {results.length === 0 ? 'There is not enough history before or after the appraisal to compare.' : <>In short: <b style={{ color: '#5EEAD4' }}>{better} measure{better === 1 ? '' : 's'} moved favourably</b>, <b style={{ color: '#FB923C' }}>{worse} {worse === 1 ? 'needs' : 'need'} a look</b>{results.length - better - worse > 0 ? `, ${results.length - better - worse} unchanged` : ''} after the appraisal.</>}
+            {results.length === 0 ? 'There is not enough history before or after the appraisal to compare.' : <>In short: <b style={{ color: '#5EEAD4' }}>{better} measure{better === 1 ? '' : 's'} improved</b>, <b style={{ color: '#F87171' }}>{worse} got worse</b>{results.length - better - worse > 0 ? `, ${results.length - better - worse} unchanged` : ''} after the appraisal.</>}
           </div>
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 11.5, color: '#8A90A8', alignItems: 'center' }}>
             <span><span style={{ display: 'inline-block', width: 18, height: 3, background: '#A5A7FA', verticalAlign: 'middle', marginRight: 6 }} />monthly value (hover a dot)</span>
@@ -694,15 +694,15 @@ function AnalysisPanel({ employees, setModal }) {
     let better = 0, worse = 0;
     for (const m of metrics) { const c = r.metrics[m.key]; if (!c || c.delta === 0) continue; if (m.good === 'up' ? c.delta > 0 : c.delta < 0) better++; else worse++; }
     if (!better && !worse) return { label: 'No change', color: '#8A90A8' };
-    if (better && !worse) return { label: 'Favourable', color: '#5EEAD4' };
-    if (worse && !better) return { label: 'Needs a look', color: '#FB923C' };
-    return { label: `Mixed · ${better} favourable, ${worse} to look at`, color: '#A5A7FA' };
+    if (better && !worse) return { label: 'Improved', color: '#5EEAD4' };
+    if (worse && !better) return { label: 'Worsened', color: '#F87171' };
+    return { label: `Mixed · ${better} better, ${worse} worse`, color: '#F59E0B' };
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <div style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(99,102,241,0.06)', borderRadius: 14, padding: '14px 18px', fontSize: 12.5, color: '#A8AEC4', lineHeight: 1.6 }}>
-        How delivery changed after each person's latest appraisal. The same number of full months is compared before and after (the appraisal month itself is left out, and only completed months count). A cell shows <span style={{ color: '#C7CBDA' }}>before → after</span> and the change; green means a favourable move, orange one worth a look (for negative feedback, more is the one to look at). “—” means there is not enough history on one side. Only the appraisal date is used (salary is encrypted at source and not shown). Click a row for the chart and trend lines.
+        How delivery changed after each person's latest appraisal. The same number of full months is compared before and after (the appraisal month itself is left out, and only completed months count). A cell shows <span style={{ color: '#C7CBDA' }}>before → after</span> and the change; green is an improvement, red a worsening. “—” means there is not enough history on one side. Only the appraisal date is used (salary is encrypted at source and not shown). Click a row for the chart and trend lines.
       </div>
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -718,8 +718,8 @@ function AnalysisPanel({ employees, setModal }) {
           <div key={m.key} style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.03)', borderRadius: 14, padding: '14px 16px' }}>
             <div style={{ fontSize: 11.5, color: '#8A90A8' }}>{m.label}</div>
             <div style={{ display: 'flex', gap: 14, alignItems: 'baseline', marginTop: 6 }}>
-              <span className="disp" style={{ fontSize: 22, fontWeight: 600, color: m.good === 'up' ? '#5EEAD4' : '#FB923C' }}>▲ {up}</span>
-              <span className="disp" style={{ fontSize: 22, fontWeight: 600, color: m.good === 'up' ? '#FB923C' : '#5EEAD4' }}>▼ {down}</span>
+              <span className="disp" style={{ fontSize: 22, fontWeight: 600, color: m.good === 'up' ? '#5EEAD4' : '#F87171' }}>▲ {up}</span>
+              <span className="disp" style={{ fontSize: 22, fontWeight: 600, color: m.good === 'up' ? '#F87171' : '#5EEAD4' }}>▼ {down}</span>
               <span style={{ fontSize: 11.5, color: '#6E7488' }}>of {total} with data</span>
             </div>
           </div>
@@ -751,7 +751,7 @@ function AnalysisPanel({ employees, setModal }) {
               if (!c) return <span key={m.key} style={{ textAlign: 'right', color: '#5C6178', fontSize: 12 }}>—</span>;
               const better = m.good === 'up' ? c.delta > 0 : c.delta < 0;
               const worse = m.good === 'up' ? c.delta < 0 : c.delta > 0;
-              const color = better ? '#5EEAD4' : worse ? '#FB923C' : '#8A90A8';
+              const color = better ? '#5EEAD4' : worse ? '#F87171' : '#8A90A8';
               const arrow = c.delta > 0 ? '▲' : c.delta < 0 ? '▼' : '=';
               return (
                 <div key={m.key} style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: 2 }}>
