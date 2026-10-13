@@ -515,19 +515,22 @@ function describeTrend(metric, trend, avg, fmtVal) {
 // labelled with what it is doing per month.
 function AppraisalChart({ series, metric, appraisalDate, win, change, fmtVal }) {
   const [hover, setHover] = useState(null);
-  const W = 640, H = 190, PL = 54, PR = 12, PT = 16, PB = 26;
+  const W = 640, H = 262, PL = 58, PR = 16, PT = 54, PB = 30;
   if (series.length < 2) return <div style={{ fontSize: 12, color: '#6E7488' }}>Not enough monthly history to chart {metric.label}.</div>;
   const minI = series[0].idx, maxI = series[series.length - 1].idx;
   const vals = series.map((s) => s.value);
   const lo = Math.min(...vals, 0), hi = Math.max(...vals, lo + 1e-9);
   const span = hi - lo || 1;
   const x = (i) => PL + ((i - minI) / Math.max(1, maxI - minI)) * (W - PL - PR);
-  const y = (v) => PT + (1 - (v - lo) / span) * (H - PT - PB);
+  const yLo = lo - span * 0.18, yHi = hi + span * 0.18; // breathing room so labels never touch the frame
+  const y = (v) => PT + (1 - (v - yLo) / (yHi - yLo)) * (H - PT - PB);
   const apPos = Math.min(Math.max(appraisalPosition(appraisalDate), minI), maxI);
   const apX = x(apPos);
   const inRange = (r) => series.filter((s) => s.idx >= r[0] && s.idx <= r[1]);
   const block = (r) => ({ x1: x(Math.max(r[0] - 0.5, minI)), x2: x(Math.min(r[1] + 0.5, maxI)) });
   const bBlock = block(win.before), aBlock = block(win.after);
+  // Narrow blocks (1-2 months) can't fit both headings side by side — stack them instead.
+  const narrow = (aBlock.x2 - bBlock.x1) < 230;
   const fit = (r) => { const pts = inRange(r).map((s) => ({ x: s.idx, y: s.value })); return { pts, t: linearTrend(pts) }; };
   const fb = fit(win.before), fa = fit(win.after);
   const bAvg = change ? change.before : 0, aAvg = change ? change.after : 0;
@@ -572,25 +575,23 @@ function AppraisalChart({ series, metric, appraisalDate, win, change, fmtVal }) 
           ))}
           <rect x={bBlock.x1} y={PT} width={Math.max(0, bBlock.x2 - bBlock.x1)} height={H - PT - PB} fill="rgba(245,158,11,0.12)" />
           <rect x={aBlock.x1} y={PT} width={Math.max(0, aBlock.x2 - aBlock.x1)} height={H - PT - PB} fill="rgba(20,184,166,0.12)" />
-          <text x={(bBlock.x1 + bBlock.x2) / 2} y={PT + 10} fontSize="9.5" fill="#F59E0B" textAnchor="middle">BEFORE</text>
-          <text x={(aBlock.x1 + aBlock.x2) / 2} y={PT + 10} fontSize="9.5" fill="#5EEAD4" textAnchor="middle">AFTER</text>
+          <text x={Math.min(bBlock.x2 - 2, W - PR)} y={PT - 8} fontSize="10" fontWeight="600" fill="#F59E0B" textAnchor="end">BEFORE{change ? ` · avg ${fmtVal(metric.kind, bAvg)}` : ''}</text>
+          <text x={narrow ? W - PR : aBlock.x1 + 2} y={narrow ? PT - 21 : PT - 8} fontSize="10" fontWeight="600" fill="#5EEAD4" textAnchor={narrow ? 'end' : 'start'}>AFTER{change ? ` · avg ${fmtVal(metric.kind, aAvg)}` : ''}</text>
           <polyline fill="none" stroke="#A5A7FA" strokeWidth="2" points={series.map((s) => `${x(s.idx)},${y(s.value)}`).join(' ')} />
           {change && (
             <g>
               <line x1={bBlock.x1} x2={bBlock.x2} y1={y(bAvg)} y2={y(bAvg)} stroke="#F59E0B" strokeWidth="1.2" strokeDasharray="2 3" />
-              <text x={bBlock.x1 + 3} y={y(bAvg) - 4} fontSize="9.5" fill="#F59E0B">avg {fmtVal(metric.kind, bAvg)}</text>
               <line x1={aBlock.x1} x2={aBlock.x2} y1={y(aAvg)} y2={y(aAvg)} stroke="#5EEAD4" strokeWidth="1.2" strokeDasharray="2 3" />
-              <text x={aBlock.x2 - 3} y={y(aAvg) + 12} fontSize="9.5" fill="#5EEAD4" textAnchor="end">avg {fmtVal(metric.kind, aAvg)}</text>
             </g>
           )}
           {line(fb, tb, '#F59E0B')}
           {line(fa, ta, '#5EEAD4')}
           <line x1={apX} x2={apX} y1={PT - 4} y2={H - PB} stroke="#F472B6" strokeWidth="1.6" strokeDasharray="3 3" />
-          <text x={apX} y={PT - 5} fontSize="10" fill="#F472B6" textAnchor="middle">appraisal</text>
+          <text x={apX > W - 80 ? W - PR : apX} y={narrow ? PT - 34 : PT - 24} fontSize="10" fill="#F472B6" textAnchor={apX > W - 80 ? 'end' : 'middle'}>▾ appraisal</text>
           {series.map((s) => (
             <g key={s.idx}>
               <circle cx={x(s.idx)} cy={y(s.value)} r={hover && hover.idx === s.idx ? 5 : compared.has(s.idx) ? 3.6 : 2.4} fill={hover && hover.idx === s.idx ? '#fff' : '#A5A7FA'} />
-              {compared.has(s.idx) && <text x={x(s.idx)} y={y(s.value) - 8} fontSize="9.5" fill="#E4E6F0" textAnchor="middle">{fmtVal(metric.kind, s.value)}</text>}
+              {compared.has(s.idx) && <text x={x(s.idx)} y={y(s.value) + (s.idx % 2 === 0 ? -9 : 17)} fontSize="9.5" fill="#E4E6F0" textAnchor="middle" stroke="#0B0E19" strokeWidth="3" paintOrder="stroke">{fmtVal(metric.kind, s.value)}</text>}
             </g>
           ))}
           {series.map((s, i) => ((i % labelEvery === 0 && series.length - 1 - i >= Math.ceil(labelEvery / 2)) || i === series.length - 1) && <text key={'l' + s.idx} x={x(s.idx)} y={H - 8} fontSize="9.5" fill="#6E7488" textAnchor="middle">{s.label}</text>)}
