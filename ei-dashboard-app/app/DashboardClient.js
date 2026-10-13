@@ -2759,7 +2759,7 @@ function EmployeeMeetingsModal({ emp, onClose, onSelectMeeting }) {
                   </div>
                   <span className="mono" style={{ fontSize: 11.5, color: '#8A90A8' }}>{fmtIstTime(m.scheduledStart)}</span>
                   {m.attendanceUnavailable ? (
-                    <span style={{ gridColumn: "3 / 6", fontSize: 11.5, color: "#F59E0B" }}>Organizer not covered by Teams policy</span>
+                    <span style={{ gridColumn: "3 / 6", fontSize: 11.5, color: "#F59E0B" }}>Not checkable — no Teams application access policy for this organizer</span>
                   ) : (<>
                   <span className="mono" style={{ fontSize: 11.5, color: '#8A90A8' }}>{fmtIstTime(m.joinedAt)}</span>
                   <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: `${TIMING_COLORS[m.timingStatus]}1F`, color: TIMING_COLORS[m.timingStatus], border: `1px solid ${TIMING_COLORS[m.timingStatus]}55` }}>{m.timingStatus}</span>
