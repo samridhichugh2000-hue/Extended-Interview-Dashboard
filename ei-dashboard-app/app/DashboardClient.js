@@ -1689,6 +1689,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
   const [expandedId, setExpandedId] = useState(null);
   const [futureNrDetail, setFutureNrDetail] = useState(null);
   const [targetDetail, setTargetDetail] = useState(null);
+  const [nrMode, setNrMode] = useState('nr'); // Sales only: which NR the quarter-target column uses
 
   const isTrainer = team === 'Trainer';
   const algoKey = isTrainer ? 'trainerPaAlgo' : 'salesPaAlgo';
@@ -1766,7 +1767,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
   // achievement-percentage feed (quarter_target_pct, syncTargetAchievement)
   // has returned zero rows for every query tried, so the % here is computed
   // directly from NR rather than trusting that feed.
-  function quarterTargetLabel(e) {
+  function quarterTargetLabel(e, mode) {
     if (e.quarterTargetAmount == null) return null;
     const monthKeys = currentQuarterMonthKeys();
     // One row per quarter month (0 when the feed has nothing for it), so the
@@ -1778,8 +1779,18 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
     const breakdown = monthKeys.map((key) => {
       const own = (e.nrMonthlyDetails || []).find((m) => m.month === key)?.nr ?? 0;
       const team = withTeam ? ((e.teamNrDetails || []).find((m) => m.month === key)?.nr ?? 0) : 0;
-      return { month: key, own, team, nr: own + team };
+      const trueRow = (e.trueNrDetails || []).find((m) => m.month === key);
+      return { month: key, own, team, nr: own + team, trueNr: trueRow ? trueRow.trueNr : null };
     });
+    // True NR mode: achieved from True NR (own only — a manager's team True NR isn't available), counting only the months Koenig has returned so far.
+    if (mode === 'true') {
+      if (withTeam) return { unavailable: 'Team True NR not available' };
+      const trueMonths = breakdown.filter((m) => m.trueNr != null);
+      const trueTotal = trueMonths.reduce((sum, m) => sum + m.trueNr, 0);
+      const tp = e.quarterTargetAmount > 0 ? Math.round((trueTotal / e.quarterTargetAmount) * 1000) / 10 : null;
+      const lk = (n) => '₹' + (n / 100000).toFixed(1) + 'L';
+      return { pct: tp != null ? `${tp}%` : '—', achieved: tp != null && tp >= 100, nrLabel: lk(trueTotal), targetLabel: lk(e.quarterTargetAmount), breakdown, withTeam: false, teamSize: 0, isTrue: true, monthsAvailable: trueMonths.length };
+    }
     const nr = breakdown.reduce((sum, m) => sum + m.nr, 0);
     const pct = e.quarterTargetAmount > 0 ? Math.round((nr / e.quarterTargetAmount) * 1000) / 10 : null;
     const lakhs = (n) => '₹' + (n / 100000).toFixed(1) + 'L';
@@ -1826,6 +1837,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
           placeholder="Search by name or employee ID…"
           style={{ flex: 1, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#E4E6F0', outline: 'none' }}
         />
+        {!isTrainer && <NrModeToggle value={nrMode} onChange={setNrMode} />}
         <FiredOnlyToggle value={firedOnly} onChange={setFiredOnly} allLabel={isTrainer ? 'All Trainers' : 'All Sales'} />
         <IncludeInactiveToggle value={includeInactive} onChange={setIncludeInactive} />
       </div>
@@ -1833,7 +1845,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
         <div style={{ display: 'grid', gridTemplateColumns: gridCols, columnGap: isTrainer ? 0 : 18, padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           {isTrainer
             ? <><span>Employee</span><span>This month</span><span>Salary tier</span><span>Tenure band</span><span>Rule</span><span>Status</span><span style={{ textAlign: 'right' }}>Neg. feedback (7d)</span><span /></>
-            : <><span>Employee</span><span>Region</span><span>Quarter target ({currentQuarter().name} {currentQuarter().year})</span><span>Tenure band</span><span>Rule</span><span style={{ textAlign: 'right' }}>Status</span><span>Future NR</span><span /></>}
+            : <><span>Employee</span><span>Region</span><span>Quarter target ({currentQuarter().name} {currentQuarter().year}{nrMode === 'true' ? ' · True NR' : ''})</span><span>Tenure band</span><span>Rule</span><span style={{ textAlign: 'right' }}>Status</span><span>Future NR</span><span /></>}
         </div>
         {rows.map((e) => {
           const algo = e[algoKey];
@@ -1845,7 +1857,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
           const hasEvidence = algo.evidence?.length > 0;
           const isExpanded = expandedId === e.id;
           const util = isTrainer ? thisMonthUtil(e) : null;
-          const target = !isTrainer ? quarterTargetLabel(e) : null;
+          const target = !isTrainer ? quarterTargetLabel(e, nrMode) : null;
           const futureNr = !isTrainer ? futureNrSummary(e) : null;
           return (
             <Fragment key={e.id}>
@@ -1862,10 +1874,10 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
                 <span style={{ fontSize: 12, color: '#A8AEC4' }}>{isTrainer ? (PA_ALGO_TIER_LABELS[algo.tier] || '—') : (PA_ALGO_REGION_LABELS[algo.region] || '—')}</span>
                 {!isTrainer && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    {target ? (
+                    {target?.unavailable ? <span title={target.unavailable} style={{ fontSize: 12, color: '#6E7488' }}>—</span> : target ? (
                       <span onClick={(ev) => { ev.stopPropagation(); setTargetDetail({ emp: e, target }); }} style={{ display: 'flex', flexDirection: 'column', gap: 1, cursor: 'pointer' }}>
                         <span className="mono" style={{ fontSize: 12, fontWeight: 600, color: target.achieved ? '#5EEAD4' : '#F87171', textDecoration: 'underline', textUnderlineOffset: 3 }}>{target.targetLabel} / {target.nrLabel}</span>
-                        <span style={{ fontSize: 10.5, color: target.achieved ? '#5EEAD4' : '#F87171' }}>{target.pct}</span>
+                        <span style={{ fontSize: 10.5, color: target.achieved ? '#5EEAD4' : '#F87171' }}>{target.pct}{target.isTrue ? ` · ${target.monthsAvailable}/3 mo` : ''}</span>
                       </span>
                     ) : <span style={{ fontSize: 12, color: '#A8AEC4' }}>—</span>}
                   </div>
@@ -1894,7 +1906,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
                   {hasEvidence ? (isExpanded ? '▾' : '▸') : ''}
                 </button>
               </div>
-              {isExpanded && hasEvidence && <PaAlgoEvidence evidence={algo.evidence} />}
+              {isExpanded && hasEvidence && <PaAlgoEvidence evidence={algo.evidence} emp={e} />}
             </Fragment>
           );
         })}
@@ -1921,7 +1933,7 @@ function futureNrSummary(e) {
 function QuarterTargetModal({ emp, target, onClose }) {
   const lakhs = (n) => '₹' + (n / 100000).toFixed(1) + 'L';
   const q = currentQuarter();
-  const gridCols = target.withTeam ? '1fr 1fr 1fr 1fr' : '1fr 1fr';
+  const gridCols = target.withTeam ? '1fr 1fr 1fr 1fr 1fr' : '1fr 1fr 1fr';
   const color = target.achieved ? '#5EEAD4' : '#F87171';
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
@@ -1935,7 +1947,7 @@ function QuarterTargetModal({ emp, target, onClose }) {
         </div>
         <div style={{ padding: '8px 24px 24px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '10px 0', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-            <span>Month</span>{target.withTeam && <span style={{ textAlign: 'right' }}>Own NR</span>}{target.withTeam && <span style={{ textAlign: 'right' }}>Team NR</span>}<span style={{ textAlign: 'right' }}>{target.withTeam ? 'Total' : 'NR'}</span>
+            <span>Month</span>{target.withTeam && <span style={{ textAlign: 'right' }}>Own NR</span>}{target.withTeam && <span style={{ textAlign: 'right' }}>Team NR</span>}<span style={{ textAlign: 'right' }}>{target.withTeam ? 'Total' : 'NR'}</span><span style={{ textAlign: 'right' }}>True NR</span>
           </div>
           {target.breakdown.map((m) => (
             <div key={m.month} style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
@@ -1943,19 +1955,21 @@ function QuarterTargetModal({ emp, target, onClose }) {
               {target.withTeam && <span className="mono" style={{ textAlign: 'right', color: '#A8AEC4' }}>{lakhs(m.own)}</span>}
               {target.withTeam && <span className="mono" style={{ textAlign: 'right', color: '#A8AEC4' }}>{lakhs(m.team)}</span>}
               <span className="mono" style={{ textAlign: 'right', color: m.nr > 0 ? '#5EEAD4' : '#6E7488' }}>{lakhs(m.nr)}</span>
+              <span className="mono" style={{ textAlign: 'right', color: m.trueNr == null ? '#6E7488' : m.trueNr < 0 ? '#F87171' : '#5EEAD4' }}>{m.trueNr == null ? '—' : lakhs(m.trueNr)}</span>
             </div>
           ))}
           <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '10px 0', fontSize: 13, fontWeight: 600 }}>
             <span style={{ color: '#FFFFFF' }}>Achieved (sum)</span>
             {target.withTeam && <span />}{target.withTeam && <span />}
-            <span className="mono" style={{ textAlign: 'right', color: '#FFFFFF' }}>{target.nrLabel}</span>
+            <span className="mono" style={{ textAlign: 'right', color: '#FFFFFF' }}>{target.nrLabel}</span><span />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '4px 0 10px', fontSize: 13 }}>
             <span style={{ color: '#A8AEC4' }}>Target ({q.name} {target.withTeam ? 'manager target' : 'CSM target'})</span>
             {target.withTeam && <span />}{target.withTeam && <span />}
-            <span className="mono" style={{ textAlign: 'right', color: '#A8AEC4' }}>{target.targetLabel}</span>
+            <span className="mono" style={{ textAlign: 'right', color: '#A8AEC4' }}>{target.targetLabel}</span><span />
           </div>
           <div style={{ fontSize: 11.5, color: '#6E7488', marginTop: 8, lineHeight: 1.55 }}>
+            {target.isTrue && <><b>Showing True NR</b> (net of salary and marketing cost) — only the {target.monthsAvailable} of 3 quarter months Koenig has returned so far count. The PA Algo status itself is always decided on NR before salary and marketing cost.<br /></>}
             Achieved % = {target.nrLabel} ÷ {target.targetLabel} × 100 = <b style={{ color }}>{target.pct}</b>. {target.withTeam
               ? <>Achieved is the manager's own NR plus the NR of their team ({target.teamSize} direct reports), summed across the three calendar months of {q.name} {q.year}; the target is the manager-level target Koenig holds for this quarter.</>
               : <>Achieved is the employee's NR summed across the three calendar months of {q.name} {q.year} (months with no NR count as ₹0.0L); the target is the CSM target Koenig holds for this quarter.</>}
@@ -2004,7 +2018,19 @@ function FutureNrModal({ emp, onClose }) {
 // table of the exact months/assignments/SCs involved. Shown inline under
 // the row it belongs to so the reason for a flag is fully visible without
 // opening the employee modal or another screen.
-function PaAlgoEvidence({ evidence }) {
+function PaAlgoEvidence({ evidence, emp }) {
+  // Sales NR tables get a True NR column beside NR (the status itself is
+  // always decided on NR before salary and marketing cost).
+  const trueByMonth = new Map((emp?.trueNrDetails || []).map((m) => [m.month, m.trueNr]));
+  const withTrue = (ev) => {
+    if (emp?.team !== 'Sales' || ev.columns?.[0] !== 'Month' || ev.columns?.[1] !== 'NR' || !ev.rows?.length) return ev;
+    return {
+      ...ev,
+      columns: ['Month', 'NR (before salary & mktg cost)', 'True NR'],
+      rows: ev.rows.map((r) => [...r, trueByMonth.has(r[0]) ? '₹' + trueByMonth.get(r[0]).toLocaleString('en-IN') : '—']),
+    };
+  };
+  evidence = evidence.map(withTrue);
   return (
     <div style={{ padding: '2px 18px 16px 40px', background: 'rgba(255,255,255,0.015)', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', gap: 14 }}>
       {evidence.map((ev, i) => (
