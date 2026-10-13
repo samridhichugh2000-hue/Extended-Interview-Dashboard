@@ -820,7 +820,8 @@ export async function syncTrainerRc() {
   const { getTrainerRcSchedule, distinctMainTrainerAssignments } = await import('./koenigTrainerRcApi.js');
   const { istDateKey } = await import('./weekUtils.js');
 
-  const trainerEmployees = await db.execute("SELECT id, email, tenure_days FROM employees WHERE team = 'Trainer' AND active = 1");
+  // Only the PA Algo's 0-3 month trainers use this (see sync-trainerrc.mjs).
+  const trainerEmployees = await db.execute("SELECT id, email, tenure_days FROM employees WHERE team = 'Trainer' AND active = 1 AND tenure_days <= 100");
   const today = istDateKey(new Date());
 
   const statements = [];

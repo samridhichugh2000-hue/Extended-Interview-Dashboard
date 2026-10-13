@@ -38,7 +38,11 @@ function sinceDate(tenureDays) {
   return joined > cutoff ? joined : cutoff;
 }
 
-const trainerEmployees = await db.execute("SELECT id, email, tenure_days FROM employees WHERE team = 'Trainer' AND active = 1");
+// Only trainers still inside the PA Algo's 0-3 month band use this data (the
+// 'zero Main Trainer assignments' rule, lib/paAlgo.js) — nobody else needs it,
+// so everyone else is skipped (their old values just go unused). 100 days =
+// the 3-month band plus a margin; the lookback is since joining.
+const trainerEmployees = await db.execute("SELECT id, email, tenure_days FROM employees WHERE team = 'Trainer' AND active = 1 AND tenure_days <= 100");
 const today = istDateKey(new Date());
 
 let updated = 0;
