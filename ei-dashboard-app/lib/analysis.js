@@ -115,3 +115,53 @@ export function computeAppraisalImpact(e, maxMonths) {
   }
   return { appraisalDate: latest.appraisalDate, k: win.k, metrics };
 }
+
+// ---- chart data ----
+
+const monthLabel = (idx) => `${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][idx % 12]} ${String(Math.floor(idx / 12)).slice(2)}`;
+
+// Month-by-month series for one metric (completed months only, from the
+// feed's start / the employee's joining month): [{ idx, label, value }].
+export function metricSeries(e, key, now = new Date()) {
+  const currentIdx = now.getFullYear() * 12 + now.getMonth();
+  const doj = dojIdx(e.doj);
+  const out = [];
+  const fromMonthly = (details, field) => {
+    for (const d of details || []) {
+      const i = keyIdx(d.month);
+      const v = Number(d[field]);
+      if (i != null && i < currentIdx && Number.isFinite(v) && (doj == null || i >= doj)) out.push({ idx: i, label: monthLabel(i), value: v });
+    }
+  };
+  const fromEvents = (records, dateOf, feedStart) => {
+    const lo = Math.max(feedStart, doj ?? 0);
+    const counts = new Map();
+    for (const r of records || []) { const i = dateIdx(dateOf(r)); if (i != null && i >= lo && i < currentIdx) counts.set(i, (counts.get(i) || 0) + 1); }
+    for (let i = lo; i < currentIdx; i++) out.push({ idx: i, label: monthLabel(i), value: counts.get(i) || 0 });
+  };
+  if (key === 'nr') fromMonthly(e.nrMonthlyDetails, 'nr');
+  else if (key === 'trueNr') fromMonthly(e.trueNrDetails, 'trueNr');
+  else if (key === 'util') fromMonthly(e.utilMonthlyDetails, 'util');
+  else if (key === 'sc') fromEvents(e.scDetails, (x) => x.createdOn, FEED_START.sc);
+  else if (key === 'neg') fromEvents(e.negFeedbackDetails, (x) => x.feedbackDate, FEED_START.negFeedback);
+  return out.sort((a, b) => a.idx - b.idx);
+}
+
+// Least-squares line through [{x, y}] -> { slope, intercept } (null under 2 points).
+export function linearTrend(points) {
+  if (points.length < 2) return null;
+  const n = points.length;
+  const sx = sum(points.map((p) => p.x)), sy = sum(points.map((p) => p.y));
+  const sxx = sum(points.map((p) => p.x * p.x)), sxy = sum(points.map((p) => p.x * p.y));
+  const denom = n * sxx - sx * sx;
+  if (!denom) return null;
+  const slope = (n * sxy - sx * sy) / denom;
+  return { slope, intercept: (sy - slope * sx) / n };
+}
+
+// Where the appraisal sits on the month axis (fractional month index).
+export function appraisalPosition(appraisalDate) {
+  const a = new Date(`${appraisalDate}T00:00:00`);
+  const dim = new Date(a.getFullYear(), a.getMonth() + 1, 0).getDate();
+  return a.getFullYear() * 12 + a.getMonth() + (a.getDate() - 1) / dim;
+}

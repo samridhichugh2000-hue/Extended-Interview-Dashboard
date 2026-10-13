@@ -6,7 +6,7 @@ import {
   WORRY_BANDS, POS_SIGNALS, NEG_SIGNALS, NJ_QUESTIONS, appliesToTeam, feedbackRating, FEEDBACK_RATING_UI,
   computeSignalReport, computeWorryScore, trendNoteFor, WORRY_WINDOWS, windowSince,
 } from '../lib/data';
-import { computeAppraisalImpact, ANALYSIS_METRICS } from '../lib/analysis';
+import { computeAppraisalImpact, ANALYSIS_METRICS, appraisalWindow, metricSeries, linearTrend, appraisalPosition } from '../lib/analysis';
 import { JOB_LABELS } from '../lib/jobLabels';
 import { TRAINER_SALARY_TIERS, SALES_REGIONS, currentQuarter, currentQuarterMonthKeys, formatTenure } from '../lib/paAlgo';
 import { draftToHtml } from '../lib/emailDraft';
@@ -498,6 +498,87 @@ function DetailsGate({ emp, children }) {
 
 /* ---------- Analysis: what changed after the last appraisal ---------- */
 
+// One metric over time with the appraisal marked: the line is the monthly
+// value, the shaded blocks are the months compared (before / after), and the
+// dashed lines are straight-line trends fitted through each block.
+function AppraisalChart({ series, metric, appraisalDate, win, change, fmtVal }) {
+  const W = 620, H = 150, PL = 8, PR = 8, PT = 12, PB = 22;
+  if (series.length < 2) return <div style={{ fontSize: 12, color: '#6E7488' }}>Not enough monthly history to chart.</div>;
+  const minI = series[0].idx, maxI = series[series.length - 1].idx;
+  const vals = series.map((s) => s.value);
+  const lo = Math.min(...vals, 0), hi = Math.max(...vals);
+  const span = hi - lo || 1;
+  const x = (i) => PL + ((i - minI) / Math.max(1, maxI - minI)) * (W - PL - PR);
+  const y = (v) => PT + (1 - (v - lo) / span) * (H - PT - PB);
+  const apX = x(Math.min(Math.max(appraisalPosition(appraisalDate), minI), maxI));
+  const block = (r) => ({ x1: x(Math.max(r[0], minI) - 0.5 < minI ? minI : r[0] - 0.5), x2: x(Math.min(r[1] + 0.5, maxI)) });
+  const inRange = (r) => series.filter((s) => s.idx >= r[0] && s.idx <= r[1]);
+  const trendLine = (r, color) => {
+    const pts = inRange(r).map((s) => ({ x: s.idx, y: s.value }));
+    const t = linearTrend(pts);
+    if (!t || !pts.length) return null;
+    const a = pts[0].x, b = pts[pts.length - 1].x;
+    return <line x1={x(a)} y1={y(t.slope * a + t.intercept)} x2={x(b)} y2={y(t.slope * b + t.intercept)} stroke={color} strokeWidth="2" strokeDasharray="5 4" />;
+  };
+  const bBlock = block(win.before), aBlock = block(win.after);
+  const color = change ? ((metric.good === 'up' ? change.delta > 0 : change.delta < 0) ? '#5EEAD4' : (change.delta === 0 ? '#8A90A8' : '#F87171')) : '#8A90A8';
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: '#E4E6F0' }}>{metric.label}</span>
+        {change
+          ? <span className="mono" style={{ fontSize: 12, color }}>{fmtVal(metric.kind, change.before)} → {fmtVal(metric.kind, change.after)} {change.delta > 0 ? '▲' : change.delta < 0 ? '▼' : '='} {change.pct != null ? `${Math.abs(Math.round(change.pct))}%` : ''}</span>
+          : <span style={{ fontSize: 11.5, color: '#6E7488' }}>not enough history on one side to compare</span>}
+      </div>
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, background: 'rgba(255,255,255,0.02)' }}>
+        <rect x={bBlock.x1} y={PT} width={Math.max(0, bBlock.x2 - bBlock.x1)} height={H - PT - PB} fill="rgba(245,158,11,0.10)" />
+        <rect x={aBlock.x1} y={PT} width={Math.max(0, aBlock.x2 - aBlock.x1)} height={H - PT - PB} fill="rgba(20,184,166,0.10)" />
+        {lo < 0 && <line x1={PL} x2={W - PR} y1={y(0)} y2={y(0)} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />}
+        <polyline fill="none" stroke="#A5A7FA" strokeWidth="2" points={series.map((s) => `${x(s.idx)},${y(s.value)}`).join(' ')} />
+        {series.map((s) => <circle key={s.idx} cx={x(s.idx)} cy={y(s.value)} r="2.6" fill="#A5A7FA" />)}
+        {trendLine(win.before, '#F59E0B')}
+        {trendLine(win.after, '#5EEAD4')}
+        <line x1={apX} x2={apX} y1={PT - 4} y2={H - PB} stroke="#F472B6" strokeWidth="1.5" strokeDasharray="3 3" />
+        <text x={Math.min(apX + 5, W - 60)} y={PT + 6} fontSize="10" fill="#F472B6">appraisal</text>
+        <text x={PL} y={H - 6} fontSize="10" fill="#6E7488">{series[0].label}</text>
+        <text x={W - PR} y={H - 6} fontSize="10" fill="#6E7488" textAnchor="end">{series[series.length - 1].label}</text>
+        <text x={PL} y={PT + 6} fontSize="10" fill="#6E7488">high {fmtVal(metric.kind, hi)}</text>
+      </svg>
+    </div>
+  );
+}
+
+function AnalysisModal({ emp, months, onClose, onOpenEmployee }) {
+  const impact = computeAppraisalImpact(emp, months);
+  const win = appraisalWindow(impact.appraisalDate, months);
+  const metrics = ANALYSIS_METRICS[emp.team];
+  const fmtVal = (kind, v) => kind === 'money' ? fmtLakhs(v) : kind === 'percent' ? `${Math.round(v)}%` : kind === 'rate' ? (Math.round(v * 10) / 10).toString() : Math.round(v).toString();
+  const [y, m, d] = impact.appraisalDate.split('-');
+  const dayLabel = `${d} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m) - 1]} ${y}`;
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 760, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — before vs after appraisal</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>Appraised {dayLabel} · comparing {impact.k} month{impact.k === 1 ? '' : 's'} before (amber block) with {impact.k} after (green block)</div>
+          </div>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+        </div>
+        <div style={{ padding: '18px 24px 24px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+          {metrics.map((mt) => (
+            <AppraisalChart key={mt.key} series={metricSeries(emp, mt.key)} metric={mt} appraisalDate={impact.appraisalDate} win={win} change={impact.metrics[mt.key]} fmtVal={fmtVal} />
+          ))}
+          <div style={{ fontSize: 11.5, color: '#6E7488', lineHeight: 1.5 }}>
+            Purple line = monthly value · dashed amber / green = trend before / after · pink line = appraisal date. The appraisal month is left out of the comparison. Completed months only.
+          </div>
+          <div onClick={onOpenEmployee} style={{ cursor: 'pointer', color: '#A5A7FA', fontSize: 12.5, textDecoration: 'underline', textUnderlineOffset: 3, width: 'fit-content' }}>Open full employee record</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Sales: NR, True NR and SCs raised. Trainer: utilization and negative
 // feedback. For each employee, the same number of full months before and after
 // their latest appraisal are compared (see lib/analysis.js).
@@ -506,6 +587,7 @@ function AnalysisPanel({ employees, setModal }) {
   const [months, setMonths] = useState(3);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('dip');
+  const [detail, setDetail] = useState(null);
   const metrics = ANALYSIS_METRICS[team];
 
   const rows = employees
@@ -539,7 +621,7 @@ function AnalysisPanel({ employees, setModal }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <div style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(99,102,241,0.06)', borderRadius: 14, padding: '14px 18px', fontSize: 12.5, color: '#A8AEC4', lineHeight: 1.6 }}>
-        How delivery changed after each person's latest appraisal. The same number of full months is compared before and after (the appraisal month itself is left out, and only completed months count). A cell shows <span style={{ color: '#C7CBDA' }}>before → after</span> and the change; green is an improvement, red a worsening. “—” means there is not enough history on one side. Appraisal dates come from Koenig; salary is not shown (it is encrypted at source).
+        How delivery changed after each person's latest appraisal. The same number of full months is compared before and after (the appraisal month itself is left out, and only completed months count). A cell shows <span style={{ color: '#C7CBDA' }}>before → after</span> and the change; green is an improvement, red a worsening. “—” means there is not enough history on one side. Only the appraisal date is used (salary is encrypted at source and not shown). Click a row for the chart and trend lines.
       </div>
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -574,7 +656,7 @@ function AnalysisPanel({ employees, setModal }) {
           <span>Employee</span><span>Appraisal</span>{metrics.map((m) => <span key={m.key} style={{ textAlign: 'right' }}>{m.label}</span>)}
         </div>
         {shown.map(({ e, r }) => (
-          <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, padding: '12px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13 }}>
+          <div key={e.id} className="hoverrow" onClick={() => setDetail(e)} style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, padding: '12px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <span style={{ fontWeight: 600 }}>{e.name}</span>
               <span style={{ fontSize: 11, color: '#6E7488' }}>{e.id}</span>
@@ -601,6 +683,7 @@ function AnalysisPanel({ employees, setModal }) {
         ))}
         {!shown.length && <div style={{ padding: 18, fontSize: 12.5, color: '#6E7488' }}>No one in this view has a completed month after their appraisal yet.</div>}
       </div>
+      {detail && <AnalysisModal emp={detail} months={months} onClose={() => setDetail(null)} onOpenEmployee={() => { setModal(detail); setDetail(null); }} />}
       {tooRecent > 0 && <div style={{ fontSize: 11.5, color: '#6E7488' }}>{tooRecent} {team === 'Trainer' ? 'trainers' : 'Sales employees'} not shown — appraised too recently for a completed month after it.</div>}
     </div>
   );
