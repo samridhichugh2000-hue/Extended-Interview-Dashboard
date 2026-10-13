@@ -33,6 +33,9 @@ export function isExcludedGraphMeeting(subject, team, clientEmails) {
   if (isExcludedMeeting(subject)) return true;
   const s = subject || '';
   if (CANCELLED_RE.test(s)) return true;
+  // Assistant Technical Managers (team 'Trainer'): only meetings with someone
+  // outside @koenig-solutions.com are tracked — internal-only invites are dropped.
+  if (team === 'Trainer' && !(clientEmails && clientEmails.length)) return true;
   if (team === 'Sales') {
     if (SALES_TRAINING_HARD_RE.test(s)) return true;
     if (!(clientEmails && clientEmails.length) && SALES_TRAINING_SOFT_RE.test(s)) return true;
