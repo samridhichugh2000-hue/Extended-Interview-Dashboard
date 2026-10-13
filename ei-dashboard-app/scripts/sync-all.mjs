@@ -65,8 +65,12 @@ function run(script) {
 const started = new Date().toISOString();
 console.log(`\n=== sync-all starting at ${started} ===`);
 
+// Optional: `node sync-all.mjs --from=sync-trainerrc.mjs` resumes part-way
+// (e.g. after killing a stuck run) instead of redoing the feeds already done.
+const fromArg = process.argv.find((a) => a.startsWith('--from='))?.slice(7);
+const startIdx = fromArg ? Math.max(0, SCRIPTS.indexOf(fromArg)) : 0;
 const results = [];
-for (const script of SCRIPTS) {
+for (const script of SCRIPTS.slice(startIdx)) {
   console.log(`\n--- ${script} ---`);
   const { code, tail } = await run(script);
   results.push({ script, code });

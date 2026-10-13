@@ -45,21 +45,30 @@ let updated = 0;
 let unmatched = 0;
 let skippedNoEmail = 0;
 let apiErrors = 0;
-for (const emp of trainerEmployees.rows) {
-  if (!emp.email) { skippedNoEmail++; continue; }
-  try {
-    const since = sinceDate(emp.tenure_days);
-    const rows = await getTrainerRcSchedule(emp.email, istDateKey(since), today);
-    const assignments = distinctMainTrainerAssignments(rows);
-    await db.execute({
-      sql: 'UPDATE employees SET rc_main_assignments_count = ?, rc_main_assignments_details = ? WHERE id = ?',
-      args: [assignments.length, JSON.stringify(assignments), emp.id],
-    });
-    if (assignments.length) updated++; else unmatched++;
-  } catch (err) {
-    console.error(`Trainer RC sync failed for ${emp.id}:`, err.message);
-    apiErrors++;
+// A few workers in parallel — one trainer at a time took well over an hour
+// whenever Koenig started timing out (each timeout stalled the whole run).
+// Kept low: Koenig's RC API times out under heavy concurrency.
+const RC_WORKERS = 4;
+const queue = [...trainerEmployees.rows];
+async function worker() {
+  while (queue.length) {
+    const emp = queue.shift();
+    if (!emp.email) { skippedNoEmail++; continue; }
+    try {
+      const since = sinceDate(emp.tenure_days);
+      const rows = await getTrainerRcSchedule(emp.email, istDateKey(since), today);
+      const assignments = distinctMainTrainerAssignments(rows);
+      await db.execute({
+        sql: 'UPDATE employees SET rc_main_assignments_count = ?, rc_main_assignments_details = ? WHERE id = ?',
+        args: [assignments.length, JSON.stringify(assignments), emp.id],
+      });
+      if (assignments.length) updated++; else unmatched++;
+    } catch (err) {
+      console.error(`Trainer RC sync failed for ${emp.id}:`, err.message);
+      apiErrors++;
+    }
   }
 }
+await Promise.all(Array.from({ length: RC_WORKERS }, worker));
 
 console.log(`Synced Main Trainer assignments for ${updated} Trainer employees (${unmatched} have none, ${skippedNoEmail} no email on file, ${apiErrors} API errors).`);

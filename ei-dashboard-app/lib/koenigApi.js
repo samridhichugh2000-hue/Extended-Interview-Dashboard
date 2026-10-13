@@ -49,13 +49,18 @@ export async function getNewJoiners(from, to) {
     return res.json();
   };
 
-  let token = await getToken();
-  let json = await call(token);
-
-  if (json.statuscode !== 200) {
-    token = await getToken({ forceRefresh: true });
+  // Every process (dashboard page, sync route, local sync scripts) fetches
+  // its own token, and Koenig's GetToken invalidates the previous one — so two
+  // running at once knock each other out with "Forbidden : Permission
+  // denied". Retry with a fresh token and a jittered pause so one of them
+  // gets through instead of the dashboard showing zero new joiners.
+  let json;
+  for (let attempt = 1; ; attempt++) {
+    const token = await getToken({ forceRefresh: attempt > 1 });
     json = await call(token);
-    if (json.statuscode !== 200) throw new Error(`Koenig common API error: ${json.message}`);
+    if (json.statuscode === 200) break;
+    if (attempt >= 4) throw new Error(`Koenig common API error: ${json.message}`);
+    await new Promise((r) => setTimeout(r, 500 * attempt + Math.random() * 1500));
   }
 
   const rows = JSON.parse(json.content);

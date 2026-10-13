@@ -48,6 +48,7 @@ export async function getTrainerRcSchedule(traineeEmail, fromDate, toDate) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ traineremail: traineeEmail, fromDate, toDate }),
+      signal: AbortSignal.timeout(90000), // a hung Koenig call must not stall the whole sync
     });
     if (!res.ok) throw new Error(`Koenig Trainer RC common API failed: ${res.status} ${res.statusText}`);
     return res.json();
