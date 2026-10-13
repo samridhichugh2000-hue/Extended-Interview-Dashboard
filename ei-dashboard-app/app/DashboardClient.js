@@ -498,52 +498,112 @@ function DetailsGate({ emp, children }) {
 
 /* ---------- Analysis: what changed after the last appraisal ---------- */
 
-// One metric over time with the appraisal marked: the line is the monthly
-// value, the shaded blocks are the months compared (before / after), and the
-// dashed lines are straight-line trends fitted through each block.
+// Plain-English reading of a metric's before/after numbers.
+function describeTrend(metric, trend, avg, fmtVal) {
+  if (!trend) return { arrow: '', text: 'not enough months to draw a trend', color: '#6E7488', flat: true };
+  const per = metric.kind === 'money' ? fmtVal('money', Math.abs(trend.slope)) : metric.kind === 'percent' ? `${Math.abs(trend.slope).toFixed(1)} points` : Math.abs(trend.slope).toFixed(1);
+  const flat = Math.abs(trend.slope) < Math.max(Math.abs(avg) * 0.05, metric.kind === 'count' ? 0.05 : 0.02);
+  if (flat) return { arrow: '▬', text: 'steady (no real movement)', color: '#8A90A8', flat: true };
+  const up = trend.slope > 0;
+  const good = metric.good === 'up' ? up : !up;
+  return { arrow: up ? '▲' : '▼', text: `${up ? 'rising' : 'falling'} about ${per} every month`, color: good ? '#5EEAD4' : '#F87171', flat: false };
+}
+
+// One metric over time with the appraisal marked. Purple line = monthly value
+// (hover any dot for its month and number); shaded blocks = the months being
+// compared; dashed lines = the straight-line trend through each block, each
+// labelled with what it is doing per month.
 function AppraisalChart({ series, metric, appraisalDate, win, change, fmtVal }) {
-  const W = 620, H = 150, PL = 8, PR = 8, PT = 12, PB = 22;
-  if (series.length < 2) return <div style={{ fontSize: 12, color: '#6E7488' }}>Not enough monthly history to chart.</div>;
+  const [hover, setHover] = useState(null);
+  const W = 640, H = 190, PL = 54, PR = 12, PT = 16, PB = 26;
+  if (series.length < 2) return <div style={{ fontSize: 12, color: '#6E7488' }}>Not enough monthly history to chart {metric.label}.</div>;
   const minI = series[0].idx, maxI = series[series.length - 1].idx;
   const vals = series.map((s) => s.value);
-  const lo = Math.min(...vals, 0), hi = Math.max(...vals);
+  const lo = Math.min(...vals, 0), hi = Math.max(...vals, lo + 1e-9);
   const span = hi - lo || 1;
   const x = (i) => PL + ((i - minI) / Math.max(1, maxI - minI)) * (W - PL - PR);
   const y = (v) => PT + (1 - (v - lo) / span) * (H - PT - PB);
-  const apX = x(Math.min(Math.max(appraisalPosition(appraisalDate), minI), maxI));
-  const block = (r) => ({ x1: x(Math.max(r[0], minI) - 0.5 < minI ? minI : r[0] - 0.5), x2: x(Math.min(r[1] + 0.5, maxI)) });
+  const apPos = Math.min(Math.max(appraisalPosition(appraisalDate), minI), maxI);
+  const apX = x(apPos);
   const inRange = (r) => series.filter((s) => s.idx >= r[0] && s.idx <= r[1]);
-  const trendLine = (r, color) => {
-    const pts = inRange(r).map((s) => ({ x: s.idx, y: s.value }));
-    const t = linearTrend(pts);
-    if (!t || !pts.length) return null;
-    const a = pts[0].x, b = pts[pts.length - 1].x;
-    return <line x1={x(a)} y1={y(t.slope * a + t.intercept)} x2={x(b)} y2={y(t.slope * b + t.intercept)} stroke={color} strokeWidth="2" strokeDasharray="5 4" />;
-  };
+  const block = (r) => ({ x1: x(Math.max(r[0] - 0.5, minI)), x2: x(Math.min(r[1] + 0.5, maxI)) });
   const bBlock = block(win.before), aBlock = block(win.after);
-  const color = change ? ((metric.good === 'up' ? change.delta > 0 : change.delta < 0) ? '#5EEAD4' : (change.delta === 0 ? '#8A90A8' : '#F87171')) : '#8A90A8';
+  const fit = (r) => { const pts = inRange(r).map((s) => ({ x: s.idx, y: s.value })); return { pts, t: linearTrend(pts) }; };
+  const fb = fit(win.before), fa = fit(win.after);
+  const bAvg = change ? change.before : 0, aAvg = change ? change.after : 0;
+  const tb = describeTrend(metric, fb.t, bAvg, fmtVal), ta = describeTrend(metric, fa.t, aAvg, fmtVal);
+  const line = (f, t, color) => {
+    if (!f.t || !f.pts.length) return null;
+    const a = f.pts[0].x, b = f.pts[f.pts.length - 1].x;
+    return <line x1={x(a)} y1={y(f.t.slope * a + f.t.intercept)} x2={x(b)} y2={y(f.t.slope * b + f.t.intercept)} stroke={color} strokeWidth="2.5" strokeDasharray="6 4" />;
+  };
+  const verdictColor = !change || change.delta === 0 ? '#8A90A8' : ((metric.good === 'up' ? change.delta > 0 : change.delta < 0) ? '#5EEAD4' : '#F87171');
+  const verdict = !change ? 'Not enough history' : change.delta === 0 ? 'No change' : ((metric.good === 'up' ? change.delta > 0 : change.delta < 0) ? 'Improved' : 'Worsened');
+  const zone = (s) => (s.idx >= win.before[0] && s.idx <= win.before[1]) ? 'in the compared months BEFORE the appraisal' : (s.idx >= win.after[0] && s.idx <= win.after[1]) ? 'in the compared months AFTER the appraisal' : s.idx < apPos ? 'before the appraisal (not compared)' : 'after the appraisal (not compared)';
+  const ticks = [0, 1, 2, 3].map((i) => lo + (span * i) / 3);
+  const labelEvery = Math.ceil(series.length / 8);
+  const onMove = (ev) => {
+    const r = ev.currentTarget.getBoundingClientRect();
+    const vx = ((ev.clientX - r.left) / r.width) * W;
+    let best = series[0];
+    for (const s of series) if (Math.abs(x(s.idx) - vx) < Math.abs(x(best.idx) - vx)) best = s;
+    setHover(best);
+  };
+  const compared = new Set([...inRange(win.before), ...inRange(win.after)].map((s) => s.idx));
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: '#E4E6F0' }}>{metric.label}</span>
-        {change
-          ? <span className="mono" style={{ fontSize: 12, color }}>{fmtVal(metric.kind, change.before)} → {fmtVal(metric.kind, change.after)} {change.delta > 0 ? '▲' : change.delta < 0 ? '▼' : '='} {change.pct != null ? `${Math.abs(Math.round(change.pct))}%` : ''}</span>
-          : <span style={{ fontSize: 11.5, color: '#6E7488' }}>not enough history on one side to compare</span>}
+    <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, padding: '14px 16px', background: 'rgba(255,255,255,0.02)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+        <span className="disp" style={{ fontSize: 14.5, fontWeight: 600, color: '#E4E6F0' }}>{metric.label}</span>
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: verdictColor, border: `1px solid ${verdictColor}66`, borderRadius: 999, padding: '3px 11px' }}>{verdict}</span>
       </div>
-      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, background: 'rgba(255,255,255,0.02)' }}>
-        <rect x={bBlock.x1} y={PT} width={Math.max(0, bBlock.x2 - bBlock.x1)} height={H - PT - PB} fill="rgba(245,158,11,0.10)" />
-        <rect x={aBlock.x1} y={PT} width={Math.max(0, aBlock.x2 - aBlock.x1)} height={H - PT - PB} fill="rgba(20,184,166,0.10)" />
-        {lo < 0 && <line x1={PL} x2={W - PR} y1={y(0)} y2={y(0)} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />}
-        <polyline fill="none" stroke="#A5A7FA" strokeWidth="2" points={series.map((s) => `${x(s.idx)},${y(s.value)}`).join(' ')} />
-        {series.map((s) => <circle key={s.idx} cx={x(s.idx)} cy={y(s.value)} r="2.6" fill="#A5A7FA" />)}
-        {trendLine(win.before, '#F59E0B')}
-        {trendLine(win.after, '#5EEAD4')}
-        <line x1={apX} x2={apX} y1={PT - 4} y2={H - PB} stroke="#F472B6" strokeWidth="1.5" strokeDasharray="3 3" />
-        <text x={Math.min(apX + 5, W - 60)} y={PT + 6} fontSize="10" fill="#F472B6">appraisal</text>
-        <text x={PL} y={H - 6} fontSize="10" fill="#6E7488">{series[0].label}</text>
-        <text x={W - PR} y={H - 6} fontSize="10" fill="#6E7488" textAnchor="end">{series[series.length - 1].label}</text>
-        <text x={PL} y={PT + 6} fontSize="10" fill="#6E7488">high {fmtVal(metric.kind, hi)}</text>
-      </svg>
+      {change && (
+        <div style={{ fontSize: 12.5, color: '#A8AEC4', lineHeight: 1.6, marginTop: 8 }}>
+          It averaged <b style={{ color: '#F59E0B' }}>{fmtVal(metric.kind, change.before)}</b> in the {win.before[1] - win.before[0] + 1} month{win.before[1] === win.before[0] ? '' : 's'} before the appraisal and <b style={{ color: '#5EEAD4' }}>{fmtVal(metric.kind, change.after)}</b> in the {win.after[1] - win.after[0] + 1} after
+          {change.pct != null ? <> — <b style={{ color: verdictColor }}>{change.delta > 0 ? 'up' : 'down'} {Math.abs(Math.round(change.pct))}%</b></> : null}.
+        </div>
+      )}
+      <div style={{ position: 'relative', marginTop: 10 }}>
+        <svg width="100%" viewBox={`0 0 ${W} ${H}`} onMouseMove={onMove} onMouseLeave={() => setHover(null)} style={{ display: 'block', borderRadius: 10, background: 'rgba(0,0,0,0.18)' }}>
+          {ticks.map((tv, i) => (
+            <g key={i}>
+              <line x1={PL} x2={W - PR} y1={y(tv)} y2={y(tv)} stroke={tv === 0 ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.06)'} strokeWidth="1" />
+              <text x={PL - 6} y={y(tv) + 3} fontSize="9.5" fill="#6E7488" textAnchor="end">{fmtVal(metric.kind, tv)}</text>
+            </g>
+          ))}
+          <rect x={bBlock.x1} y={PT} width={Math.max(0, bBlock.x2 - bBlock.x1)} height={H - PT - PB} fill="rgba(245,158,11,0.12)" />
+          <rect x={aBlock.x1} y={PT} width={Math.max(0, aBlock.x2 - aBlock.x1)} height={H - PT - PB} fill="rgba(20,184,166,0.12)" />
+          <text x={(bBlock.x1 + bBlock.x2) / 2} y={PT + 10} fontSize="9.5" fill="#F59E0B" textAnchor="middle">BEFORE</text>
+          <text x={(aBlock.x1 + aBlock.x2) / 2} y={PT + 10} fontSize="9.5" fill="#5EEAD4" textAnchor="middle">AFTER</text>
+          <polyline fill="none" stroke="#A5A7FA" strokeWidth="2" points={series.map((s) => `${x(s.idx)},${y(s.value)}`).join(' ')} />
+          {line(fb, tb, '#F59E0B')}
+          {line(fa, ta, '#5EEAD4')}
+          <line x1={apX} x2={apX} y1={PT - 4} y2={H - PB} stroke="#F472B6" strokeWidth="1.6" strokeDasharray="3 3" />
+          <text x={apX} y={PT - 5} fontSize="10" fill="#F472B6" textAnchor="middle">appraisal</text>
+          {series.map((s) => (
+            <g key={s.idx}>
+              <circle cx={x(s.idx)} cy={y(s.value)} r={hover && hover.idx === s.idx ? 5 : compared.has(s.idx) ? 3.6 : 2.4} fill={hover && hover.idx === s.idx ? '#fff' : '#A5A7FA'} />
+              {compared.has(s.idx) && <text x={x(s.idx)} y={y(s.value) - 8} fontSize="9.5" fill="#E4E6F0" textAnchor="middle">{fmtVal(metric.kind, s.value)}</text>}
+            </g>
+          ))}
+          {series.map((s, i) => ((i % labelEvery === 0 && series.length - 1 - i >= Math.ceil(labelEvery / 2)) || i === series.length - 1) && <text key={'l' + s.idx} x={x(s.idx)} y={H - 8} fontSize="9.5" fill="#6E7488" textAnchor="middle">{s.label}</text>)}
+        </svg>
+        {hover && (
+          <div style={{ position: 'absolute', top: 6, right: 8, background: '#0B0E19', border: '1px solid rgba(255,255,255,0.18)', borderRadius: 8, padding: '7px 10px', fontSize: 11.5, color: '#C7CBDA', maxWidth: 240, pointerEvents: 'none' }}>
+            <div style={{ fontWeight: 600 }}>{hover.label}: {fmtVal(metric.kind, hover.value)}</div>
+            <div style={{ color: '#8A90A8', fontSize: 10.5, marginTop: 2 }}>{zone(hover)}</div>
+          </div>
+        )}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10, fontSize: 12, lineHeight: 1.5 }}>
+        <div style={{ borderLeft: '3px solid #F59E0B', paddingLeft: 10 }}>
+          <div style={{ color: '#F59E0B', fontSize: 10.5, letterSpacing: '.06em' }}>TREND BEFORE</div>
+          <div style={{ color: tb.color }}>{tb.arrow} {tb.text}</div>
+        </div>
+        <div style={{ borderLeft: '3px solid #5EEAD4', paddingLeft: 10 }}>
+          <div style={{ color: '#5EEAD4', fontSize: 10.5, letterSpacing: '.06em' }}>TREND AFTER</div>
+          <div style={{ color: ta.color }}>{ta.arrow} {ta.text}</div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -552,25 +612,38 @@ function AnalysisModal({ emp, months, onClose, onOpenEmployee }) {
   const impact = computeAppraisalImpact(emp, months);
   const win = appraisalWindow(impact.appraisalDate, months);
   const metrics = ANALYSIS_METRICS[emp.team];
-  const fmtVal = (kind, v) => kind === 'money' ? fmtLakhs(v) : kind === 'percent' ? `${Math.round(v)}%` : kind === 'rate' ? (Math.round(v * 10) / 10).toString() : Math.round(v).toString();
+  const fmtVal = (kind, v) => kind === 'money' ? fmtLakhs(v) : kind === 'percent' ? `${Math.round(v)}%` : kind === 'rate' ? (Math.round(v * 10) / 10).toString() : (Math.round(v * 10) / 10).toString();
   const [y, m, d] = impact.appraisalDate.split('-');
   const dayLabel = `${d} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m) - 1]} ${y}`;
+  const results = metrics.map((mt) => impact.metrics[mt.key]).filter(Boolean);
+  const better = results.filter((c, i) => c.delta !== 0 && (metrics.find((mt) => impact.metrics[mt.key] === c).good === 'up' ? c.delta > 0 : c.delta < 0)).length;
+  const worse = results.filter((c) => c.delta !== 0).length - better;
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 760, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 800, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
         <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — before vs after appraisal</div>
-            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>Appraised {dayLabel} · comparing {impact.k} month{impact.k === 1 ? '' : 's'} before (amber block) with {impact.k} after (green block)</div>
+            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — what changed after the appraisal</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>Appraised {dayLabel} · comparing {impact.k} month{impact.k === 1 ? '' : 's'} before with {impact.k} after</div>
           </div>
           <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
         </div>
-        <div style={{ padding: '18px 24px 24px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div style={{ padding: '16px 24px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ fontSize: 13, color: '#C7CBDA', lineHeight: 1.6, border: '1px solid rgba(255,255,255,0.09)', borderRadius: 12, padding: '12px 16px', background: 'rgba(99,102,241,0.07)' }}>
+            {results.length === 0 ? 'There is not enough history before or after the appraisal to compare.' : <>In short: <b style={{ color: '#5EEAD4' }}>{better} measure{better === 1 ? '' : 's'} improved</b>, <b style={{ color: '#F87171' }}>{worse} got worse</b>{results.length - better - worse > 0 ? `, ${results.length - better - worse} unchanged` : ''} after the appraisal.</>}
+          </div>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 11.5, color: '#8A90A8', alignItems: 'center' }}>
+            <span><span style={{ display: 'inline-block', width: 18, height: 3, background: '#A5A7FA', verticalAlign: 'middle', marginRight: 6 }} />monthly value (hover a dot)</span>
+            <span><span style={{ display: 'inline-block', width: 12, height: 10, background: 'rgba(245,158,11,0.35)', verticalAlign: 'middle', marginRight: 6 }} />months compared — before</span>
+            <span><span style={{ display: 'inline-block', width: 12, height: 10, background: 'rgba(20,184,166,0.35)', verticalAlign: 'middle', marginRight: 6 }} />months compared — after</span>
+            <span><span style={{ display: 'inline-block', width: 18, height: 0, borderTop: '2px dashed #F472B6', verticalAlign: 'middle', marginRight: 6 }} />appraisal date</span>
+            <span><span style={{ display: 'inline-block', width: 18, height: 0, borderTop: '3px dashed #F59E0B', verticalAlign: 'middle', marginRight: 6 }} />trend line (straight line fitted through the compared months)</span>
+          </div>
           {metrics.map((mt) => (
             <AppraisalChart key={mt.key} series={metricSeries(emp, mt.key)} metric={mt} appraisalDate={impact.appraisalDate} win={win} change={impact.metrics[mt.key]} fmtVal={fmtVal} />
           ))}
           <div style={{ fontSize: 11.5, color: '#6E7488', lineHeight: 1.5 }}>
-            Purple line = monthly value · dashed amber / green = trend before / after · pink line = appraisal date. The appraisal month is left out of the comparison. Completed months only.
+            The appraisal month itself is left out of the comparison, and only completed months are used.
           </div>
           <div onClick={onOpenEmployee} style={{ cursor: 'pointer', color: '#A5A7FA', fontSize: 12.5, textDecoration: 'underline', textUnderlineOffset: 3, width: 'fit-content' }}>Open full employee record</div>
         </div>
@@ -616,7 +689,15 @@ function AnalysisPanel({ employees, setModal }) {
   const chip = (active, label, onClick) => (
     <div key={label} onClick={onClick} style={{ cursor: 'pointer', border: `1px solid ${active ? 'rgba(99,102,241,0.5)' : 'rgba(255,255,255,0.1)'}`, background: active ? 'rgba(99,102,241,0.14)' : 'transparent', color: active ? '#A5A7FA' : '#8A90A8', borderRadius: 10, padding: '9px 14px', fontSize: 13 }}>{label}</div>
   );
-  const cols = `minmax(0,1.5fr) minmax(0,.9fr) repeat(${metrics.length},minmax(0,1.2fr))`;
+  const cols = `minmax(0,1.4fr) minmax(0,.9fr) repeat(${metrics.length},minmax(0,1.2fr)) minmax(0,.9fr)`;
+  const overall = (r) => {
+    let better = 0, worse = 0;
+    for (const m of metrics) { const c = r.metrics[m.key]; if (!c || c.delta === 0) continue; if (m.good === 'up' ? c.delta > 0 : c.delta < 0) better++; else worse++; }
+    if (!better && !worse) return { label: 'No change', color: '#8A90A8' };
+    if (better && !worse) return { label: 'Improved', color: '#5EEAD4' };
+    if (worse && !better) return { label: 'Worsened', color: '#F87171' };
+    return { label: `Mixed · ${better} better, ${worse} worse`, color: '#F59E0B' };
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -653,7 +734,7 @@ function AnalysisPanel({ employees, setModal }) {
 
       <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, background: 'rgba(255,255,255,0.02)', overflow: 'hidden' }}>
         <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <span>Employee</span><span>Appraisal</span>{metrics.map((m) => <span key={m.key} style={{ textAlign: 'right' }}>{m.label}</span>)}
+          <span>Employee</span><span>Appraisal</span>{metrics.map((m) => <span key={m.key} style={{ textAlign: 'right' }}>{m.label}</span>)}<span style={{ textAlign: 'right' }}>Overall</span>
         </div>
         {shown.map(({ e, r }) => (
           <div key={e.id} className="hoverrow" onClick={() => setDetail(e)} style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, padding: '12px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13 }}>
@@ -679,6 +760,7 @@ function AnalysisPanel({ employees, setModal }) {
                 </div>
               );
             })}
+            {(() => { const o = overall(r); return <span style={{ textAlign: "right", fontSize: 11.5, fontWeight: 600, color: o.color }}>{o.label}</span>; })()}
           </div>
         ))}
         {!shown.length && <div style={{ padding: 18, fontSize: 12.5, color: '#6E7488' }}>No one in this view has a completed month after their appraisal yet.</div>}
