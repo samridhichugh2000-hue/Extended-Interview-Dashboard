@@ -142,6 +142,7 @@ export async function getEmployees() {
       utilMonthlyDetails: e.util_monthly_details ? JSON.parse(e.util_monthly_details) : [],
       nrMonthlyDetails: e.nr_monthly_details ? JSON.parse(e.nr_monthly_details) : [],
       trueNrDetails: e.true_nr_details ? JSON.parse(e.true_nr_details) : [],
+      appraisalDetails: e.appraisal_details ? JSON.parse(e.appraisal_details) : [],
       nrFutureDetails: e.nr_future_details ? JSON.parse(e.nr_future_details) : null,
       quarterTargetPct: e.quarter_target_pct,
       quarterTargetName: e.quarter_target_name,

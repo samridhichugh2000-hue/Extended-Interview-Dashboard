@@ -62,6 +62,7 @@ for (const stmt of [
   'ALTER TABLE employees ADD COLUMN tech_calls_details TEXT',
   'ALTER TABLE employees ADD COLUMN tech_calls_converted INTEGER',
   'ALTER TABLE employees ADD COLUMN tech_calls_converted_details TEXT',
+  'ALTER TABLE employees ADD COLUMN appraisal_details TEXT',
   'ALTER TABLE employees ADD COLUMN tbt_count INTEGER',
   'ALTER TABLE employees ADD COLUMN tbt_details TEXT',
   'ALTER TABLE employees ADD COLUMN shoddy_neg_count INTEGER',

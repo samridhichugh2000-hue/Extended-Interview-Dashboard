@@ -94,6 +94,7 @@ export const NAV = [
   { label: 'PT Team', screen: 'dept', dept: 'PT Team', count: '9' },
   { label: 'PA Algo', screen: 'paalgo', count: '0' },
   { label: 'Worry Index', screen: 'worryindex', count: '42' },
+  { label: 'Analysis', screen: 'analysis', count: '0' },
   { label: 'Graph API Calls', screen: 'graphcalls', count: '0' },
   { label: 'Reports', screen: 'reports', count: '2' },
 ];
@@ -104,12 +105,13 @@ export const TITLES = {
   papip: ['PA / PIP Detection', 'Every open case, grouped by department'],
   paalgo: ['PA Algo', 'Proposed PA/PIP candidacy, not issued — Trainer (salary-tier and delivery-based) or Sales (Net Revenue-based).'],
   worryindex: ['Worry Index', 'How every signal is scored, and where every NJ lands · 2026-W30'],
+  analysis: ['Analysis', 'What changed after each appraisal — Sales NR and SCs, Trainer utilization and negative feedback'],
   graphcalls: ['Graph API Calls', "Sales' Teams meetings via Microsoft Graph — join timing and audio/video quality. Not yet feeding the Worry Index."],
   reports: ['Reports', 'Weekly and 15-day reporting'],
 };
 
 export const PATHS = (screen, dept) =>
-  ({ overview: '/', dept: '/' + dept.toLowerCase().replace(' ', ''), papip: '/papip-detection', paalgo: '/pa-algo', worryindex: '/worry-index', reports: '/reports' }[screen]);
+  ({ overview: '/', dept: '/' + dept.toLowerCase().replace(' ', ''), papip: '/papip-detection', paalgo: '/pa-algo', worryindex: '/worry-index', analysis: '/analysis', reports: '/reports' }[screen]);
 
 export const NOTES_BY = {
   overview: [

@@ -6,6 +6,7 @@ import {
   WORRY_BANDS, POS_SIGNALS, NEG_SIGNALS, NJ_QUESTIONS, appliesToTeam, feedbackRating, FEEDBACK_RATING_UI,
   computeSignalReport, computeWorryScore, trendNoteFor, WORRY_WINDOWS, windowSince,
 } from '../lib/data';
+import { computeAppraisalImpact, ANALYSIS_METRICS } from '../lib/analysis';
 import { JOB_LABELS } from '../lib/jobLabels';
 import { TRAINER_SALARY_TIERS, SALES_REGIONS, currentQuarter, currentQuarterMonthKeys, formatTenure } from '../lib/paAlgo';
 import { draftToHtml } from '../lib/emailDraft';
@@ -448,7 +449,7 @@ export default function DashboardClient({ employees, responses, week, newJoiners
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex' }}>
-      <Sidebar screen={screen} dept={dept} go={go} njCount={newJoiners.length} deptCounts={deptCounts} graphCallsCount={graphMeetings.length} paAlgoCount={employees.filter((e) => e.trainerPaAlgo?.status === 'fired' || e.salesPaAlgo?.status === 'fired').length} />
+      <Sidebar screen={screen} dept={dept} go={go} njCount={newJoiners.length} deptCounts={deptCounts} graphCallsCount={graphMeetings.length} analysisCount={employees.filter((e) => e.active && (e.team === 'Sales' || e.team === 'Trainer') && e.appraisalDetails?.length).length} paAlgoCount={employees.filter((e) => e.trainerPaAlgo?.status === 'fired' || e.salesPaAlgo?.status === 'fired').length} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <Topbar screen={screen} dept={dept} />
         <JobFailureBanner failedJobs={failedJobs} />
@@ -458,6 +459,7 @@ export default function DashboardClient({ employees, responses, week, newJoiners
           {screen === 'papip' && <PaPip employees={employees} filter={filter} setFilter={setFilter} setModal={setModal} />}
           {screen === 'paalgo' && <PaAlgo employees={employees} filter={filter} setFilter={setFilter} setModal={setModal} />}
           {screen === 'worryindex' && <WorryIndex employees={employees} filter={filter} setFilter={setFilter} setModal={setModal} />}
+          {screen === 'analysis' && <AnalysisPanel employees={employees} setModal={setModal} />}
           {screen === 'graphcalls' && <GraphCalls meetings={graphMeetings} employees={employees} filter={filter} setFilter={setFilter} />}
           {screen === 'reports' && <Reports employees={employees} responses={responses} week={week} filter={filter} setFilter={setFilter} />}
         </div>
@@ -492,6 +494,116 @@ function DetailsGate({ emp, children }) {
     );
   }
   return children({ ...emp, ...full });
+}
+
+/* ---------- Analysis: what changed after the last appraisal ---------- */
+
+// Sales: NR, True NR and SCs raised. Trainer: utilization and negative
+// feedback. For each employee, the same number of full months before and after
+// their latest appraisal are compared (see lib/analysis.js).
+function AnalysisPanel({ employees, setModal }) {
+  const [team, setTeam] = useState('Sales');
+  const [months, setMonths] = useState(3);
+  const [search, setSearch] = useState('');
+  const [sort, setSort] = useState('dip');
+  const metrics = ANALYSIS_METRICS[team];
+
+  const rows = employees
+    .filter((e) => e.active && e.team === team)
+    .map((e) => ({ e, r: computeAppraisalImpact(e, months) }))
+    .filter(({ r }) => r && !r.tooRecent);
+  const q = search.trim().toLowerCase();
+  const shown = rows.filter(({ e }) => !q || e.name.toLowerCase().includes(q));
+  // Sort by the first metric's change (NR for Sales, utilization for Trainer).
+  const lead = metrics[0].key;
+  shown.sort((a, b) => {
+    const av = a.r.metrics[lead]?.pct, bv = b.r.metrics[lead]?.pct;
+    if (av == null && bv == null) return a.e.name.localeCompare(b.e.name);
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    return sort === 'dip' ? av - bv : bv - av;
+  });
+
+  const fmtVal = (kind, v) => kind === 'money' ? fmtLakhs(v) : kind === 'percent' ? `${Math.round(v)}%` : kind === 'rate' ? (Math.round(v * 10) / 10).toString() : Math.round(v).toString();
+  const summary = metrics.map((m) => {
+    const list = rows.map(({ r }) => r.metrics[m.key]).filter(Boolean);
+    return { m, total: list.length, up: list.filter((c) => c.delta > 0).length, down: list.filter((c) => c.delta < 0).length };
+  });
+  const tooRecent = employees.filter((e) => e.active && e.team === team).filter((e) => computeAppraisalImpact(e, months)?.tooRecent).length;
+  const fmtDay = (d) => { const [y, m, day] = d.split('-'); return `${day} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m) - 1]} ${y}`; };
+  const chip = (active, label, onClick) => (
+    <div key={label} onClick={onClick} style={{ cursor: 'pointer', border: `1px solid ${active ? 'rgba(99,102,241,0.5)' : 'rgba(255,255,255,0.1)'}`, background: active ? 'rgba(99,102,241,0.14)' : 'transparent', color: active ? '#A5A7FA' : '#8A90A8', borderRadius: 10, padding: '9px 14px', fontSize: 13 }}>{label}</div>
+  );
+  const cols = `minmax(0,1.5fr) minmax(0,.9fr) repeat(${metrics.length},minmax(0,1.2fr))`;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <div style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(99,102,241,0.06)', borderRadius: 14, padding: '14px 18px', fontSize: 12.5, color: '#A8AEC4', lineHeight: 1.6 }}>
+        How delivery changed after each person's latest appraisal. The same number of full months is compared before and after (the appraisal month itself is left out, and only completed months count). A cell shows <span style={{ color: '#C7CBDA' }}>before → after</span> and the change; green is an improvement, red a worsening. “—” means there is not enough history on one side. Appraisal dates come from Koenig; salary is not shown (it is encrypted at source).
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        {['Sales', 'Trainer'].map((t) => chip(team === t, t === 'Trainer' ? 'Trainers' : t, () => setTeam(t)))}
+        <span style={{ width: 10 }} />
+        <span style={{ fontSize: 12, color: '#8A90A8' }}>Compare</span>
+        {[3, 6].map((n) => chip(months === n, `${n} months`, () => setMonths(n)))}
+        <span style={{ fontSize: 12, color: '#6E7488' }}>before vs after (or fewer if the appraisal is more recent)</span>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${metrics.length},1fr)`, gap: 10 }}>
+        {summary.map(({ m, total, up, down }) => (
+          <div key={m.key} style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.03)', borderRadius: 14, padding: '14px 16px' }}>
+            <div style={{ fontSize: 11.5, color: '#8A90A8' }}>{m.label}</div>
+            <div style={{ display: 'flex', gap: 14, alignItems: 'baseline', marginTop: 6 }}>
+              <span className="disp" style={{ fontSize: 22, fontWeight: 600, color: m.good === 'up' ? '#5EEAD4' : '#F87171' }}>▲ {up}</span>
+              <span className="disp" style={{ fontSize: 22, fontWeight: 600, color: m.good === 'up' ? '#F87171' : '#5EEAD4' }}>▼ {down}</span>
+              <span style={{ fontSize: 11.5, color: '#6E7488' }}>of {total} with data</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <input value={search} onChange={(ev) => setSearch(ev.target.value)} placeholder="Search by employee name…" style={{ flex: 1, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#E4E6F0', outline: 'none' }} />
+        {chip(sort === 'dip', `Biggest ${metrics[0].label.split(' ')[0]} dip first`, () => setSort('dip'))}
+        {chip(sort === 'gain', 'Biggest gain first', () => setSort('gain'))}
+      </div>
+
+      <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, background: 'rgba(255,255,255,0.02)', overflow: 'hidden' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <span>Employee</span><span>Appraisal</span>{metrics.map((m) => <span key={m.key} style={{ textAlign: 'right' }}>{m.label}</span>)}
+        </div>
+        {shown.map(({ e, r }) => (
+          <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, padding: '12px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <span style={{ fontWeight: 600 }}>{e.name}</span>
+              <span style={{ fontSize: 11, color: '#6E7488' }}>{e.id}</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <span className="mono" style={{ fontSize: 12, color: '#C7CBDA' }}>{fmtDay(r.appraisalDate)}</span>
+              <span style={{ fontSize: 10.5, color: '#6E7488' }}>{r.k} mo vs {r.k} mo</span>
+            </div>
+            {metrics.map((m) => {
+              const c = r.metrics[m.key];
+              if (!c) return <span key={m.key} style={{ textAlign: 'right', color: '#5C6178', fontSize: 12 }}>—</span>;
+              const better = m.good === 'up' ? c.delta > 0 : c.delta < 0;
+              const worse = m.good === 'up' ? c.delta < 0 : c.delta > 0;
+              const color = better ? '#5EEAD4' : worse ? '#F87171' : '#8A90A8';
+              const arrow = c.delta > 0 ? '▲' : c.delta < 0 ? '▼' : '=';
+              return (
+                <div key={m.key} style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <span className="mono" style={{ fontSize: 11.5, color: '#A8AEC4' }}>{fmtVal(m.kind, c.before)} → {fmtVal(m.kind, c.after)}</span>
+                  <span className="mono" style={{ fontSize: 11.5, color }}>{arrow} {c.pct != null ? `${Math.abs(Math.round(c.pct))}%` : (c.delta === 0 ? 'no change' : 'from 0')}</span>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+        {!shown.length && <div style={{ padding: 18, fontSize: 12.5, color: '#6E7488' }}>No one in this view has a completed month after their appraisal yet.</div>}
+      </div>
+      {tooRecent > 0 && <div style={{ fontSize: 11.5, color: '#6E7488' }}>{tooRecent} {team === 'Trainer' ? 'trainers' : 'Sales employees'} not shown — appraised too recently for a completed month after it.</div>}
+    </div>
+  );
 }
 
 /* ---------- app chrome ---------- */
@@ -578,7 +690,7 @@ function JobFailureBanner({ failedJobs }) {
   );
 }
 
-function Sidebar({ screen, dept, go, njCount, deptCounts, graphCallsCount, paAlgoCount }) {
+function Sidebar({ screen, dept, go, njCount, deptCounts, graphCallsCount, paAlgoCount, analysisCount }) {
   return (
     <div style={{ width: 240, flex: 'none', background: 'linear-gradient(180deg,rgba(99,102,241,0.10),rgba(168,85,247,0.04))', borderRight: '1px solid rgba(255,255,255,0.07)', padding: '22px 14px', display: 'flex', flexDirection: 'column', gap: 26, position: 'sticky', top: 0, height: '100vh' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 8px' }}>
@@ -589,7 +701,7 @@ function Sidebar({ screen, dept, go, njCount, deptCounts, graphCallsCount, paAlg
         <div className="mono" style={{ fontSize: 9.5, letterSpacing: '.16em', color: '#5C6178', padding: '0 10px 8px' }}>MONITOR</div>
         {NAV.map((n) => {
           const active = screen === n.screen && (!n.dept || n.dept === dept);
-          const count = n.screen === 'overview' ? njCount : n.screen === 'graphcalls' ? graphCallsCount : n.screen === 'paalgo' ? paAlgoCount : n.dept && deptCounts[n.dept] !== undefined ? deptCounts[n.dept] : n.count;
+          const count = n.screen === 'overview' ? njCount : n.screen === 'graphcalls' ? graphCallsCount : n.screen === 'analysis' ? analysisCount : n.screen === 'paalgo' ? paAlgoCount : n.dept && deptCounts[n.dept] !== undefined ? deptCounts[n.dept] : n.count;
           return (
             <div key={n.label} onClick={() => go(n.screen, n.dept)}
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 10px', borderRadius: 9, cursor: 'pointer', fontSize: 13.5, background: active ? 'rgba(99,102,241,0.22)' : 'transparent', color: active ? '#FFFFFF' : '#9BA1B8', fontWeight: active ? 600 : 400, borderLeft: `2px solid ${active ? '#6366F1' : 'transparent'}` }}>

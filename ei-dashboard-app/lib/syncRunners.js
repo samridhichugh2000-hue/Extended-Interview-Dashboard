@@ -1727,11 +1727,37 @@ export async function syncTrueNr() {
   return { message: `Synced True NR for ${updated} Sales employees (${missing} not in the API), ${startDate} to ${endDate}.` };
 }
 
+// Last two appraisals per Sales/Trainer employee (GetLastTwoAppraisals), for
+// the Analysis screen. Per-employee API, numeric EmpId; employees the API has
+// no appraisal for keep an empty list.
+export async function syncAppraisals() {
+  const db = getDb();
+  const { getAppraisals } = await import('./koenigAppraisalApi.js');
+  const employees = await db.execute("SELECT id FROM employees WHERE active = 1 AND team IN ('Sales', 'Trainer')");
+
+  const statements = [];
+  let withAppraisal = 0;
+  let apiErrors = 0;
+  await mapWithConcurrency(employees.rows, 6, async (emp) => {
+    try {
+      const list = await getAppraisals(String(emp.id).replace(/\D/g, ''));
+      if (list.length) withAppraisal++;
+      statements.push({ sql: 'UPDATE employees SET appraisal_details = ? WHERE id = ?', args: [JSON.stringify(list), emp.id] });
+    } catch (err) {
+      console.error(`Appraisal sync failed for ${emp.id}:`, err.message);
+      apiErrors++;
+    }
+  });
+  if (statements.length) await db.batch(statements, 'write');
+  return { message: `Synced appraisals for ${statements.length} Sales/Trainer employees (${withAppraisal} have one on file, ${apiErrors} API errors).` };
+}
+
 export const SYNC_RUNNERS = {
   koenig: syncKoenig,
   pip: syncPip,
   pms: syncPms,
   truenr: syncTrueNr,
+  appraisals: syncAppraisals,
   eisnapshot: async () => (await import("./eiSnapshots.js")).takeEiSnapshot(),
   audit: syncAudit,
   sc: syncSc,
