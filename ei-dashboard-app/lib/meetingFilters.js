@@ -27,15 +27,17 @@ const SALES_TRAINING_HARD_RE = /^\s*classroom\s*:|\bday\s*\d+\s*-\s*\d+\b|^[A-Z0
 // participant is on the invite — internal sessions, expos, POSH, refreshers.
 const SALES_TRAINING_SOFT_RE = /\btrainings?\b|\bsessions?\b|\bworkshops?\b|\bexpo\b|\brefresher\b|\bbootcamp\b|\bseminar\b|\binduction\b|\borientation\b|learn,\s*share|\bcertified\b|\bcertification\b/i;
 
-// Full rule for the Graph meetings views, sync and counts. `clientEmails` is
+// Full rule for the Graph meetings views, sync and counts (Sales + ATMs: external-only). `clientEmails` is
 // the array stored on graph_meetings (empty = internal-only invite).
 export function isExcludedGraphMeeting(subject, team, clientEmails) {
   if (isExcludedMeeting(subject)) return true;
   const s = subject || '';
   if (CANCELLED_RE.test(s)) return true;
-  // Assistant Technical Managers (team 'Trainer'): only meetings with someone
-  // outside @koenig-solutions.com are tracked — internal-only invites are dropped.
-  if (team === 'Trainer' && !(clientEmails && clientEmails.length)) return true;
+  // Sales and Assistant Technical Managers (team 'Trainer') alike: only
+  // meetings with someone outside @koenig-solutions.com are tracked —
+  // internal-only invites (team meetings, internal trainings, 1:1 connects,
+  // report presentations…) are dropped.
+  if (!(clientEmails && clientEmails.length)) return true;
   if (team === 'Sales') {
     if (SALES_TRAINING_HARD_RE.test(s)) return true;
     if (!(clientEmails && clientEmails.length) && SALES_TRAINING_SOFT_RE.test(s)) return true;
