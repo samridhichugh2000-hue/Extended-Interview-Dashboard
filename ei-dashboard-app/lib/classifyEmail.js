@@ -51,10 +51,10 @@ async function callOpenAi(args) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
+      model: 'gpt-5-mini',
       messages: [{ role: 'user', content: PROMPT(args) }],
-      max_tokens: 80,
-      temperature: 0,
+      max_completion_tokens: 400, // reasoning tokens count against this, so leave headroom
+      reasoning_effort: 'minimal',
     }),
     signal: AbortSignal.timeout(30000),
   });
