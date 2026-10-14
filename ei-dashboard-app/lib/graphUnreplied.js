@@ -13,7 +13,14 @@ export const UNREPLIED_GRACE_HOURS = Number(process.env.UNREPLIED_GRACE_HOURS ||
 
 async function* pages(url) {
   while (url) {
-    const res = await graphFetch(url);
+    // Graph answers 429/502/503/504 when a big mailbox is slow or the tenant is
+    // busy (e.g. during the nightly sync) — a short wait and retry usually clears it.
+    let res = await graphFetch(url);
+    for (let attempt = 1; attempt <= 3 && [429, 502, 503, 504].includes(res.status); attempt++) {
+      const wait = Number(res.headers?.get?.('retry-after')) * 1000 || attempt * 1500;
+      await new Promise((r) => setTimeout(r, Math.min(wait, 6000)));
+      res = await graphFetch(url);
+    }
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       const err = new Error(`Graph mail fetch failed: ${res.status} ${text.slice(0, 200)}`);

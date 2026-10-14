@@ -1464,14 +1464,16 @@ export async function syncExternalEmails() {
 }
 
 // Unreplied-email counts for every active employee with a mailbox — shown on
-// Graph API Calls -> Unreplied Emails. Stores only two integers per person;
-// the emails themselves are read live, on demand (app/api/outlook/unreplied).
+// Graph API Calls -> Unreplied Emails. Stores two integers per person plus
+// the list itself (lib/unrepliedStore.js: subject/sender/date/verdict, no body)
+// so app/api/outlook/unreplied can answer without a live mailbox read.
 // Mailboxes are walked a few at a time: some inboxes hold well over a
 // thousand messages a week, so strictly serial would take hours.
 const UNREPLIED_CONCURRENCY = Number(process.env.UNREPLIED_CONCURRENCY || 4);
 export async function syncUnrepliedEmails() {
   const db = getDb();
   const { getUnrepliedThreads } = await import('./graphUnreplied.js');
+  const { saveUnreplied } = await import('./unrepliedStore.js');
   const employees = (await db.execute("SELECT id, email FROM employees WHERE active = 1 AND email IS NOT NULL AND email != ''")).rows;
 
   let done = 0, apiErrors = 0, noMailbox = 0, next = 0;
@@ -1479,7 +1481,8 @@ export async function syncUnrepliedEmails() {
     while (next < employees.length) {
       const emp = employees[next++];
       try {
-        const { threadsConsidered, unreplied } = await getUnrepliedThreads(emp.email);
+        const { threadsConsidered, unreplied, notNeeded } = await getUnrepliedThreads(emp.email);
+        await saveUnreplied(emp.id, unreplied, notNeeded);
         await db.execute({
           sql: 'UPDATE employees SET unreplied_email_count = ?, unreplied_email_total = ?, unreplied_synced_at = ? WHERE id = ?',
           args: [unreplied.length, threadsConsidered, new Date().toISOString(), emp.id],

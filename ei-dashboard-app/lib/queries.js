@@ -30,6 +30,13 @@ export async function getEmployees() {
     db.execute('SELECT * FROM manager_feedback'),
   ]);
 
+  // Employees whose unreplied list is saved (see lib/unrepliedStore.js): only
+  // for them does the saved count match what "Load emails" shows. The table is
+  // created lazily, so a missing table just means nobody is saved yet.
+  const unrepliedSaved = new Set(
+    (await db.execute('SELECT employee_id FROM unreplied_lists_saved').catch(() => ({ rows: [] }))).rows.map((r) => r.employee_id),
+  );
+
   const pipByEmp = new Map();
   // Every incident per employee, not just one — pipByEmp above only keeps
   // whichever row a plain table scan happens to end on, which is fine for
@@ -124,6 +131,7 @@ export async function getEmployees() {
       unrepliedEmailCount: e.unreplied_email_count,
       unrepliedEmailTotal: e.unreplied_email_total,
       unrepliedSyncedAt: e.unreplied_synced_at,
+      unrepliedListSaved: unrepliedSaved.has(e.id),
       meetingsCount: e.meetings_count,
       meetingsLateCount: e.meetings_late_count,
       meetingsMissedCount: e.meetings_missed_count,

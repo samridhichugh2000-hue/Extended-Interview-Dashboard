@@ -2653,21 +2653,25 @@ function UnrepliedEmailsPanel({ employees }) {
   const q = search.trim().toLowerCase();
   const rows = (employees || [])
     .filter((e) => e.active && e.unrepliedEmailCount != null && inScope(e) && (!q || e.name.toLowerCase().includes(q)))
-    .sort((a, b) => b.unrepliedEmailCount - a.unrepliedEmailCount || a.name.localeCompare(b.name));
-  const total = rows.reduce((sum, e) => sum + e.unrepliedEmailCount, 0);
-  const withAny = rows.filter((e) => e.unrepliedEmailCount > 0).length;
+    // A count only means something once the list behind it is saved — until
+    // then "Load emails" can show a different number, so the row says to check.
+    .sort((a, b) => (b.unrepliedListSaved ? b.unrepliedEmailCount : -1) - (a.unrepliedListSaved ? a.unrepliedEmailCount : -1) || a.name.localeCompare(b.name));
+  const confirmed = rows.filter((e) => e.unrepliedListSaved);
+  const total = confirmed.reduce((sum, e) => sum + e.unrepliedEmailCount, 0);
+  const withAny = confirmed.filter((e) => e.unrepliedEmailCount > 0).length;
+  const pending = rows.length - confirmed.length;
   const lastSynced = (employees || []).map((e) => e.unrepliedSyncedAt).filter(Boolean).sort().pop();
   const gridCols = '1.6fr .9fr .9fr 1fr 1.2fr';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ border: '1px solid rgba(99,102,241,0.25)', background: 'rgba(99,102,241,0.06)', borderRadius: 12, padding: '12px 16px', fontSize: 12.5, color: '#A8AEC4', lineHeight: 1.5 }}>
-        Counts come from each employee's Outlook Inbox via Microsoft Graph: email threads addressed to them directly (not Cc, not lists or broadcasts) received in the last 14 days that have gone 7 days or more (weekends included) with no reply from them. Advertising, newsletters and system mail (bulk-mail headers, no-reply senders, OTPs, ILO / Course Advice notices, calendar responses, Outlook's "Other" tab) are left out. The last message of each remaining thread is then read (by AI) and only counts if it actually needs a response — reports, "ok"/"thanks" acknowledgements and FYI mail are set aside and listed separately. Only the counts and a one-line verdict per mail are stored — emails are fetched live when you click "Load emails".
+        Counts come from each employee's Outlook Inbox via Microsoft Graph: email threads addressed to them directly (not Cc, not lists or broadcasts) received in the last 14 days that have gone 7 days or more (weekends included) with no reply from them. Advertising, newsletters and system mail (bulk-mail headers, no-reply senders, OTPs, ILO / Course Advice notices, calendar responses, Outlook's "Other" tab) are left out. The last message of each remaining thread is then read (by AI) and only counts if it actually needs a response — reports, "ok"/"thanks" acknowledgements and FYI mail are set aside and listed separately. Each employee's list (subject, sender, date and a one-line verdict — no email body) is saved at sync time and shown when you click "Load emails"; "Refresh live" re-reads the mailbox. Employees marked "check mailbox" have no saved list yet, so no count is shown for them.
         {lastSynced ? ` Counts last refreshed ${fmtIst(lastSynced)}.` : ''}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
-        {[{ label: 'Unreplied threads', value: total, color: '#F59E0B' }, { label: 'Employees with unreplied mail', value: withAny, color: '#A5A7FA' }, { label: 'Employees covered', value: rows.length, color: '#5EEAD4' }].map((c) => (
+        {[{ label: 'Unreplied threads', value: total, color: '#F59E0B' }, { label: 'Employees with unreplied mail', value: withAny, color: '#A5A7FA' }, { label: pending ? `Employees confirmed (${pending} still to check)` : 'Employees covered', value: confirmed.length, color: '#5EEAD4' }].map((c) => (
           <div key={c.label} style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.025)', borderRadius: 12, padding: '13px 14px' }}>
             <div className="disp" style={{ fontSize: 24, fontWeight: 600, color: c.color, letterSpacing: '-0.02em' }}>{c.value}</div>
             <div style={{ fontSize: 11, color: '#A8AEC4', marginTop: 3 }}>{c.label}</div>
@@ -2694,8 +2698,8 @@ function UnrepliedEmailsPanel({ employees }) {
           <div key={e.id} className="hoverrow" style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '13px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
             <span style={{ fontWeight: 600 }}>{e.name}</span>
             <span style={{ fontSize: 12, color: '#6E7488' }}>{e.team}</span>
-            <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 13, color: e.unrepliedEmailCount > 0 ? '#F59E0B' : '#6E7488' }}>{e.unrepliedEmailCount}</span>
-            <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: '#8A90A8' }}>{e.unrepliedEmailTotal ?? '—'}</span>
+            <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 13, color: !e.unrepliedListSaved ? '#6E7488' : e.unrepliedEmailCount > 0 ? '#F59E0B' : '#6E7488' }}>{e.unrepliedListSaved ? e.unrepliedEmailCount : '—'}</span>
+            <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: '#8A90A8' }}>{e.unrepliedListSaved ? (e.unrepliedEmailTotal ?? '—') : 'check mailbox'}</span>
             <span onClick={() => setDetail(e)} style={{ textAlign: 'right', fontSize: 12.5, color: '#A5A7FA', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>Load emails</span>
           </div>
         ))}
@@ -2713,10 +2717,12 @@ function UnrepliedEmailsPanel({ employees }) {
 function UnrepliedEmailsModal({ emp, onClose }) {
   const [state, setState] = useState({ loading: true, error: null, data: null });
   const [open, setOpen] = useState(null);
+  const [liveNonce, setLiveNonce] = useState(0); // >0 = re-read the mailbox from Outlook now
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/outlook/unreplied?employeeId=${encodeURIComponent(emp.id)}`)
+    setState({ loading: true, error: null, data: null });
+    fetch(`/api/outlook/unreplied?employeeId=${encodeURIComponent(emp.id)}${liveNonce ? '&live=1' : ''}`)
       .then(async (r) => {
         const text = await r.text();
         try { return JSON.parse(text); } catch { return { ok: false, error: r.status === 504 || /timeout|error occurred/i.test(text) ? 'Outlook took too long to respond for this mailbox — try again in a moment.' : `Unexpected response (${r.status}).` }; }
@@ -2724,7 +2730,7 @@ function UnrepliedEmailsModal({ emp, onClose }) {
       .then((j) => { if (!cancelled) setState(j.ok ? { loading: false, error: null, data: j } : { loading: false, error: j.error || 'Failed to load', data: null }); })
       .catch((err) => { if (!cancelled) setState({ loading: false, error: err.message, data: null }); });
     return () => { cancelled = true; };
-  }, [emp.id]);
+  }, [emp.id, liveNonce]);
 
   const list = state.data?.unreplied || [];
   return (
@@ -2734,10 +2740,13 @@ function UnrepliedEmailsModal({ emp, onClose }) {
           <div>
             <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — unreplied emails</div>
             <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>
-              {state.loading ? 'Loading from Outlook…' : state.error ? 'Could not load' : `${list.length} thread${list.length === 1 ? '' : 's'} awaiting a reply · received in the last ${state.data.lookbackDays} days, no reply after ${Math.round(state.data.graceHours / 24)}+ days`}
+              {state.loading ? (liveNonce ? 'Reading the mailbox from Outlook — can take a minute…' : 'Loading…') : state.error ? 'Could not load' : `${list.length} thread${list.length === 1 ? '' : 's'} awaiting a reply · received in the last ${state.data.lookbackDays} days, no reply after ${Math.round(state.data.graceHours / 24)}+ days · ${state.data.source === 'live' ? 'read live just now' : `as of ${fmtIst(state.data.syncedAt)}`}`}
             </div>
           </div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flex: 'none' }}>
+            {!state.loading && <span onClick={() => setLiveNonce((n) => n + 1)} title="Re-read this mailbox from Outlook now (slow on large inboxes)" style={{ fontSize: 12, color: '#A5A7FA', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>Refresh live</span>}
           <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+          </div>
         </div>
         <div style={{ padding: '8px 24px 24px' }}>
           {state.error && <div style={{ fontSize: 12.5, color: '#F87171', paddingTop: 12 }}>{state.error}</div>}
