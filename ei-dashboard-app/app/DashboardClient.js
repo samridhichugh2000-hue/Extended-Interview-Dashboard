@@ -400,7 +400,7 @@ function NrComparison({ emp }) {
   return (
     <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, padding: 18, background: 'rgba(255,255,255,0.02)', marginBottom: 16 }}>
       <div className="disp" style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Month-wise NR</div>
-      <div style={{ fontSize: 11.5, color: '#6E7488', marginBottom: 12 }}>True NR is net of salary and marketing cost. Koenig returns only the latest ~3 months of it, so older months fill in over time.</div>
+      <div style={{ fontSize: 11.5, color: '#6E7488', marginBottom: 12 }}>True NR is net of salary and marketing cost. The PA Algo's ROI rules (3-6 months, and the last 3 months after 6 months) use it.</div>
       <div className="mono" style={{ display: 'grid', gridTemplateColumns: cols, gap: 8, fontSize: 10, letterSpacing: '.08em', color: '#5C6178', textTransform: 'uppercase', paddingBottom: 6 }}>
         <span>Month</span><span style={{ textAlign: 'right' }}>NR (before salary &amp; mktg cost)</span><span style={{ textAlign: 'right' }}>True NR</span><span style={{ textAlign: 'right' }}>Cost deducted</span>
       </div>
@@ -786,8 +786,7 @@ function AnalysisPanel({ employees, setModal }) {
 
 // "True NR" (old Get Employee NR API: net of salary and marketing cost) sits
 // next to the newer "NR (before salary and marketing cost)" feed. True NR only
-// has the months Koenig has returned so far (~3 per sync, accumulated), so
-// older months show "—".
+// is stored for every month since joining; months before joining show "—".
 const NR_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const nrMonthKey = (monthsAgo) => {
   const d = new Date(new Date().getFullYear(), new Date().getMonth() - monthsAgo, 1);
@@ -2296,7 +2295,7 @@ function QuarterTargetModal({ emp, target, onClose }) {
             <span className="mono" style={{ textAlign: 'right', color: '#A8AEC4' }}>{target.targetLabel}</span><span />
           </div>
           <div style={{ fontSize: 11.5, color: '#6E7488', marginTop: 8, lineHeight: 1.55 }}>
-            {target.isTrue && <><b>Showing True NR</b> (net of salary and marketing cost) — only the {target.monthsAvailable} of 3 quarter months Koenig has returned so far count. The PA Algo status itself is always decided on NR before salary and marketing cost.<br /></>}
+            {target.isTrue && <><b>Showing True NR</b> (net of salary and marketing cost) — only the {target.monthsAvailable} of 3 quarter months Koenig has returned so far count. The PA Algo's band checks decide on NR before salary and marketing cost; only its two ROI rules use True NR.<br /></>}
             Achieved % = {target.nrLabel} ÷ {target.targetLabel} × 100 = <b style={{ color }}>{target.pct}</b>. {target.withTeam
               ? <>Achieved is the manager's own NR plus the NR of their team ({target.teamSize} direct reports), summed across the three calendar months of {q.name} {q.year}; the target is the manager-level target Koenig holds for this quarter.</>
               : <>Achieved is the employee's NR summed across the three calendar months of {q.name} {q.year} (months with no NR count as ₹0.0L); the target is the CSM target Koenig holds for this quarter.</>}
@@ -2346,8 +2345,9 @@ function FutureNrModal({ emp, onClose }) {
 // the row it belongs to so the reason for a flag is fully visible without
 // opening the employee modal or another screen.
 function PaAlgoEvidence({ evidence, emp }) {
-  // Sales NR tables get a True NR column beside NR (the status itself is
-  // always decided on NR before salary and marketing cost).
+  // Sales NR tables get a True NR column beside NR. The band checks decide on
+  // NR before salary and marketing cost; the ROI rules decide on True NR (their
+  // own evidence tables already show True NR only).
   const trueByMonth = new Map((emp?.trueNrDetails || []).map((m) => [m.month, m.trueNr]));
   const withTrue = (ev) => {
     if (emp?.team !== 'Sales' || ev.columns?.[0] !== 'Month' || ev.columns?.[1] !== 'NR' || !ev.rows?.length) return ev;

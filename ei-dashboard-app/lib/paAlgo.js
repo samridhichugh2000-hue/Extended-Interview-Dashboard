@@ -376,13 +376,17 @@ const INR = (n) => '₹' + n.toLocaleString('en-IN');
 // NR behind that number, so a fired row can show exactly which months and
 // figures drove it. `months` (undefined = every month on file) picks the
 // averaging window — see avgNR above.
+// ROI = True NR (net of salary and marketing cost), summed over every month
+// since joining (true_nr_details is already trimmed to the DOJ month).
 function roiCheck(threshold) {
-  return ({ total, nrMonthlyDetails }) => {
+  return ({ trueNrDetails }) => {
+    const months = trueNrDetails || [];
+    const total = months.length ? months.reduce((sum, m) => sum + (m.trueNr ?? 0), 0) : null;
     const evidence = {
-      label: 'NR since joining (ROI)',
-      columns: ['Month', 'NR'],
-      rows: (nrMonthlyDetails || []).map((m) => [m.month, INR(m.nr)]),
-      summary: total != null ? `Total: ${INR(total)} (threshold ${INR(threshold)})` : 'No NR data synced yet',
+      label: 'True NR since joining (ROI, net of salary & marketing cost)',
+      columns: ['Month', 'True NR'],
+      rows: months.map((m) => [m.month, INR(m.trueNr)]),
+      summary: total != null ? `Total: ${INR(total)} (threshold ${INR(threshold)})` : 'No True NR data synced yet',
     };
     return { status: total == null ? 'no-data' : total < threshold ? 'fired' : 'clear', evidence };
   };
@@ -450,7 +454,7 @@ function zeroScCheck(employee) {
   };
 }
 
-// (iii) Negative total NR over the trailing 3 months, for anyone past 6
+// (iii) Negative ROI (True NR) over the trailing 3 months, for anyone past 6
 // months tenure (the 3-6 month band already has its own since-joining ROI
 // check above — this catches a bad recent quarter for longer-tenured reps
 // whose long-run average/multiple still looks clear).
@@ -458,17 +462,17 @@ const NEG_ROI_3MO_MIN_TENURE_DAYS = 6 * MONTH_DAYS;
 function recentNegRoiCheck(employee) {
   const tenureDays = employee.tenure ?? 0;
   if (tenureDays <= NEG_ROI_3MO_MIN_TENURE_DAYS) return null;
-  const window = (employee.nrMonthlyDetails || []).slice(-3);
+  const window = (employee.trueNrDetails || []).slice(-3);
   if (!window.length) return null;
-  const total = window.reduce((sum, m) => sum + (m.nr ?? 0), 0);
+  const total = window.reduce((sum, m) => sum + (m.trueNr ?? 0), 0);
   if (total >= 0) return null;
 
   return {
-    reason: `-ve total NR over trailing 3 months (${INR(total)})`,
+    reason: `-ve ROI (True NR) over trailing 3 months (${INR(total)})`,
     evidence: {
-      label: 'NR — trailing 3 months',
-      columns: ['Month', 'NR'],
-      rows: window.map((m) => [m.month, INR(m.nr)]),
+      label: 'True NR — trailing 3 months (ROI, net of salary & marketing cost)',
+      columns: ['Month', 'True NR'],
+      rows: window.map((m) => [m.month, INR(m.trueNr)]),
       summary: `Total: ${INR(total)}`,
     },
   };
@@ -485,8 +489,8 @@ const SALES_BANDS = [
   },
   {
     minDays: 3 * MONTH_DAYS, label: '3-6 months',
-    india: { rule: '-ve ROI (total NR since joining)', check: roiCheck(0) },
-    overseas: { rule: `ROI (total NR since joining) < -${INR(500000)}`, check: roiCheck(-500000) },
+    india: { rule: '-ve ROI (total True NR since joining)', check: roiCheck(0) },
+    overseas: { rule: `ROI (total True NR since joining) < -${INR(500000)}`, check: roiCheck(-500000) },
   },
   {
     // No 12-month window is possible yet at this tenure — averages over
@@ -554,7 +558,7 @@ export function computeSalesPaAlgoFlag(employee) {
 
   const total = totalNR(employee.nrMonthlyDetails);
   const payScale = employee.salary != null ? Number(employee.salary) : null;
-  const { status: bandStatus, evidence: bandEvidence } = spec.check({ total, nrMonthlyDetails: employee.nrMonthlyDetails, payScale });
+  const { status: bandStatus, evidence: bandEvidence } = spec.check({ total, nrMonthlyDetails: employee.nrMonthlyDetails, trueNrDetails: employee.trueNrDetails, payScale });
 
   const rule = overrideReason ? (spec.rule ? `${spec.rule}; ${overrideReason}` : overrideReason) : spec.rule;
   return {
