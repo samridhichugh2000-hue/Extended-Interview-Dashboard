@@ -59,7 +59,7 @@ for (const r of rows) {
   byEmpCode.get(r.empCode).push(r);
 }
 
-const allEmployees = await db.execute("SELECT id, tenure_days FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team')");
+const allEmployees = await db.execute("SELECT id, tenure_days FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team', 'FM Team', 'Recruitment Team')");
 
 // Emp codes get recycled, same as SC/assignments — reconstruct each
 // employee's join date from tenure_days and only count feedback dated

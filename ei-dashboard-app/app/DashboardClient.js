@@ -8,7 +8,7 @@ import {
 } from '../lib/data';
 import { computeAppraisalImpact, ANALYSIS_METRICS, appraisalWindow, metricSeries, linearTrend, appraisalPosition } from '../lib/analysis';
 import { JOB_LABELS } from '../lib/jobLabels';
-import { TRAINER_SALARY_TIERS, SALES_REGIONS, currentQuarter, currentQuarterMonthKeys, formatTenure } from '../lib/paAlgo';
+import { TRAINER_SALARY_TIERS, SALES_REGIONS, TARGET_QUARTERS, quarterMonthKeys, formatTenure } from '../lib/paAlgo';
 import { draftToHtml } from '../lib/emailDraft';
 
 const card = { border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 16 };
@@ -52,6 +52,8 @@ const DEPT_MISSING_FILTERS = {
     { key: 'withNegFeedback', label: 'With Neg. Feedback', test: (e) => e.negFeedback > 0 },
   ],
   'PT Team': [],
+  'FM Team': [],
+  'Recruitment Team': [],
 };
 function missingFiltersFor(dept) {
   return [...(dept ? DEPT_MISSING_FILTERS[dept] || [] : []), ...COMMON_MISSING_FILTERS];
@@ -924,6 +926,8 @@ function Overview({ employees, newJoiners, deptCounts, go, setModal }) {
     { label: 'Sales', count: counts.Sales, bg: 'rgba(99,102,241,0.14)', border: 'rgba(99,102,241,0.35)', color: '#A5A7FA', dept: 'Sales' },
     { label: 'Trainer', count: counts.Trainer, bg: 'rgba(168,85,247,0.14)', border: 'rgba(168,85,247,0.35)', color: '#D8B4FE', dept: 'Trainer' },
     { label: 'PT', count: counts['PT Team'], bg: 'rgba(20,184,166,0.14)', border: 'rgba(20,184,166,0.35)', color: '#5EEAD4', dept: 'PT Team' },
+    { label: 'FM', count: counts['FM Team'], bg: 'rgba(245,158,11,0.14)', border: 'rgba(245,158,11,0.35)', color: '#FCD34D', dept: 'FM Team' },
+    { label: 'Recruitment', count: counts['Recruitment Team'], bg: 'rgba(244,114,182,0.14)', border: 'rgba(244,114,182,0.35)', color: '#F9A8D4', dept: 'Recruitment Team' },
   ];
   // Overview is a New Joiner dashboard — every widget on it stays scoped to
   // isNewJoiner (tenure < 182 days), not the wider isScoredEmployee/PA-PIP
@@ -1164,7 +1168,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
         onClick: e.active === false ? null : ((e.shoddyNegCount > 0 || e.shoddyPosCount > 0) ? () => setShoddyModal(e) : null),
       });
     }
-    if (dept === 'PT Team') {
+    if (dept === 'PT Team' || dept === 'FM Team' || dept === 'Recruitment Team') {
       cells.push({
         value: e.active === false ? '—' : ((e.shoddyNegCount == null && e.shoddyPosCount == null) ? '—' : (e.shoddyNegCount ?? 0) + (e.shoddyPosCount ?? 0)),
         color: e.active === false ? '#6E7488' : (e.shoddyNegCount > 0 ? '#F87171' : e.shoddyPosCount > 0 ? '#5EEAD4' : '#6E7488'),
@@ -1871,7 +1875,7 @@ function PaPip({ employees, filter, setFilter, setModal }) {
   const allCases = employees.filter((e) => (includeInactive || e.active !== false) && (!njOnly || isNewJoiner(e.tenure)) && wasRecentPaPip(e));
   const paCount = allCases.filter((e) => e.status === 'PA Issued').length;
   const pipCount = allCases.filter((e) => e.status === 'PIP Issued').length;
-  const tabs = [['All Departments', null], ['Sales', 'Sales'], ['Trainer', 'Trainer'], ['PT Team', 'PT Team']].map(([label, val]) => ({
+  const tabs = [['All Departments', null], ['Sales', 'Sales'], ['Trainer', 'Trainer'], ['PT Team', 'PT Team'], ['FM Team', 'FM Team'], ['Recruitment Team', 'Recruitment Team']].map(([label, val]) => ({
     label, val, active: filter === val || (!filter && !val),
     count: val ? allCases.filter((e) => e.team === val).length : allCases.length,
   }));
@@ -1996,11 +2000,22 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
   const [targetDetail, setTargetDetail] = useState(null);
   const [nrMode, setNrMode] = useState('nr'); // Sales only: which NR the quarter-target column uses
 
-  const isTrainer = team === 'Trainer';
+  // 'ASM' / 'ATM' are sections split out of Sales / Trainer by designation.
+  const baseTeam = team === 'ATM' ? 'Trainer' : team === 'ASM' ? 'Sales' : team;
+  const designationOf = (e) => (e.designation || '').trim();
+  // Koenig gives manager-level (ASM-type) quarterly targets to some Sales
+  // managers whose designation isn't "Assistant Sales Manager" (e.g. Regional
+  // Manager) — they count as ASMs too.
+  const isAsm = (e) => designationOf(e) === 'Assistant Sales Manager' || (e.quarterTargets || []).some((t) => t.type === 'ASM');
+  const inSection = (e) => team === 'ASM' ? isAsm(e)
+    : team === 'ATM' ? designationOf(e) === 'Assistant Technical Manager'
+    : team === 'Sales' ? !isAsm(e)
+    : designationOf(e) !== 'Assistant Technical Manager';
+  const isTrainer = baseTeam === 'Trainer';
   const algoKey = isTrainer ? 'trainerPaAlgo' : 'salesPaAlgo';
   const tabKey = isTrainer ? 'tier' : 'region';
 
-  const pool = employees.filter((e) => e.team === team && e[algoKey] && (includeInactive || e.active !== false));
+  const pool = employees.filter((e) => e.team === baseTeam && inSection(e) && e[algoKey] && (includeInactive || e.active !== false));
   const firedCount = pool.filter((e) => e[algoKey].status === 'fired').length;
   const clearCount = pool.filter((e) => e[algoKey].status === 'clear').length;
   const noDataCount = pool.filter((e) => isPaAlgoMissing(e[algoKey])).length;
@@ -2053,7 +2068,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
     // each tier's own differently-worded band labels.
     .sort((a, b) => (a.tenure ?? 0) - (b.tenure ?? 0) || a.name.localeCompare(b.name));
 
-  const gridCols = isTrainer ? '1.2fr .6fr .7fr .8fr 1.5fr .8fr .8fr 26px' : '1.4fr .8fr .9fr .8fr 1.5fr .8fr 1fr 26px';
+  const gridCols = isTrainer ? '1.2fr .6fr .7fr .8fr 1.5fr .8fr .8fr 26px' : '1.4fr .8fr 1.5fr .8fr 1.5fr .8fr 1fr 26px';
   // Current calendar month's utilization, read off the same trailing
   // history the PA Algo evidence panel uses — falls back to the most
   // recent month on file (labelled) if this month hasn't synced yet.
@@ -2072,15 +2087,18 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
   // achievement-percentage feed (quarter_target_pct, syncTargetAchievement)
   // has returned zero rows for every query tried, so the % here is computed
   // directly from NR rather than trusting that feed.
-  function quarterTargetLabel(e, mode) {
-    if (e.quarterTargetAmount == null) return null;
-    const monthKeys = currentQuarterMonthKeys();
+  function quarterTargetLabel(e, mode, q) {
+    const qt = (e.quarterTargets || []).find((t) => t.name === q.name && t.year === q.year);
+    if (!qt) return null;
+    const targetAmount = qt.amount;
+    const targetType = qt.type;
+    const monthKeys = quarterMonthKeys(q);
     // One row per quarter month (0 when the feed has nothing for it), so the
     // breakdown popup always shows all three months.
     // Manager-level (ASM) targets are crore-scale team targets: achieved is the
     // manager's own NR plus their team's (direct reports, from the NR API's
     // Manager field). Individual CSM/CM targets stay own-NR only.
-    const withTeam = e.quarterTargetType === 'ASM' && !!e.teamNrDetails;
+    const withTeam = targetType === 'ASM' && !!e.teamNrDetails;
     const breakdown = monthKeys.map((key) => {
       const own = (e.nrMonthlyDetails || []).find((m) => m.month === key)?.nr ?? 0;
       const team = withTeam ? ((e.teamNrDetails || []).find((m) => m.month === key)?.nr ?? 0) : 0;
@@ -2092,20 +2110,20 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
       if (withTeam) return { unavailable: 'Team True NR not available' };
       const trueMonths = breakdown.filter((m) => m.trueNr != null);
       const trueTotal = trueMonths.reduce((sum, m) => sum + m.trueNr, 0);
-      const tp = e.quarterTargetAmount > 0 ? Math.round((trueTotal / e.quarterTargetAmount) * 1000) / 10 : null;
+      const tp = targetAmount > 0 ? Math.round((trueTotal / targetAmount) * 1000) / 10 : null;
       const lk = (n) => '₹' + (n / 100000).toFixed(1) + 'L';
-      return { pct: tp != null ? `${tp}%` : '—', achieved: tp != null && tp >= 100, nrLabel: lk(trueTotal), targetLabel: lk(e.quarterTargetAmount), breakdown, withTeam: false, teamSize: 0, isTrue: true, monthsAvailable: trueMonths.length };
+      return { pct: tp != null ? `${tp}%` : '—', achieved: tp != null && tp >= 100, nrLabel: lk(trueTotal), targetLabel: lk(targetAmount), q, breakdown, withTeam: false, teamSize: 0, isTrue: true, monthsAvailable: trueMonths.length };
     }
     const nr = breakdown.reduce((sum, m) => sum + m.nr, 0);
-    const pct = e.quarterTargetAmount > 0 ? Math.round((nr / e.quarterTargetAmount) * 1000) / 10 : null;
+    const pct = targetAmount > 0 ? Math.round((nr / targetAmount) * 1000) / 10 : null;
     const lakhs = (n) => '₹' + (n / 100000).toFixed(1) + 'L';
-    return { pct: pct != null ? `${pct}%` : '—', achieved: pct != null && pct >= 100, nrLabel: lakhs(nr), targetLabel: lakhs(e.quarterTargetAmount), breakdown, withTeam, teamSize: e.teamNrDetails?.[0]?.members ?? 0 };
+    return { pct: pct != null ? `${pct}%` : '—', achieved: pct != null && pct >= 100, nrLabel: lakhs(nr), targetLabel: lakhs(targetAmount), q, breakdown, withTeam, teamSize: e.teamNrDetails?.[0]?.members ?? 0 };
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ display: 'flex', gap: 8 }}>
-        {['Trainer', 'Sales'].map((t) => (
+        {['Trainer', 'ATM', 'Sales', 'ASM'].map((t) => (
           <div key={t} onClick={() => { setTeam(t); setFilter(null); setBandFilter(null); setStatusFilter(null); }} style={{ cursor: 'pointer', border: `1px solid ${team === t ? 'rgba(99,102,241,0.45)' : 'rgba(255,255,255,0.1)'}`, background: team === t ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.03)', color: team === t ? '#FFFFFF' : '#9BA1B8', borderRadius: 10, padding: '8px 16px', fontSize: 13, fontWeight: 600 }}>
             {t}
           </div>
@@ -2150,7 +2168,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
         <div style={{ display: 'grid', gridTemplateColumns: gridCols, columnGap: isTrainer ? 0 : 18, padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           {isTrainer
             ? <><span>Employee</span><span>This month</span><span>Salary tier</span><span>Tenure band</span><span>Rule</span><span>Status</span><span style={{ textAlign: 'right' }}>Neg. feedback (7d)</span><span /></>
-            : <><span>Employee</span><span>Region</span><span>Quarter target ({currentQuarter().name} {currentQuarter().year}{nrMode === 'true' ? ' · True NR' : ''})</span><span>Tenure band</span><span>Rule</span><span style={{ textAlign: 'right' }}>Status</span><span>Future NR</span><span /></>}
+            : <><span>Employee</span><span>Region</span><span>Quarter targets ({TARGET_QUARTERS.map((q) => q.name).join(' · ')} {TARGET_QUARTERS[0].year}{nrMode === 'true' ? ' · True NR' : ''})</span><span>Tenure band</span><span>Rule</span><span style={{ textAlign: 'right' }}>Status</span><span>Future NR</span><span /></>}
         </div>
         {rows.map((e) => {
           const algo = e[algoKey];
@@ -2162,7 +2180,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
           const hasEvidence = algo.evidence?.length > 0;
           const isExpanded = expandedId === e.id;
           const util = isTrainer ? thisMonthUtil(e) : null;
-          const target = !isTrainer ? quarterTargetLabel(e, nrMode) : null;
+          const targets = !isTrainer ? TARGET_QUARTERS.map((q) => ({ q, t: quarterTargetLabel(e, nrMode, q) })) : [];
           const futureNr = !isTrainer ? futureNrSummary(e) : null;
           return (
             <Fragment key={e.id}>
@@ -2179,12 +2197,16 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
                 <span style={{ fontSize: 12, color: '#A8AEC4' }}>{isTrainer ? (PA_ALGO_TIER_LABELS[algo.tier] || '—') : (PA_ALGO_REGION_LABELS[algo.region] || '—')}</span>
                 {!isTrainer && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    {target?.unavailable ? <span title={target.unavailable} style={{ fontSize: 12, color: '#6E7488' }}>—</span> : target ? (
-                      <span onClick={(ev) => { ev.stopPropagation(); setTargetDetail({ emp: e, target }); }} style={{ display: 'flex', flexDirection: 'column', gap: 1, cursor: 'pointer' }}>
-                        <span className="mono" style={{ fontSize: 12, fontWeight: 600, color: target.achieved ? '#5EEAD4' : '#F87171', textDecoration: 'underline', textUnderlineOffset: 3 }}>{target.targetLabel} / {target.nrLabel}</span>
-                        <span style={{ fontSize: 10.5, color: target.achieved ? '#5EEAD4' : '#F87171' }}>{target.pct}{target.isTrue ? ` · ${target.monthsAvailable}/3 mo` : ''}</span>
-                      </span>
-                    ) : <span style={{ fontSize: 12, color: '#A8AEC4' }}>—</span>}
+                    {targets.map(({ q, t: target }) => (
+                      <div key={q.name} style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
+                        <span className="mono" style={{ fontSize: 10, color: '#6E7488', width: 18 }}>{q.name}</span>
+                        {target?.unavailable ? <span title={target.unavailable} style={{ fontSize: 12, color: '#6E7488' }}>—</span> : target ? (
+                          <span onClick={(ev) => { ev.stopPropagation(); setTargetDetail({ emp: e, target }); }} style={{ cursor: 'pointer' }}>
+                            <span className="mono" style={{ fontSize: 12, fontWeight: 600, color: target.achieved ? '#5EEAD4' : '#F87171', textDecoration: 'underline', textUnderlineOffset: 3 }}>{target.targetLabel} / {target.nrLabel} <span style={{ fontWeight: 400, fontSize: 10.5 }}>· {target.pct}{target.isTrue ? ` · ${target.monthsAvailable}/3 mo` : ''}</span></span>
+                          </span>
+                        ) : <span style={{ fontSize: 12, color: '#6E7488' }}>—</span>}
+                      </div>
+                    ))}
                   </div>
                 )}
                 <span style={{ fontSize: 12, color: '#A8AEC4' }}>{algo.band || '—'}</span>
@@ -2237,7 +2259,7 @@ function futureNrSummary(e) {
 // the three calendar months of the quarter, against Koenig's CSM target.
 function QuarterTargetModal({ emp, target, onClose }) {
   const lakhs = (n) => '₹' + (n / 100000).toFixed(1) + 'L';
-  const q = currentQuarter();
+  const q = target.q;
   const gridCols = target.withTeam ? '1fr 1fr 1fr 1fr 1fr' : '1fr 1fr 1fr';
   const color = target.achieved ? '#5EEAD4' : '#F87171';
   return (
@@ -2408,7 +2430,7 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
   // score is non-null for every employee now (isScoredEmployee always
   // returns true) — the `!= null` check is just defensive.
   const active = windowedEmployees.map(decorate).filter((e) => (includeInactive || !e.inactive) && e.score != null && (!njOnly || isNewJoiner(e.tenure)));
-  const tabs = [['All Departments', null], ['Sales', 'Sales'], ['Trainer', 'Trainer'], ['PT Team', 'PT Team']].map(([label, val]) => ({
+  const tabs = [['All Departments', null], ['Sales', 'Sales'], ['Trainer', 'Trainer'], ['PT Team', 'PT Team'], ['FM Team', 'FM Team'], ['Recruitment Team', 'Recruitment Team']].map(([label, val]) => ({
     label, val, active: filter === val || (!filter && !val),
     count: val ? active.filter((e) => e.team === val).length : active.length,
   }));
@@ -2648,7 +2670,7 @@ function UnrepliedEmailsPanel({ employees }) {
   const [scope, setScope] = useState('All');
   const [detail, setDetail] = useState(null);
 
-  const scopes = ['All', 'Sales', 'Trainer', 'PT Team', 'ATM'];
+  const scopes = ['All', 'Sales', 'Trainer', 'PT Team', 'FM Team', 'Recruitment Team', 'ATM'];
   const inScope = (e) => scope === 'All' || (scope === 'ATM' ? e.team === 'Trainer' && (e.designation || '').trim() === 'Assistant Technical Manager' : e.team === scope);
   const q = search.trim().toLowerCase();
   const rows = (employees || [])
@@ -3204,7 +3226,7 @@ function Reports({ employees, responses, week, filter, setFilter }) {
 
   const send15Now = async () => {
     if (sending15) return;
-    if (!window.confirm('Send the 15-Day Report (Sales, Trainer, PT Team) now? This sends real email.')) return;
+    if (!window.confirm('Send the 15-Day Report (Sales, Trainer, PT, FM, Recruitment) now? This sends real email.')) return;
     setSending15(true);
     try {
       const res = await fetch('/api/report15/send', { method: 'POST' });
@@ -3235,7 +3257,7 @@ function Reports({ employees, responses, week, filter, setFilter }) {
         </div>
         <div style={{ border: '1px solid rgba(20,184,166,0.25)', background: 'linear-gradient(150deg,rgba(20,184,166,0.1),transparent)', borderRadius: 16, padding: 22 }}>
           <div className="disp" style={{ fontSize: 16, fontWeight: 600 }}>15-Day Report</div>
-          <div style={{ fontSize: 13, color: '#8A90A8', marginTop: 6, lineHeight: 1.5 }}>Live Worry Index snapshot across Sales, Trainer and PT Team — every active NJ, full parameter breakdown, sent as one email.</div>
+          <div style={{ fontSize: 13, color: '#8A90A8', marginTop: 6, lineHeight: 1.5 }}>Live Worry Index snapshot across Sales, Trainer, PT, FM and Recruitment teams — every active NJ, full parameter breakdown, sent as one email.</div>
           <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
             <span onClick={() => setReport15Preview(true)} className="hoverbtn" style={{ border: '1px solid rgba(20,184,166,0.45)', color: '#5EEAD4', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, cursor: 'pointer' }}>Preview report</span>
             <span onClick={send15Now} className="hoverbtn" style={{ border: '1px solid rgba(255,255,255,0.12)', color: '#C7CBDA', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, cursor: sending15 ? 'default' : 'pointer', opacity: sending15 ? 0.6 : 1 }}>{sending15 ? 'Sending…' : 'Send now'}</span>

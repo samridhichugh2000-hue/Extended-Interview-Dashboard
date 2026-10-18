@@ -91,5 +91,7 @@ export function classifySection(department) {
   if (department === 'Blue Collared') return null;
   if (department === 'Sales' || department === 'Sales and Operations') return 'Sales';
   if (department === 'Training Delivery Inhouse') return 'Trainer';
+  if (department === 'FM') return 'FM Team';
+  if (department === 'HR - Talent acquisition') return 'Recruitment Team';
   return 'PT Team';
 }

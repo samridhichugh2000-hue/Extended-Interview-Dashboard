@@ -306,6 +306,18 @@ export const SALES_REGIONS = {
 // blank. Set to null once Q4 targets are flowing to follow the calendar again.
 export const TARGET_QUARTER_OVERRIDE = { name: 'Q3', year: 2026 };
 
+// Quarters whose targets the PA Algo target column shows side by side.
+export const TARGET_QUARTERS = [{ name: 'Q3', year: 2026 }, { name: 'Q4', year: 2026 }];
+
+// nr_monthly_details keys for an explicit { name, year } quarter.
+export function quarterMonthKeys(q) {
+  const startMonth = (Number(q.name.slice(1)) - 1) * 3;
+  return [0, 1, 2].map((i) => {
+    const d = new Date(q.year, startMonth + i, 1);
+    return `${d.toLocaleString('en-US', { month: 'short' })}-${d.getFullYear()}`;
+  });
+}
+
 export function currentQuarter(date) {
   if (!date && TARGET_QUARTER_OVERRIDE) return { ...TARGET_QUARTER_OVERRIDE };
   const d = date || new Date();

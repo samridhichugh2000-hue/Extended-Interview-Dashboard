@@ -528,12 +528,14 @@ export async function syncTargetAchievement() {
 export async function syncTargetsData() {
   const db = getDb();
   const { getTargetsData } = await import('./koenigTargetsDataApi.js');
-  const { currentQuarter } = await import('./paAlgo.js');
+  const { currentQuarter, TARGET_QUARTERS } = await import('./paAlgo.js');
 
   const { name: qName, year: qYear } = currentQuarter();
 
   const rows = await getTargetsData();
   const byEmpId = new Map();
+  // Every shown quarter's target per employee, same CSM > CM > ASM priority.
+  const byEmpQuarters = new Map();
   // Rupee targets come as type 'CSM' - and as 'CM' for a few Sales reps (e.g.
   // Umar Farooq), whose target was silently dropped when only 'CSM' was kept.
   // Sales managers (Dinesh Jha, Kunal Singh, Neha Shah, ...) carry theirs as
@@ -543,6 +545,11 @@ export async function syncTargetsData() {
   const RANK = { CSM: 3, CM: 2, ASM: 1 };
   for (const r of rows) {
     if (!RANK[r.type]) continue;
+    if (TARGET_QUARTERS.some((q) => q.name === r.targetName && q.year === Number(r.targetYear))) {
+      const key = `${r.empId}|${r.targetName}|${r.targetYear}`;
+      const have = byEmpQuarters.get(key);
+      if (!have || RANK[r.type] > RANK[have.type]) byEmpQuarters.set(key, r);
+    }
     if (r.targetName !== qName || Number(r.targetYear) !== qYear) continue;
     const have = byEmpId.get(r.empId);
     if (have && RANK[have.type] >= RANK[r.type]) continue;
@@ -556,6 +563,11 @@ export async function syncTargetsData() {
   let unmatched = 0;
   for (const emp of salesEmployees.rows) {
     const empId = parseInt(emp.id.replace('EMP', ''), 10);
+    const quarterTargets = TARGET_QUARTERS
+      .map((q) => byEmpQuarters.get(`${empId}|${q.name}|${q.year}`))
+      .filter(Boolean)
+      .map((r) => ({ name: r.targetName, year: Number(r.targetYear), amount: r.target, type: r.type }));
+    statements.push({ sql: 'UPDATE employees SET quarter_targets = ? WHERE id = ?', args: [quarterTargets.length ? JSON.stringify(quarterTargets) : null, emp.id] });
     const target = byEmpId.get(empId);
     if (!target) { unmatched++; continue; }
 
@@ -1043,7 +1055,7 @@ export async function syncShoddy() {
   const db = getDb();
   const { getShoddyRecords } = await import('./koenigShoddyApi.js');
 
-  const allEmployees = await db.execute("SELECT id FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team') AND active = 1");
+  const allEmployees = await db.execute("SELECT id FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team', 'FM Team', 'Recruitment Team') AND active = 1");
 
   let updated = 0;
   let unmatched = 0;
@@ -1075,7 +1087,7 @@ export async function syncMgrFeedback() {
   // Emp codes get recycled, same as SC/assignments — reconstruct each
   // employee's join date from tenure_days and only count feedback dated
   // on/after it, so a reused code's prior occupant doesn't attach here.
-  const allEmployees = await db.execute("SELECT id, tenure_days FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team')");
+  const allEmployees = await db.execute("SELECT id, tenure_days FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team', 'FM Team', 'Recruitment Team')");
 
   // Every employee is checked against the full, successfully-fetched
   // feedback dataset (filtered to since their join date), so zero results
@@ -1117,7 +1129,7 @@ export async function syncPolls() {
   const db = getDb();
   const { getPollsParticipation } = await import('./pollsApi.js');
 
-  const allEmployees = await db.execute("SELECT id, email FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team') AND active = 1");
+  const allEmployees = await db.execute("SELECT id, email FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team', 'FM Team', 'Recruitment Team') AND active = 1");
 
   const statements = [];
   let updated = 0;
@@ -1143,7 +1155,7 @@ export async function syncKgt() {
   const db = getDb();
   const { getKgtParticipation } = await import('./kgtApi.js');
 
-  const allEmployees = await db.execute("SELECT id FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team') AND active = 1");
+  const allEmployees = await db.execute("SELECT id FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team', 'FM Team', 'Recruitment Team') AND active = 1");
 
   let updated = 0;
   let unmatched = 0;
@@ -1508,7 +1520,7 @@ export async function syncIdeas() {
   const db = getDb();
   const { getNonRmsTasks } = await import('./koenigIdeasApi.js');
 
-  const allEmployees = await db.execute("SELECT id FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team') AND active = 1");
+  const allEmployees = await db.execute("SELECT id FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team', 'FM Team', 'Recruitment Team') AND active = 1");
 
   let updated = 0;
   let confirmedZero = 0;
@@ -1612,7 +1624,7 @@ export async function syncCommonIndex() {
   const db = getDb();
   const { getCommonIndexPoints } = await import('./koenigCommonIndexApi.js');
 
-  const allEmployees = await db.execute("SELECT id FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team') AND active = 1");
+  const allEmployees = await db.execute("SELECT id FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team', 'FM Team', 'Recruitment Team') AND active = 1");
 
   const statements = [];
   let updated = 0;

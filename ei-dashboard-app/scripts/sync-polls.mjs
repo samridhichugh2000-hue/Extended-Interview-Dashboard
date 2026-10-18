@@ -19,7 +19,7 @@ const db = createClient({
   authToken: process.env.TURSO_AUTH_TOKEN,
 });
 
-const allEmployees = await db.execute("SELECT id, email FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team') AND active = 1");
+const allEmployees = await db.execute("SELECT id, email FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team', 'FM Team', 'Recruitment Team') AND active = 1");
 
 let updated = 0;
 let noEmail = 0;

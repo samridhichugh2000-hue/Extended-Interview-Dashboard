@@ -16,7 +16,7 @@ const db = createClient({
   authToken: process.env.TURSO_AUTH_TOKEN,
 });
 
-const allEmployees = await db.execute("SELECT id FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team') AND active = 1");
+const allEmployees = await db.execute("SELECT id FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team', 'FM Team', 'Recruitment Team') AND active = 1");
 
 // Bounded concurrency — a plain sequential loop over ~500 employees at
 // ~300ms/call takes minutes; this mirrors lib/syncRunners.js's syncCommonIndex.

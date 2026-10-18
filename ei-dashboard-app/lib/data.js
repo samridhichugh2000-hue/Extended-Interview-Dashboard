@@ -92,6 +92,8 @@ export const NAV = [
   { label: 'Sales', screen: 'dept', dept: 'Sales', count: '18' },
   { label: 'Trainer', screen: 'dept', dept: 'Trainer', count: '15' },
   { label: 'PT Team', screen: 'dept', dept: 'PT Team', count: '9' },
+  { label: 'FM Team', screen: 'dept', dept: 'FM Team', count: '0' },
+  { label: 'Recruitment Team', screen: 'dept', dept: 'Recruitment Team', count: '0' },
   { label: 'PA Algo', screen: 'paalgo', count: '0' },
   { label: 'Worry Index', screen: 'worryindex', count: '42' },
   { label: 'Analysis', screen: 'analysis', count: '0' },
@@ -151,9 +153,11 @@ export const CARD_DEFS = {
   Sales: [['Total', 18, C.purple], ['Not to be Monitored', 6, C.teal], ['Under Watch', 7, C.indigo], ['PA Issued', 2, C.amber], ['PIP Issued', 1, C.rose], ['Zero Tech Calls', 3, '#60A5FA'], ['Negative Audits', 2, '#F472B6']],
   Trainer: [['Total', 15, C.purple], ['Not to be Monitored', 5, C.teal], ['Under Watch', 6, C.indigo], ['PA Issued', 1, C.amber], ['PIP Issued', 1, C.rose], ['Zero TBTs Attended', 4, '#60A5FA'], ['< 2 Skills in 15 days', 3, C.teal]],
   'PT Team': [['Total', 9, C.purple], ['Not to be Monitored', 3, C.teal], ['Under Watch', 4, C.indigo], ['PA Issued', 1, C.amber], ['PIP Issued', 0, C.rose], ['Feedback Pending', 2, '#FB923C'], ['Below Satisfactory', 2, '#F472B6']],
+  'FM Team': [['Total', 9, C.purple], ['Not to be Monitored', 3, C.teal], ['Under Watch', 4, C.indigo], ['PA Issued', 1, C.amber], ['PIP Issued', 0, C.rose], ['Feedback Pending', 2, '#FB923C'], ['Below Satisfactory', 2, '#F472B6']],
+  'Recruitment Team': [['Total', 9, C.purple], ['Not to be Monitored', 3, C.teal], ['Under Watch', 4, C.indigo], ['PA Issued', 1, C.amber], ['PIP Issued', 0, C.rose], ['Feedback Pending', 2, '#FB923C'], ['Below Satisfactory', 2, '#F472B6']],
 };
 export const STATUS_MAP = { 'PA Issued': 'PA Issued', 'PIP Issued': 'PIP Issued' };
-export const METRIC_HEADS = { Sales: ['M1 NR', 'M2 NR', 'M3 NR', 'M4 NR', 'M5 NR', 'M6 NR'], Trainer: ['M1 Util', 'M2 Util', 'M3 Util', 'M4 Util', 'M5 Util', 'M6 Util'], 'PT Team': ['Tasks', 'Improve'] };
+export const METRIC_HEADS = { Sales: ['M1 NR', 'M2 NR', 'M3 NR', 'M4 NR', 'M5 NR', 'M6 NR'], Trainer: ['M1 Util', 'M2 Util', 'M3 Util', 'M4 Util', 'M5 Util', 'M6 Util'], 'PT Team': ['Tasks', 'Improve'], 'FM Team': ['Tasks', 'Improve'], 'Recruitment Team': ['Tasks', 'Improve'] };
 
 export const WORRY_BANDS = [
   { label: 'Critical', color: C.rose, range: 'score ≤ −4', desc: 'PIP review triggered, HR intervenes this week.' },
@@ -542,6 +546,8 @@ function weightClass(n) {
   return a <= 0.5 ? 'minor' : a === 1 ? 'average' : 'major';
 }
 export function appliesToTeam(teams, team) {
+  // FM / Recruitment follow PT Team's applicable set.
+  if (team === 'FM Team' || team === 'Recruitment Team') team = 'PT Team';
   return teams === 'All' || teams.split(' · ').includes(team);
 }
 
@@ -654,6 +660,12 @@ export const NJ_QUESTIONS = [
     q1: 'What course did you upgrade to last week?', hint1: 'Briefly share the course or skill you upgraded to and how it went.',
     q2: 'Which course will you upgrade to this week?', hint2: 'Share which course or skill you plan to upgrade to this week.' },
   { team: 'PT Team', color: '#5EEAD4',
+    q1: 'What did you accomplish last week?', hint1: 'Briefly share your key accomplishments, wins, or progress.',
+    q2: 'Which work will you spend time on this week?', hint2: 'Share the key activities you will focus on this week.' },
+  { team: 'FM Team', color: '#FCD34D',
+    q1: 'What did you accomplish last week?', hint1: 'Briefly share your key accomplishments, wins, or progress.',
+    q2: 'Which work will you spend time on this week?', hint2: 'Share the key activities you will focus on this week.' },
+  { team: 'Recruitment Team', color: '#F9A8D4',
     q1: 'What did you accomplish last week?', hint1: 'Briefly share your key accomplishments, wins, or progress.',
     q2: 'Which work will you spend time on this week?', hint2: 'Share the key activities you will focus on this week.' },
 ];

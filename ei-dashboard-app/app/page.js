@@ -35,7 +35,7 @@ export default async function Page() {
   // as exited (DOR/LWD set) shouldn't count as an NJ under watch anywhere —
   // drop both before this reaches the UI at all.
   const newJoiners = rawNewJoiners.filter((nj) => nj.section !== null && nj.active !== false);
-  const deptCounts = { Sales: 0, Trainer: 0, 'PT Team': 0 };
+  const deptCounts = { Sales: 0, Trainer: 0, 'PT Team': 0, 'FM Team': 0, 'Recruitment Team': 0 };
   for (const nj of newJoiners) deptCounts[nj.section]++;
 
   return <DashboardClient employees={slimEmployeesForClient(employees)} responses={responses} week={week} newJoiners={newJoiners} deptCounts={deptCounts} failedJobs={failedJobs} graphMeetings={graphMeetings} feedRuns={feedRuns} />;

@@ -137,10 +137,14 @@ export async function buildReport15Html(employees) {
   const sales = active.filter((e) => e.team === 'Sales').sort((a, b) => a.score - b.score);
   const trainer = active.filter((e) => e.team === 'Trainer').sort((a, b) => a.score - b.score);
   const pt = active.filter((e) => e.team === 'PT Team').sort((a, b) => a.score - b.score);
+  const fm = active.filter((e) => e.team === 'FM Team').sort((a, b) => a.score - b.score);
+  const recruitment = active.filter((e) => e.team === 'Recruitment Team').sort((a, b) => a.score - b.score);
 
   const salesNeg = sales.filter((e) => e.score < 0).length;
   const trainerNeg = trainer.filter((e) => e.score < 0).length;
   const ptNeg = pt.filter((e) => e.score < 0).length;
+  const fmNeg = fm.filter((e) => e.score < 0).length;
+  const recruitmentNeg = recruitment.filter((e) => e.score < 0).length;
 
   const paramColumns = buildParamColumns(missedWeeksCount, belowSatisfactoryCount, weeklyResponseRatingPoints);
   const salesCols = paramColumns.filter((c) => appliesToTeam(c.teams, 'Sales'));
@@ -154,6 +158,8 @@ export async function buildReport15Html(employees) {
   const salesSection = buildTeamSection(sales, salesCols, weightMap);
   const trainerSection = buildTeamSection(trainer, trainerCols, weightMap);
   const ptSection = buildTeamSection(pt, ptCols, weightMap);
+  const fmSection = buildTeamSection(fm, ptCols, weightMap);
+  const recruitmentSection = buildTeamSection(recruitment, ptCols, weightMap);
 
   function legendRow(d) {
     // computeTotal signals (Weekly response quality) have no single
@@ -179,13 +185,13 @@ export async function buildReport15Html(employees) {
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:1180px;margin:0 auto;background:#FFFFFE;border:1px solid #DAD6CB;">
 
 <tr><td style="padding:28px 32px 20px;border-bottom:2px solid #22221E;">
-<div style="font-family:Georgia,'Times New Roman',serif;font-size:22px;color:#22221E;font-weight:700;letter-spacing:-0.01em;">15-Day Report — Sales, Trainer, PT Team</div>
+<div style="font-family:Georgia,'Times New Roman',serif;font-size:22px;color:#22221E;font-weight:700;letter-spacing:-0.01em;">15-Day Report — Sales, Trainer, PT Team, FM Team, Recruitment Team</div>
 <div style="font-family:Arial,Helvetica,sans-serif;font-size:12.5px;color:#6B6A63;margin-top:6px;">Extended Interview dashboard - ${today} - every active NJ per department, computed live via the app's own Worry Index scoring engine, sorted lowest score first</div>
 </td></tr>
 
 <tr><td style="padding:16px 32px 4px;">
 <div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#8C8A7F;background:#F0EEE5;border:1px solid #DAD6CB;padding:10px 14px;line-height:1.6;">
-Sales: ${salesNeg} of ${sales.length} negative - Trainer: ${trainerNeg} of ${trainer.length} negative - PT Team: ${ptNeg} of ${pt.length} negative. "Calculation" shows only the parameters that fired (counted toward the score).
+Sales: ${salesNeg} of ${sales.length} negative - Trainer: ${trainerNeg} of ${trainer.length} negative - PT Team: ${ptNeg} of ${pt.length} negative - FM Team: ${fmNeg} of ${fm.length} negative - Recruitment Team: ${recruitmentNeg} of ${recruitment.length} negative. "Calculation" shows only the parameters that fired (counted toward the score).
 </div>
 </td></tr>
 
@@ -219,6 +225,28 @@ ${trainerSection.rows}
 <tr style="background:#22221E;">${ptSection.head}</tr>
 <tr>${ptSection.weights}</tr>
 ${ptSection.rows}
+</table>
+</td></tr>
+
+<tr><td style="padding:24px 32px 8px;">
+<div style="font-family:Georgia,serif;font-size:18px;font-weight:700;color:#22221E;border-left:6px solid #2F6E5E;padding-left:12px;">FM Team - ${fm.length} active NJs, ${fmNeg} negative</div>
+</td></tr>
+<tr><td style="padding:0 32px 24px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:11px;">
+<tr style="background:#22221E;">${fmSection.head}</tr>
+<tr>${fmSection.weights}</tr>
+${fmSection.rows}
+</table>
+</td></tr>
+
+<tr><td style="padding:24px 32px 8px;">
+<div style="font-family:Georgia,serif;font-size:18px;font-weight:700;color:#22221E;border-left:6px solid #2F6E5E;padding-left:12px;">Recruitment Team - ${recruitment.length} active NJs, ${recruitmentNeg} negative</div>
+</td></tr>
+<tr><td style="padding:0 32px 24px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:11px;">
+<tr style="background:#22221E;">${recruitmentSection.head}</tr>
+<tr>${recruitmentSection.weights}</tr>
+${recruitmentSection.rows}
 </table>
 </td></tr>
 
@@ -260,7 +288,7 @@ export async function sendReport15() {
 
   await sendMail({
     to: REPORT15_RECIPIENT,
-    subject: `15-Day Report - Sales, Trainer, PT Team - ${today}`,
+    subject: `15-Day Report - Sales, Trainer, PT Team, FM Team, Recruitment Team - ${today}`,
     html,
   });
 
