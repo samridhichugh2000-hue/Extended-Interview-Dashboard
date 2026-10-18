@@ -104,9 +104,10 @@ export async function syncKoenig() {
 
     if (knownIds.has(nj.empId)) {
       await db.execute({
-        sql: `UPDATE employees SET name = ?, email = ?, team = ?, manager = ?, doj = ?, tenure_days = ?, active = ?
+        // Solutions Managers are FM wherever Koenig files their department.
+        sql: `UPDATE employees SET name = ?, email = ?, team = CASE WHEN ? = 'PT Team' AND trim(designation) = 'Solutions Manager' THEN 'FM Team' ELSE ? END, manager = ?, doj = ?, tenure_days = ?, active = ?
               WHERE id = ?`,
-        args: [nj.name, nj.email || null, nj.section, nj.managerName || '—', displayDate(nj.joiningDate), tenureDays(nj.joiningDate), nj.active ? 1 : 0, nj.empId],
+        args: [nj.name, nj.email || null, nj.section, nj.section, nj.managerName || '—', displayDate(nj.joiningDate), tenureDays(nj.joiningDate), nj.active ? 1 : 0, nj.empId],
       });
       updatedCount++;
     } else if (nj.active) {
@@ -1588,7 +1589,7 @@ export async function syncEmployeeDetails() {
   const db = getDb();
   const { getEmployeeDetails } = await import('./koenigEmployeeDetailsApi.js');
 
-  const allEmployees = await db.execute("SELECT id FROM employees WHERE team IN ('Sales', 'Trainer') AND active = 1");
+  const allEmployees = await db.execute("SELECT id FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team') AND active = 1");
 
   const statements = [];
   let updated = 0;
@@ -1603,6 +1604,10 @@ export async function syncEmployeeDetails() {
         sql: 'UPDATE employees SET country = ?, emp_city = ?, emp_state = ?, is_overseas = ?, designation = ? WHERE id = ?',
         args: [details.countryName, details.cityName, details.stateName, details.isOverseas ? 1 : 0, details.designationName, emp.id],
       });
+      // Solutions Managers are FM, even if Koenig files them under another department.
+      if (String(details.designationName || '').trim() === 'Solutions Manager') {
+        statements.push({ sql: "UPDATE employees SET team = 'FM Team' WHERE id = ? AND team = 'PT Team'", args: [emp.id] });
+      }
       updated++;
     } catch (err) {
       console.error(`Employee details sync failed for ${emp.id}:`, err.message);

@@ -19,7 +19,7 @@ const db = createClient({
   authToken: process.env.TURSO_AUTH_TOKEN,
 });
 
-const allEmployees = await db.execute("SELECT id FROM employees WHERE team IN ('Sales', 'Trainer') AND active = 1");
+const allEmployees = await db.execute("SELECT id FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team') AND active = 1");
 
 let updated = 0;
 let unmatched = 0;
@@ -34,6 +34,10 @@ for (const emp of allEmployees.rows) {
       sql: 'UPDATE employees SET country = ?, emp_city = ?, emp_state = ?, is_overseas = ?, designation = ? WHERE id = ?',
       args: [details.countryName, details.cityName, details.stateName, details.isOverseas ? 1 : 0, details.designationName, emp.id],
     });
+    // Solutions Managers are FM, even if Koenig files them under another department.
+    if (String(details.designationName || '').trim() === 'Solutions Manager') {
+      await db.execute({ sql: "UPDATE employees SET team = 'FM Team' WHERE id = ? AND team = 'PT Team'", args: [emp.id] });
+    }
     updated++;
   } catch (err) {
     console.error(`Employee details sync failed for ${emp.id}:`, err.message);

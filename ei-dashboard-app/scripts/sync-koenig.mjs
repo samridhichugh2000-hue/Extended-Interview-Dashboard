@@ -86,9 +86,9 @@ for (const nj of newJoiners) {
 
   if (knownIds.has(nj.empId)) {
     await db.execute({
-      sql: `UPDATE employees SET name = ?, email = ?, team = ?, manager = ?, doj = ?, tenure_days = ?, active = ?
+      sql: `UPDATE employees SET name = ?, email = ?, team = CASE WHEN ? = 'PT Team' AND trim(designation) = 'Solutions Manager' THEN 'FM Team' ELSE ? END, manager = ?, doj = ?, tenure_days = ?, active = ?
             WHERE id = ?`,
-      args: [nj.name, nj.email || null, nj.section, nj.managerName || '—', displayDate(nj.joiningDate), tenureDays(nj.joiningDate), nj.active ? 1 : 0, nj.empId],
+      args: [nj.name, nj.email || null, nj.section, nj.section, nj.managerName || '—', displayDate(nj.joiningDate), tenureDays(nj.joiningDate), nj.active ? 1 : 0, nj.empId],
     });
     updatedCount++;
   } else if (nj.active) {
