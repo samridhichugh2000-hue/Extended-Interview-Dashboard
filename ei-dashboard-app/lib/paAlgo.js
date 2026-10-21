@@ -123,9 +123,9 @@ const BETWEEN_125K_200K_BANDS = [
   { minDays: 45, label: '45 days-3 months', rule: '< 15% utilization in last 180 days', check: utilCheck(180, 15) },
   { minDays: 3 * MONTH_DAYS, label: '3-5 months', rule: '< 25% utilization in last 180 days', check: utilCheck(180, 25) },
   { minDays: 5 * MONTH_DAYS, label: '5-7 months', rule: '< 40% utilization in last 360 days', check: utilCheck(360, 40) },
-  // 8-11 months and 12+ months share the same threshold in the source spec,
-  // so they're merged into one "7 months onward" band.
-  { minDays: 7 * MONTH_DAYS, label: '8 months onwards', rule: '< 50% utilization in last 270 days', check: utilCheck(270, 50) },
+  // 7-12 months and 12+ months share the same < 50% threshold (confirmed by HR),
+  // so they're merged into one "7 months onwards" band.
+  { minDays: 7 * MONTH_DAYS, label: '7 months onwards', rule: '< 50% utilization in last 270 days', check: utilCheck(270, 50) },
 ];
 
 // K11 / >2 lacs — flat rule, no tenure banding.

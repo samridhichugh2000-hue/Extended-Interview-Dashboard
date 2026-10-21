@@ -1,4 +1,5 @@
 import { getDb } from './db.js';
+import { VIDEO_MIN_ATTEND_SECONDS, VIDEO_WINDOW_DAYS, videoMeetingQualifies } from './videoRules.js';
 import { isExcludedGraphMeeting } from './meetingFilters.js';
 import { computeSignalReport, computeWorryScore, trendNoteFor, isScoredEmployee } from './data.js';
 import { getIsoWeek, isWeekOver } from './weekUtils.js';
@@ -29,6 +30,19 @@ export async function getEmployees() {
     db.execute('SELECT * FROM pip_status'),
     db.execute('SELECT * FROM manager_feedback'),
   ]);
+
+  // Camera-on tracking (syncVideo): qualifying Teams meetings in the window and
+  // how many of them had the camera on. Table may not exist before the first run.
+  const videoRes = await db.execute({
+    sql: `SELECT employee_id, is_external, camera_on, COUNT(*) AS n FROM video_meetings
+          WHERE started_at >= ? AND attended_seconds >= ? GROUP BY employee_id, is_external, camera_on`,
+    args: [new Date(Date.now() - VIDEO_WINDOW_DAYS * 86400000).toISOString(), VIDEO_MIN_ATTEND_SECONDS],
+  }).catch(() => ({ rows: [] }));
+  const videoRowsByEmp = new Map();
+  for (const r of videoRes.rows) {
+    if (!videoRowsByEmp.has(r.employee_id)) videoRowsByEmp.set(r.employee_id, []);
+    videoRowsByEmp.get(r.employee_id).push({ external: !!r.is_external, cam: !!r.camera_on, n: Number(r.n) });
+  }
 
   // Employees whose unreplied list is saved (see lib/unrepliedStore.js): only
   // for them does the saved count match what "Load emails" shows. The table is
@@ -126,6 +140,8 @@ export async function getEmployees() {
       pollsDetails: e.polls_details ? JSON.parse(e.polls_details) : [],
       kgtCount: e.kgt_count,
       kgtDetails: e.kgt_details ? JSON.parse(e.kgt_details) : [],
+      fmInterviewsCount: e.fm_interviews_count,
+      fmInterviewsDetails: e.fm_interviews_details ? JSON.parse(e.fm_interviews_details) : [],
       mgrFeedbackCount: e.mgr_feedback_count,
       mgrFeedbackDetails: e.mgr_feedback_details ? JSON.parse(e.mgr_feedback_details) : [],
       unrepliedEmailCount: e.unreplied_email_count,
@@ -161,6 +177,10 @@ export async function getEmployees() {
       quarterTargets: e.quarter_targets ? JSON.parse(e.quarter_targets) : [],
       teamNrDetails: e.team_nr_details ? JSON.parse(e.team_nr_details) : null,
       externalMeetingsCount: e.external_meetings_count,
+      ...(() => {
+        const rows = (videoRowsByEmp.get(e.id) || []).filter((r) => videoMeetingQualifies(e.team, r.external));
+        return { videoMeetings: rows.reduce((a, r) => a + r.n, 0), videoOn: rows.filter((r) => r.cam).reduce((a, r) => a + r.n, 0) };
+      })(),
       pipelineMonths: e.pipeline_months ? JSON.parse(e.pipeline_months) : null,
       pipelineUndatedNr: e.pipeline_undated_nr,
       pipelineUndatedDeals: e.pipeline_undated_deals,

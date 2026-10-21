@@ -51,6 +51,8 @@ CREATE TABLE IF NOT EXISTS employees (
   polls_participated INTEGER,    -- count of polls participated in (All teams). NULL means the polls dashboard has no record for this email, not a confirmed 0.
   kgt_count INTEGER,             -- count of KGTs (ownership-transfer requests) participated in (All teams). NULL means the polls dashboard has no record for this emp_code, not a confirmed 0.
   kgt_details TEXT,              -- JSON array of {kgt_id, topic, department, submitted_at, release_date, closure_date}
+  fm_interviews_count INTEGER,   -- interviews scheduled in the last 30 days (FM Team only), from the Outreach Dashboard scheduled-calls API. 0 means none in the window.
+  fm_interviews_details TEXT,    -- JSON array of {date, count, by_source:{naukri_outreach,linkedin,enquiry}}
   mgr_feedback_count INTEGER,    -- count of manager feedback entries on file (All teams)
   mgr_feedback_details TEXT,     -- JSON array of {managerEmpCode, managerName, strength, improvement, other, date}
   meetings_count INTEGER,        -- count of Teams meetings tracked from the rep's calendar (Sales only, via Graph API Calls)
@@ -195,6 +197,35 @@ CREATE TABLE IF NOT EXISTS graph_call_records (
 -- Lifecycle of the Graph subscription that drives the callRecords webhook —
 -- subscriptions on this resource expire (~70h max) and must be renewed
 -- before then or notifications stop arriving silently.
+-- One row per employee per Teams meeting (call record of type groupCall) taken
+-- from Graph call records. camera_on is 1 when that person sent a camera video
+-- stream (screen share does not count). Nothing but this yes/no flag and the
+-- timings is kept: no media, no chat.
+CREATE TABLE IF NOT EXISTS video_meetings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  call_record_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  employee_id TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  ended_at TEXT,
+  attended_seconds INTEGER NOT NULL,
+  camera_on INTEGER NOT NULL,
+  is_external INTEGER NOT NULL,
+  participant_count INTEGER,
+  synced_at TEXT NOT NULL,
+  UNIQUE(call_record_id, user_id)
+);
+
+-- Per Teams meeting (call record): title, organizer and who joined, shown in the
+-- camera-on popup. participants is a JSON array of name and kind (internal or external).
+CREATE TABLE IF NOT EXISTS video_meeting_info (
+  call_record_id TEXT PRIMARY KEY,
+  subject TEXT,
+  organizer_name TEXT,
+  participants TEXT,
+  synced_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS graph_subscriptions (
   id TEXT PRIMARY KEY,            -- Graph's subscription id
   resource TEXT NOT NULL,

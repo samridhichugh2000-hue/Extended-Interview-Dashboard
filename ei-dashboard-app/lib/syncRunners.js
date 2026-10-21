@@ -1175,6 +1175,33 @@ export async function syncKgt() {
   return { message: `Synced KGT participation for ${updated} employees (${unmatched} had no record on the polls dashboard).` };
 }
 
+// Interviews scheduled per FM, matched by email. The API only lists FMs with
+// interviews in the window, so active FM Team members it omits get a real 0.
+export async function syncFmInterviews() {
+  const db = getDb();
+  const { getFmInterviews, FM_INTERVIEWS_LOOKBACK_DAYS } = await import('./fmInterviewsApi.js');
+
+  const istDay = (offsetDays) => new Date(Date.now() + 330 * 60000 - offsetDays * 86400000).toISOString().slice(0, 10);
+  const byEmail = await getFmInterviews(istDay(FM_INTERVIEWS_LOOKBACK_DAYS), istDay(0));
+
+  const fms = await db.execute("SELECT id, email FROM employees WHERE team = 'FM Team' AND active = 1");
+  let withInterviews = 0;
+  let noEmail = 0;
+  const statements = [];
+  for (const fm of fms.rows) {
+    if (!fm.email) { noEmail++; continue; }
+    const hit = byEmail.get(String(fm.email).toLowerCase());
+    if (hit) withInterviews++;
+    statements.push({
+      sql: 'UPDATE employees SET fm_interviews_count = ?, fm_interviews_details = ? WHERE id = ?',
+      args: [hit ? hit.total : 0, JSON.stringify(hit ? hit.byDate : []), fm.id],
+    });
+  }
+  if (statements.length) await db.batch(statements, 'write');
+
+  return { message: `Synced interviews for ${statements.length} FMs (${withInterviews} had interviews in the last ${FM_INTERVIEWS_LOOKBACK_DAYS} days, ${noEmail} had no email on file).` };
+}
+
 const GRAPH_MEETINGS_LOOKBACK_DAYS = Number(process.env.GRAPH_MEETINGS_LOOKBACK_DAYS || 7);
 
 // A recurring/reconvened meeting keeps the same onlineMeetingId across every
@@ -1772,11 +1799,121 @@ export async function syncAppraisals() {
   return { message: `Synced appraisals for ${statements.length} Sales/Trainer employees (${withAppraisal} have one on file, ${apiErrors} API errors).` };
 }
 
+// Camera-on tracking from Graph call records. For every Teams meeting
+// (call record type groupCall) in the last ~30 days (Microsoft's retention)
+// it records, per Koenig employee, whether they sent a camera video stream
+// ('main-video' - screen share is 'applicationsharing-video' and is ignored),
+// how long they attended, and whether the meeting had an external participant
+// (guest, phone, ACS user or a user from another tenant). Per meeting it also
+// keeps the title (looked up from the organizer's Teams meeting), the
+// organizer and the names of who joined (video_meeting_info) so the dashboard
+// can show them. No media or chat is read. One-to-one calls (peerToPeer) are
+// not meetings and are skipped. A call record already in video_meeting_info is
+// not fetched again (blank titles are retried weekly), so daily runs only
+// process new meetings.
+export async function syncVideo() {
+  const db = getDb();
+  const { listCallRecords, getCallRecordWithSegments, listTenantUsers, resolveOnlineMeeting } = await import('./graphCallsApi.js');
+
+  const now = new Date();
+  const since = new Date(now.getTime() - 29 * 86400000);
+
+  const [records, tenantUsers, empRes, doneRes] = await Promise.all([
+    listCallRecords(since.toISOString(), now.toISOString()),
+    listTenantUsers(),
+    db.execute('SELECT id, email FROM employees WHERE email IS NOT NULL'),
+    db.execute('SELECT call_record_id, subject, synced_at FROM video_meeting_info'),
+  ]);
+  // Skip meetings already saved. A meeting saved WITHOUT a title is looked at
+  // again once a week (while Microsoft still holds its call record) in case the
+  // title can be found by then.
+  const retryBefore = now.getTime() - 7 * 86400000;
+  const done = new Set(doneRes.rows.filter((r) => r.subject || new Date(r.synced_at).getTime() > retryBefore).map((r) => r.call_record_id));
+  const empByEmail = new Map(empRes.rows.map((r) => [String(r.email).toLowerCase(), r.id]));
+  const empByUserId = new Map();
+  const nameByUserId = new Map(tenantUsers.filter((u) => u.displayName).map((u) => [u.id, u.displayName]));
+  for (const u of tenantUsers) {
+    for (const addr of [u.mail, u.userPrincipalName]) {
+      const id = addr && empByEmail.get(String(addr).toLowerCase());
+      if (id) { empByUserId.set(u.id, id); break; }
+    }
+  }
+  const ownTenant = process.env.GRAPH_TENANT_ID;
+  const meetings = records.filter((r) => r.type === 'groupCall' && !done.has(r.id));
+
+  const mergedSeconds = (intervals) => {
+    const sorted = intervals.filter(([a, b]) => b > a).sort((x, y) => x[0] - y[0]);
+    let total = 0, curStart = null, curEnd = null;
+    for (const [a, b] of sorted) {
+      if (curEnd == null || a > curEnd) { if (curEnd != null) total += curEnd - curStart; curStart = a; curEnd = b; }
+      else if (b > curEnd) curEnd = b;
+    }
+    if (curEnd != null) total += curEnd - curStart;
+    return Math.round(total / 1000);
+  };
+
+  const statements = [];
+  let failed = 0, rowsOut = 0, titled = 0;
+  await mapWithConcurrency(meetings, 8, async (rec) => {
+    let d;
+    try { d = await getCallRecordWithSegments(rec.id); } catch (err) { failed++; console.error(`Video sync: call record ${rec.id} failed:`, err.message); return; }
+    const byUser = new Map();
+    let external = false;
+    const people = new Map();
+    for (const s of d.sessions || []) {
+      const idn = s.caller?.identity || {};
+      const uid = idn.user?.id;
+      const otherTenant = !!(idn.user && idn.user.tenantId && ownTenant && idn.user.tenantId !== ownTenant);
+      if (idn.guest || idn.phone || idn.acsUser || otherTenant) external = true;
+      // who joined: internal users by name, everyone else as an external participant
+      if (uid && !otherTenant) people.set(uid, { name: idn.user.displayName || nameByUserId.get(uid) || 'Unknown', kind: 'internal' });
+      else if (idn.guest) people.set(`g:${idn.guest.displayName || people.size}`, { name: idn.guest.displayName || 'Guest user', kind: 'external' });
+      else if (idn.phone) people.set(`p:${people.size}`, { name: 'Phone participant', kind: 'external' });
+      else if (otherTenant) people.set(uid, { name: idn.user.displayName || 'External user', kind: 'external' });
+      else if (idn.acsUser) people.set(`a:${people.size}`, { name: 'External participant', kind: 'external' });
+      if (!uid || otherTenant || !empByUserId.has(uid)) continue;
+      const u = byUser.get(uid) || { intervals: [], cam: false };
+      u.intervals.push([new Date(s.startDateTime).getTime(), new Date(s.endDateTime).getTime()]);
+      for (const g of s.segments || []) for (const m of g.media || []) {
+        if (!/^main-video/.test(m.label || '')) continue;
+        if ((m.streams || []).some((st) => /callerToCallee/.test(st.streamDirection || ''))) u.cam = true;
+      }
+      byUser.set(uid, u);
+    }
+    for (const [uid, u] of byUser) {
+      const attended = mergedSeconds(u.intervals);
+      statements.push({
+        sql: `INSERT INTO video_meetings (call_record_id, user_id, employee_id, started_at, ended_at, attended_seconds, camera_on, is_external, participant_count, synced_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(call_record_id, user_id) DO UPDATE SET attended_seconds = excluded.attended_seconds, camera_on = excluded.camera_on, is_external = excluded.is_external, participant_count = excluded.participant_count, ended_at = excluded.ended_at, synced_at = excluded.synced_at`,
+        args: [rec.id, uid, empByUserId.get(uid), rec.startDateTime, rec.endDateTime || null, attended, u.cam ? 1 : 0, external ? 1 : 0, people.size, now.toISOString()],
+      });
+      rowsOut++;
+    }
+    // Title: only resolvable for meetings organized inside this tenant.
+    const org = d.organizer_v2?.identity?.user || d.organizer?.user;
+    let subject = null;
+    if (byUser.size && d.joinWebUrl && org?.id) {
+      try { subject = (await resolveOnlineMeeting(org.id, d.joinWebUrl))?.subject || null; } catch { /* leave the title blank */ }
+      if (subject) titled++;
+    }
+    statements.push({
+      sql: `INSERT INTO video_meeting_info (call_record_id, subject, organizer_name, participants, synced_at) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(call_record_id) DO UPDATE SET subject = excluded.subject, organizer_name = excluded.organizer_name, participants = excluded.participants, synced_at = excluded.synced_at`,
+      args: [rec.id, subject, org?.displayName || null, JSON.stringify([...people.values()]), now.toISOString()],
+    });
+  });
+
+  for (let i = 0; i < statements.length; i += 200) await db.batch(statements.slice(i, i + 200), 'write');
+  return { message: `Synced camera on/off for ${rowsOut} employee-meeting rows from ${meetings.length} new Teams meetings (${titled} titled, ${empByUserId.size} employees matched to Microsoft accounts, ${failed} call records failed).` };
+}
+
 export const SYNC_RUNNERS = {
   koenig: syncKoenig,
   pip: syncPip,
   pms: syncPms,
   truenr: syncTrueNr,
+  video: syncVideo,
   appraisals: syncAppraisals,
   eisnapshot: async () => (await import("./eiSnapshots.js")).takeEiSnapshot(),
   audit: syncAudit,
@@ -1799,6 +1936,7 @@ export const SYNC_RUNNERS = {
   shoddy: syncShoddy,
   polls: syncPolls,
   kgt: syncKgt,
+  fminterviews: syncFmInterviews,
   mgrfeedback: syncMgrFeedback,
   ideas: syncIdeas,
   salary: syncSalary,

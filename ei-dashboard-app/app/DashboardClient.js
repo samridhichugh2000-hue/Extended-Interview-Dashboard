@@ -10,6 +10,7 @@ import { computeAppraisalImpact, ANALYSIS_METRICS, appraisalWindow, metricSeries
 import { JOB_LABELS } from '../lib/jobLabels';
 import { TRAINER_SALARY_TIERS, SALES_REGIONS, TARGET_QUARTERS, quarterMonthKeys, formatTenure } from '../lib/paAlgo';
 import { draftToHtml } from '../lib/emailDraft';
+import { VIDEO_MIN_MEETINGS_TO_SHOW } from '../lib/videoRules';
 
 const card = { border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 16 };
 
@@ -1048,8 +1049,10 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
   const [tbtModal, setTbtModal] = useState(null);
   const [shoddyModal, setShoddyModal] = useState(null);
   const [mgrFeedbackModal, setMgrFeedbackModal] = useState(null);
+  const [videoModal, setVideoModal] = useState(null);
   const [pollsModal, setPollsModal] = useState(null);
   const [kgtModal, setKgtModal] = useState(null);
+  const [fmInterviewsModal, setFmInterviewsModal] = useState(null);
   const [ideasModal, setIdeasModal] = useState(null);
   const deptEmpAllTenure = employees.filter((e) => e.team === dept);
   // New Joiners only (default) vs every tracked employee in this dept —
@@ -1092,9 +1095,9 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
   // make the underlying count itself any harder to see at a glance.
   const salesTechCallsTotal = dept === 'Sales' ? activeDeptEmp.reduce((sum, e) => sum + (e.techCallsCount || 0), 0) : null;
   const baseHeads = METRIC_HEADS[dept] || METRIC_HEADS.Sales;
-  const mh = dept === 'Sales' ? [...baseHeads, 'Neg. Audits', 'SCs Raised', 'Tech Calls', 'Shoddy Log', 'Mgr Feedback', 'Polls', 'KGT', 'Ideas', 'Common Index']
-    : dept === 'Trainer' ? [...baseHeads, 'Exams', 'Neg. Feedback', 'Assignments', 'Skills', 'In-House Skills', 'Tech Calls', 'TBTs', 'Shoddy Log', 'Mgr Feedback', 'Polls', 'KGT', 'Ideas', 'Common Index']
-    : [...baseHeads, 'Shoddy Log', 'Mgr Feedback', 'Polls', 'KGT', 'Ideas', 'Common Index'];
+  const mh = dept === 'Sales' ? [...baseHeads, 'Neg. Audits', 'SCs Raised', 'Tech Calls', 'Shoddy Log', 'Mgr Feedback', 'Polls', 'KGT', 'Ideas', 'Video On', 'Common Index']
+    : dept === 'Trainer' ? [...baseHeads, 'Exams', 'Neg. Feedback', 'Assignments', 'Skills', 'In-House Skills', 'Tech Calls', 'TBTs', 'Shoddy Log', 'Mgr Feedback', 'Polls', 'KGT', 'Ideas', 'Video On', 'Common Index']
+    : [...baseHeads, 'Shoddy Log', ...(dept === 'FM Team' ? ['Interviews'] : []), 'Mgr Feedback', 'Polls', 'KGT', 'Ideas', 'Video On', 'Common Index'];
   const rows = filtered.map((e) => {
     const d = decorate(e);
     const cells = baseHeads.map((_, i) => ({
@@ -1174,6 +1177,13 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
         onClick: e.active === false ? null : ((e.shoddyNegCount > 0 || e.shoddyPosCount > 0) ? () => setShoddyModal(e) : null),
       });
     }
+    if (dept === 'FM Team') {
+      cells.push({
+        value: e.active === false ? '—' : (e.fmInterviewsCount ?? '—'),
+        color: e.active === false ? '#6E7488' : (e.fmInterviewsCount > 0 ? '#5EEAD4' : '#6E7488'),
+        onClick: e.active !== false && e.fmInterviewsCount > 0 ? () => setFmInterviewsModal(e) : null,
+      });
+    }
     cells.push({
       value: e.active === false ? '—' : (e.mgrFeedbackCount ?? '—'),
       color: e.active === false ? '#6E7488' : (e.mgrFeedbackCount > 0 ? '#5EEAD4' : '#6E7488'),
@@ -1193,6 +1203,15 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
       value: e.active === false ? '—' : (e.ideasCount ?? '—'),
       color: e.active === false ? '#6E7488' : (e.ideasCount > 0 ? '#5EEAD4' : '#6E7488'),
       onClick: e.active !== false && e.ideasCount > 0 ? () => setIdeasModal(e) : null,
+    });
+    // % of qualifying Teams meetings (last 30 days) where the camera was on.
+    // Sales counts external meetings only, every other team counts all meetings.
+    const videoShown = e.videoMeetings >= VIDEO_MIN_MEETINGS_TO_SHOW;
+    const videoPct = videoShown ? Math.round((e.videoOn / e.videoMeetings) * 100) : null;
+    cells.push({
+      value: e.active === false ? '—' : (videoShown ? `${videoPct}%` : (e.videoMeetings > 0 ? `${e.videoOn}/${e.videoMeetings}` : '—')),
+      color: e.active === false || e.videoMeetings === 0 ? '#6E7488' : (videoShown ? (videoPct >= 60 ? '#5EEAD4' : videoPct >= 30 ? '#F59E0B' : '#F87171') : '#A8AEC4'),
+      onClick: e.active !== false && e.videoMeetings > 0 ? () => setVideoModal(e) : null,
     });
     cells.push({
       value: e.active === false ? '—' : (e.commonIndexPoints ?? '—'),
@@ -1285,7 +1304,9 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
       {tbtModal && <TbtModal emp={tbtModal} onClose={() => setTbtModal(null)} />}
       {shoddyModal && <ShoddyModal emp={shoddyModal} onClose={() => setShoddyModal(null)} />}
       {mgrFeedbackModal && <MgrFeedbackModal emp={mgrFeedbackModal} onClose={() => setMgrFeedbackModal(null)} />}
+      {videoModal && <VideoModal emp={videoModal} onClose={() => setVideoModal(null)} />}
       {pollsModal && <PollsModal emp={pollsModal} onClose={() => setPollsModal(null)} />}
+      {fmInterviewsModal && <FmInterviewsModal emp={fmInterviewsModal} onClose={() => setFmInterviewsModal(null)} />}
       {kgtModal && <KgtModal emp={kgtModal} onClose={() => setKgtModal(null)} />}
       {ideasModal && <IdeasModal emp={ideasModal} onClose={() => setIdeasModal(null)} />}
       {examModal && <ExamSummaryModal emp={examModal} onClose={() => setExamModal(null)} />}
@@ -1474,6 +1495,40 @@ function PollsModal({ emp, onClose }) {
   );
 }
 
+const FM_SOURCE_LABELS = { naukri_outreach: 'Naukri outreach', linkedin: 'LinkedIn', enquiry: 'Enquiry' };
+
+// Interviews scheduled for an FM over the last 30 days, one row per day with
+// the split by lead source. The feed gives per-day counts, not candidate
+// details, so this is a daily breakdown rather than a list of interviews.
+function FmInterviewsModal({ emp, onClose }) {
+  const days = [...emp.fmInterviewsDetails].sort((a, b) => (a.date < b.date ? 1 : -1));
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 560, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — Interviews</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>{emp.fmInterviewsCount} interview{emp.fmInterviewsCount === 1 ? '' : 's'} in the last 30 days</div>
+          </div>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+        </div>
+        <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {days.map((d) => (
+            <div key={d.date} style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 12, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, fontSize: 12.5 }}>
+              <span style={{ color: '#C7CBDA' }}>{d.date}</span>
+              <span style={{ color: '#8A90A8', textAlign: 'right' }}>
+                {Object.entries(d.by_source || {}).map(([s, n]) => `${FM_SOURCE_LABELS[s] || s}: ${n}`).join(' · ')}
+              </span>
+              <span style={{ color: '#5EEAD4', fontWeight: 600 }}>{d.count}</span>
+            </div>
+          ))}
+          {!days.length && <div style={{ fontSize: 12.5, color: '#6E7488' }}>No interviews on file.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // KGT = ownership-transfer request. Unlike Polls, this feed does return a
 // per-request breakdown (topic, department, dates), so this shows a list
 // like TechCallsModal rather than just a total count.
@@ -1540,6 +1595,71 @@ function IdeasModal({ emp, onClose }) {
             );
           })}
           {!emp.ideasDetails.length && <div style={{ fontSize: 12.5, color: '#6E7488' }}>No Non-RMS tasks on file.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Meeting-by-meeting camera on/off for the last 30 days (qualifying meetings
+// only: Sales = external, everyone else = all). Loaded on open from
+// /api/video-meetings so the list does not bloat the home page payload.
+function VideoModal({ emp, onClose }) {
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/video-meetings?employeeId=${encodeURIComponent(emp.id)}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((j) => { if (!cancelled) setData(j); })
+      .catch((e) => { if (!cancelled) setErr(e.message); });
+    return () => { cancelled = true; };
+  }, [emp.id]);
+  const meetings = data?.meetings || [];
+  const on = meetings.filter((m) => m.cameraOn).length;
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 560, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — meetings with video on</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>
+              {data ? `${on} of ${meetings.length} ${emp.team === 'Sales' ? 'external ' : ''}meetings in the last 30 days had the camera on` : 'Loading…'}
+            </div>
+          </div>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+        </div>
+        <div style={{ padding: '8px 24px 24px' }}>
+          {err && <div style={{ fontSize: 12.5, color: '#F87171', padding: '12px 0' }}>Could not load meetings ({err}).</div>}
+          {meetings.map((m, i) => {
+            const others = (m.attendees || []).filter((a) => a.name !== emp.name);
+            const ext = others.filter((a) => a.kind === 'external');
+            const internalAll = others.filter((a) => a.kind !== 'external');
+            const internal = internalAll.filter((a) => a.name !== 'Unknown');
+            const unnamed = internalAll.length - internal.length;
+            return (
+              <div key={i} style={{ padding: '12px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 600, color: '#E4E6F0', lineHeight: 1.35 }}>{m.title || '(title not available)'}</span>
+                  <span style={{ flex: 'none', fontSize: 11, padding: '3px 9px', borderRadius: 999, color: m.cameraOn ? '#5EEAD4' : '#F87171', border: `1px solid ${m.cameraOn ? 'rgba(20,184,166,0.3)' : 'rgba(244,63,94,0.3)'}`, background: m.cameraOn ? 'rgba(20,184,166,0.12)' : 'rgba(244,63,94,0.1)' }}>{m.cameraOn ? 'Camera on' : 'Camera off'}</span>
+                </div>
+                <div className="mono" style={{ fontSize: 11, color: '#8A90A8' }}>
+                  {new Date(m.startedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} · {m.minutes} min · {m.external ? 'External' : 'Internal'}{m.organizer ? ` · organizer ${m.organizer}` : ''}
+                </div>
+                {others.length > 0 && (
+                  <div style={{ fontSize: 11.5, color: '#A8AEC4', lineHeight: 1.5 }}>
+                    <span style={{ color: '#6E7488' }}>With: </span>
+                    {internal.map((a) => a.name).join(', ')}{unnamed > 0 && <span style={{ color: '#6E7488' }}>{internal.length ? ' ' : ''}+{unnamed} not named by Microsoft</span>}
+                    {ext.length > 0 && <span style={{ color: '#F59E0B' }}>{internal.length ? ' · ' : ''}{ext.length} external ({ext.map((a) => a.name).join(', ')})</span>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {data && !meetings.length && <div style={{ fontSize: 12.5, color: '#6E7488', padding: '12px 0' }}>No qualifying meetings in the last 30 days.</div>}
+          <div style={{ fontSize: 11.5, color: '#6E7488', marginTop: 14, lineHeight: 1.55 }}>
+            From Microsoft Teams call records. Camera on = a camera video stream was sent (screen sharing does not count). Only Teams meetings of 2 minutes or more are counted. {emp.team === 'Sales' ? 'For Sales, only meetings with an external participant count.' : 'All Teams meetings count.'} Microsoft keeps call records for about 30 days. Only a yes or no is stored, no video or audio.
+          </div>
         </div>
       </div>
     </div>

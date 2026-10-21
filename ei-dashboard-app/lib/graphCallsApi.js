@@ -124,6 +124,42 @@ export async function getCallRecord(id) {
   return graphJson(`${GRAPH_BASE}/communications/callRecords/${id}?$expand=sessions`);
 }
 
+// Every call record that STARTED in [sinceIso, untilIso) — the list endpoint
+// works with CallRecords.Read.All (Microsoft keeps about 30 days). Pages
+// through @odata.nextLink. List items carry type/startDateTime/endDateTime
+// only, so detail comes from getCallRecordWithSegments.
+export async function listCallRecords(sinceIso, untilIso) {
+  let url = `${GRAPH_BASE}/communications/callRecords?$filter=${encodeURIComponent(`startDateTime ge ${sinceIso} and startDateTime lt ${untilIso}`)}`;
+  const out = [];
+  while (url) {
+    const page = await graphJson(url);
+    out.push(...(page.value || []));
+    url = page['@odata.nextLink'] || null;
+  }
+  return out;
+}
+
+// One call record with each participant's sessions and their media segments —
+// the segments' media streams are where a camera shows up (label
+// 'main-video', direction callerToCallee). Screen share is a separate label
+// ('applicationsharing-video').
+export async function getCallRecordWithSegments(id) {
+  return graphJson(`${GRAPH_BASE}/communications/callRecords/${id}?$expand=${encodeURIComponent('sessions($expand=segments)')}`);
+}
+
+// Azure AD id -> email for every user in the tenant (call records identify
+// participants by id only).
+export async function listTenantUsers() {
+  let url = `${GRAPH_BASE}/users?$select=id,mail,userPrincipalName,displayName&$top=999`;
+  const out = [];
+  while (url) {
+    const page = await graphJson(url);
+    out.push(...(page.value || []));
+    url = page['@odata.nextLink'] || null;
+  }
+  return out;
+}
+
 export async function createCallRecordsSubscription(notificationUrl, clientState, expirationDateTime) {
   return graphJson(`${GRAPH_BASE}/subscriptions`, {
     method: 'POST',
