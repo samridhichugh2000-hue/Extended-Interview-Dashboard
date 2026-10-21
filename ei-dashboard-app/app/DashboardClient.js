@@ -8,6 +8,8 @@ import {
 } from '../lib/data';
 import { computeAppraisalImpact, ANALYSIS_METRICS, appraisalWindow, metricSeries, linearTrend, appraisalPosition } from '../lib/analysis';
 import { JOB_LABELS } from '../lib/jobLabels';
+import { F2F_EVENTS } from '../lib/f2fAttendees';
+import { RNR_WINNERS } from '../lib/rnrWinners';
 import { TRAINER_SALARY_TIERS, SALES_REGIONS, TARGET_QUARTERS, quarterMonthKeys, formatTenure } from '../lib/paAlgo';
 import { draftToHtml } from '../lib/emailDraft';
 import { VIDEO_MIN_MEETINGS_TO_SHOW } from '../lib/videoRules';
@@ -667,7 +669,7 @@ function AnalysisModal({ emp, months, onClose, onOpenEmployee }) {
 // Sales: NR, True NR and SCs raised. Trainer: utilization and negative
 // feedback. For each employee, the same number of full months before and after
 // their latest appraisal are compared (see lib/analysis.js).
-function AnalysisPanel({ employees, setModal }) {
+function AppraisalImpactView({ employees, setModal }) {
   const [team, setTeam] = useState('Sales');
   const [months, setMonths] = useState(3);
   const [search, setSearch] = useState('');
@@ -779,6 +781,212 @@ function AnalysisPanel({ employees, setModal }) {
       </div>
       {detail && <AnalysisModal emp={detail} months={months} onClose={() => setDetail(null)} onOpenEmployee={() => { setModal(detail); setDetail(null); }} />}
       {tooRecent > 0 && <div style={{ fontSize: 11.5, color: '#6E7488' }}>{tooRecent} {team === 'Trainer' ? 'trainers' : 'Sales employees'} not shown — appraised too recently for a completed month after it.</div>}
+    </div>
+  );
+}
+
+// Analysis screen: a tab row switches between the appraisal-impact view and
+// the event/recognition lists, so the latter are one click away rather than
+// further down a long page.
+const ANALYSIS_VIEWS = [['appraisal', 'Appraisal impact'], ['f2f', 'F2F Attendees'], ['rnr', 'RnR Winners']];
+function AnalysisPanel({ employees, setModal }) {
+  const [view, setView] = useState('appraisal');
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {ANALYSIS_VIEWS.map(([key, label]) => (
+          <div key={key} onClick={() => setView(key)} style={{ cursor: 'pointer', border: `1px solid ${view === key ? 'rgba(99,102,241,0.5)' : 'rgba(255,255,255,0.1)'}`, background: view === key ? 'rgba(99,102,241,0.14)' : 'transparent', color: view === key ? '#A5A7FA' : '#8A90A8', borderRadius: 10, padding: '9px 16px', fontSize: 13, fontWeight: view === key ? 600 : 400 }}>{label}</div>
+        ))}
+      </div>
+      {view === 'appraisal' && <AppraisalImpactView employees={employees} setModal={setModal} />}
+      {view === 'f2f' && <F2fAttendeesSection employees={employees} setModal={setModal} />}
+      {view === 'rnr' && <RnrWinnersSection employees={employees} setModal={setModal} />}
+    </div>
+  );
+}
+
+// Rewards & Recognition winners by quarter. Winners are linked to dashboard
+// employees by employee code where the sheet has one (Q3), otherwise by exact
+// name, so the list can show their team and Worry band.
+function RnrWinnersSection({ employees, setModal }) {
+  const quarters = [...new Set(RNR_WINNERS.map((w) => `${w.quarter} ${w.year}`))].sort();
+  const [quarter, setQuarter] = useState(quarters[quarters.length - 1]);
+  const [search, setSearch] = useState('');
+  const byId = new Map(employees.map((e) => [e.id, e]));
+  const byName = new Map();
+  employees.forEach((e) => { const k = e.name.toLowerCase().trim(); byName.set(k, byName.has(k) ? null : e); });
+  const link = (w) => (w.empCode && byId.get(`EMP${w.empCode}`)) || byName.get(w.name.toLowerCase()) || null;
+  const chip = (active, label, onClick) => (
+    <div key={label} onClick={onClick} style={{ cursor: 'pointer', border: `1px solid ${active ? 'rgba(99,102,241,0.5)' : 'rgba(255,255,255,0.1)'}`, background: active ? 'rgba(99,102,241,0.14)' : 'transparent', color: active ? '#A5A7FA' : '#8A90A8', borderRadius: 10, padding: '7px 12px', fontSize: 12.5 }}>{label}</div>
+  );
+  const list = RNR_WINNERS.filter((w) => `${w.quarter} ${w.year}` === quarter).map((w) => ({ ...w, emp: link(w) }));
+  const q = search.trim().toLowerCase();
+  const shown = list.filter((w) => !q || w.name.toLowerCase().includes(q) || w.category.toLowerCase().includes(q));
+  const counts = new Map();
+  list.forEach((w) => counts.set(w.name, (counts.get(w.name) || 0) + 1));
+  const repeat = [...counts.entries()].filter(([, n]) => n > 1).sort((a, b) => b[1] - a[1]);
+  const cats = new Set(list.map((w) => w.category));
+  const stats = [
+    ['Awards', cats.size, '#5EEAD4'],
+    ['Winners', counts.size, '#A5A7FA'],
+    ['Multiple awards', repeat.length, '#F59E0B'],
+    ['In dashboard', list.filter((w) => w.emp).length, '#C7CBDA'],
+  ];
+  const cols = 'minmax(0,2fr) minmax(0,1.3fr) minmax(0,1.2fr) minmax(0,1fr)';
+  // Group rows under their award so a category with several winners reads as one block.
+  const groups = [];
+  shown.forEach((w) => { const g = groups.find((x) => x.category === w.category); if (g) g.rows.push(w); else groups.push({ category: w.category, rows: [w] }); });
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div className="disp" style={{ fontSize: 20, fontWeight: 600 }}>RnR Winners</div>
+        <span style={{ width: 6 }} />
+        {quarters.map((qt) => chip(quarter === qt, qt, () => setQuarter(qt)))}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${stats.length},1fr)`, gap: 10 }}>
+        {stats.map(([label, n, color]) => (
+          <div key={label} style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.03)', borderRadius: 14, padding: '12px 14px' }}>
+            <div className="disp" style={{ fontSize: 22, fontWeight: 600, color }}>{n}</div>
+            <div style={{ fontSize: 11.5, color: '#8A90A8', marginTop: 2 }}>{label}</div>
+          </div>
+        ))}
+      </div>
+      {repeat.length > 0 && (
+        <div style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(245,158,11,0.06)', borderRadius: 14, padding: '12px 16px', fontSize: 12.5, color: '#A8AEC4', lineHeight: 1.6 }}>
+          Won more than one award in {quarter}: {repeat.map(([n, c]) => `${n} (${c})`).join(' · ')}
+        </div>
+      )}
+      <input value={search} onChange={(ev) => setSearch(ev.target.value)} placeholder="Search by winner or award…" style={{ border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '9px 14px', fontSize: 13, color: '#E4E6F0', outline: 'none' }} />
+      <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, background: 'rgba(255,255,255,0.02)', overflow: 'hidden' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <span>Award</span><span>Winner</span><span>Designation</span><span>Dashboard</span>
+        </div>
+        {groups.map((g) => g.rows.map((w, i) => {
+          const b = w.emp && w.emp.score != null ? band(w.emp.score) : null;
+          return (
+            <div key={`${g.category}-${w.name}`} style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, padding: '12px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
+              <span style={{ color: i === 0 ? '#C7CBDA' : '#8A90A8', fontSize: 12.5, lineHeight: 1.4 }}>{g.category}</span>
+              <span style={{ fontWeight: 600 }}>{w.name}</span>
+              <span style={{ color: '#A8AEC4', fontSize: 12.5 }}>{w.designation || '—'}{w.location ? <span style={{ display: 'block', fontSize: 11, color: '#6E7488' }}>{w.location}</span> : null}</span>
+              {w.emp
+                ? <span onClick={() => setModal(w.emp)} style={{ cursor: 'pointer', fontSize: 11.5, color: b ? b.color : '#A8AEC4', textDecoration: 'underline', textUnderlineOffset: 3 }}>{w.emp.team}{b ? ` · ${b.label}` : ''}</span>
+                : <span style={{ fontSize: 11.5, color: '#5C6178' }}>Not tracked</span>}
+            </div>
+          );
+        }))}
+        {!shown.length && <div style={{ padding: 18, fontSize: 12.5, color: '#6E7488' }}>No winners match.</div>}
+      </div>
+      <div style={{ fontSize: 11.5, color: '#6E7488' }}>“Dashboard” links to the employee record — by employee code for Q3, by exact name for Q1 and Q2.</div>
+    </div>
+  );
+}
+
+// F2F (face-to-face) event attendees, grouped by quarter. Attendees are
+// matched to dashboard employees by email so the list can also show their
+// team and current Worry band; people with no match (e.g. HR/admin, EAs not
+// tracked in the dashboard) still appear from the event sheet itself.
+function F2fAttendeesSection({ employees, setModal }) {
+  const quarters = [...new Set(F2F_EVENTS.map((ev) => `${ev.quarter} ${ev.year}`))];
+  const [quarter, setQuarter] = useState(quarters[quarters.length - 1]);
+  const [search, setSearch] = useState('');
+  const [flag, setFlag] = useState(null);
+  const [open, setOpen] = useState(null);
+  const byEmail = new Map(employees.filter((e) => e.email).map((e) => [e.email.toLowerCase(), e]));
+  const events = F2F_EVENTS.filter((ev) => `${ev.quarter} ${ev.year}` === quarter);
+  const fmtDay = (d) => { const [y, m, day] = d.split('-'); return `${day} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m) - 1]} ${y}`; };
+  const chip = (active, label, onClick) => (
+    <div key={label} onClick={onClick} style={{ cursor: 'pointer', border: `1px solid ${active ? 'rgba(99,102,241,0.5)' : 'rgba(255,255,255,0.1)'}`, background: active ? 'rgba(99,102,241,0.14)' : 'transparent', color: active ? '#A5A7FA' : '#8A90A8', borderRadius: 10, padding: '7px 12px', fontSize: 12.5 }}>{label}</div>
+  );
+  const FLAGS = [['presenter', 'Presenters', (a) => a.presenter], ['speaker', 'Speakers', (a) => a.isSpeaker], ['hr', 'HR / Admin', (a) => a.isHr], ['matched', 'In dashboard', (a) => a.emp], ['unmatched', 'Not in dashboard', (a) => !a.emp]];
+  const cols = 'minmax(0,1.5fr) minmax(0,1.4fr) minmax(0,.8fr) minmax(0,1fr) minmax(0,1fr)';
+  const tally = (list, fn) => { const m = new Map(); list.forEach((a) => { const k = fn(a) || '—'; m.set(k, (m.get(k) || 0) + 1); }); return [...m.entries()].sort((a, b) => b[1] - a[1]); };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div className="disp" style={{ fontSize: 20, fontWeight: 600 }}>F2F Attendees</div>
+        <span style={{ width: 6 }} />
+        {quarters.map((q) => chip(quarter === q, q, () => { setQuarter(q); setOpen(null); }))}
+      </div>
+      {events.map((ev) => {
+        const list = ev.attendees.map((a) => ({ ...a, emp: byEmail.get(a.email) || null }));
+        const q = search.trim().toLowerCase();
+        const flagFn = FLAGS.find((f) => f[0] === flag)?.[2];
+        const shown = list.filter((a) => (!q || a.name.toLowerCase().includes(q) || a.department.toLowerCase().includes(q)) && (!flagFn || flagFn(a)));
+        const stats = [
+          ['Attended', list.filter((a) => a.signedIn).length, '#5EEAD4'],
+          ['Presenters', list.filter((a) => a.presenter).length, '#A5A7FA'],
+          ['Speakers', list.filter((a) => a.isSpeaker).length, '#A5A7FA'],
+          ['Seated', list.filter((a) => a.seated).length, '#C7CBDA'],
+          ['In dashboard', list.filter((a) => a.emp).length, '#F59E0B'],
+        ];
+        const breakdowns = [['By department', tally(list, (a) => a.department)], ['By seniority', tally(list, (a) => a.seniority)]];
+        return (
+          <div key={ev.id} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ fontSize: 13, color: '#A8AEC4' }}><b style={{ color: '#E4E6F0' }}>{ev.name}</b> · {fmtDay(ev.date)} · {list.length} on the attendee sheet</div>
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${stats.length},1fr)`, gap: 10 }}>
+              {stats.map(([label, n, color]) => (
+                <div key={label} style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.03)', borderRadius: 14, padding: '12px 14px' }}>
+                  <div className="disp" style={{ fontSize: 22, fontWeight: 600, color }}>{n}</div>
+                  <div style={{ fontSize: 11.5, color: '#8A90A8', marginTop: 2 }}>{label}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10 }}>
+              {breakdowns.map(([title, rows]) => (
+                <div key={title} style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 14, padding: '12px 14px' }}>
+                  <div className="mono" style={{ fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', marginBottom: 8 }}>{title}</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 150, overflow: 'auto' }}>
+                    {rows.map(([k, n]) => (
+                      <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}><span style={{ color: '#A8AEC4' }}>{k}</span><span className="mono" style={{ color: '#C7CBDA' }}>{n}</span></div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <input value={search} onChange={(ev2) => setSearch(ev2.target.value)} placeholder="Search by name or department…" style={{ flex: 1, minWidth: 220, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '9px 14px', fontSize: 13, color: '#E4E6F0', outline: 'none' }} />
+              {FLAGS.map(([key, label]) => chip(flag === key, label, () => setFlag(flag === key ? null : key)))}
+            </div>
+            <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, background: 'rgba(255,255,255,0.02)', overflow: 'hidden' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <span>Attendee</span><span>Role</span><span>Seniority</span><span>Role at event</span><span>Dashboard</span>
+              </div>
+              {shown.map((a) => {
+                const isOpen = open === a.email;
+                const b = a.emp && a.emp.score != null ? band(a.emp.score) : null;
+                return (
+                  <Fragment key={a.email}>
+                    <div className="hoverrow" onClick={() => setOpen(isOpen ? null : a.email)} style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, padding: '12px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <span style={{ fontWeight: 600 }}>{a.name}</span>
+                        <span style={{ fontSize: 11, color: '#6E7488', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.email}</span>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <span style={{ color: '#C7CBDA', fontSize: 12.5 }}>{a.title || '—'}</span>
+                        <span style={{ fontSize: 11, color: '#6E7488' }}>{a.department || '—'}</span>
+                      </div>
+                      <span style={{ color: '#A8AEC4', fontSize: 12.5 }}>{a.seniority || '—'}</span>
+                      <span style={{ fontSize: 11.5, color: '#A5A7FA' }}>{[a.presenter && 'Presenter', a.isSpeaker && 'Speaker', a.isHr && 'HR / Admin', !a.seated && 'Not seated'].filter(Boolean).join(' · ') || 'Attendee'}</span>
+                      {a.emp
+                        ? <span onClick={(ev2) => { ev2.stopPropagation(); setModal(a.emp); }} style={{ fontSize: 11.5, color: b ? b.color : '#A8AEC4', textDecoration: 'underline', textUnderlineOffset: 3 }}>{a.emp.team}{b ? ` · ${b.label}` : ''}</span>
+                        : <span style={{ fontSize: 11.5, color: '#5C6178' }}>Not tracked</span>}
+                    </div>
+                    {isOpen && (
+                      <div style={{ padding: '12px 18px 16px', borderBottom: '1px solid rgba(255,255,255,0.05)', background: 'rgba(255,255,255,0.015)', fontSize: 12.5, color: '#A8AEC4', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                        {a.bio || 'No bio submitted.'}
+                      </div>
+                    )}
+                  </Fragment>
+                );
+              })}
+              {!shown.length && <div style={{ padding: 18, fontSize: 12.5, color: '#6E7488' }}>No attendees match.</div>}
+            </div>
+            <div style={{ fontSize: 11.5, color: '#6E7488' }}>Click a row for the attendee's bio. “Dashboard” links to their employee record when their email matches an employee here.</div>
+          </div>
+        );
+      })}
     </div>
   );
 }
