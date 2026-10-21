@@ -518,6 +518,40 @@ function describeTrend(metric, trend, avg, fmtVal) {
 // (hover any dot for its month and number); shaded blocks = the months being
 // compared; dashed lines = the straight-line trend through each block, each
 // labelled with what it is doing per month.
+// The numbers behind one appraisal comparison, as a plain month-by-month
+// table: only the months that were compared (before and after the appraisal),
+// then the average before, the average after and the change.
+function AppraisalDataTable({ series, metric, win, change, fmtVal }) {
+  const inRange = (r) => series.filter((s) => s.idx >= r[0] && s.idx <= r[1]);
+  const rows = [...inRange(win.before).map((s) => ({ ...s, period: 'Before' })), ...inRange(win.after).map((s) => ({ ...s, period: 'After' }))];
+  const arrow = change ? (change.delta > 0 ? '▲' : change.delta < 0 ? '▼' : '=') : '';
+  const better = change && change.delta !== 0 && (metric.good === 'up' ? change.delta > 0 : change.delta < 0);
+  const color = !change || change.delta === 0 ? '#8A90A8' : better ? '#5EEAD4' : '#F87171';
+  const cell = { padding: '8px 14px', fontSize: 12.5 };
+  return (
+    <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 12, overflow: 'hidden' }}>
+      <div style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.03)', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
+        <span style={{ fontWeight: 600, fontSize: 13 }}>{metric.label}</span>
+        {change && <span className="mono" style={{ fontSize: 12, color }}>{fmtVal(metric.kind, change.before)} → {fmtVal(metric.kind, change.after)} · {arrow} {change.pct != null ? `${Math.abs(Math.round(change.pct))}%` : (change.delta === 0 ? 'no change' : 'from 0')}</span>}
+      </div>
+      {rows.length === 0
+        ? <div style={{ ...cell, color: '#6E7488' }}>Not enough monthly history for {metric.label}.</div>
+        : (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr' }}>
+            {['Month', 'Period', 'Value'].map((h) => <div key={h} className="mono" style={{ ...cell, fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)', textAlign: h === 'Value' ? 'right' : 'left' }}>{h}</div>)}
+            {rows.map((s) => (
+              <Fragment key={s.idx}>
+                <div style={{ ...cell, color: '#C7CBDA' }}>{s.label}</div>
+                <div style={{ ...cell, color: s.period === 'Before' ? '#F59E0B' : '#5EEAD4' }}>{s.period}</div>
+                <div className="mono" style={{ ...cell, textAlign: 'right', color: '#E4E6F0' }}>{fmtVal(metric.kind, s.value)}</div>
+              </Fragment>
+            ))}
+          </div>
+        )}
+    </div>
+  );
+}
+
 function AppraisalChart({ series, metric, appraisalDate, win, change, fmtVal }) {
   const [hover, setHover] = useState(null);
   const W = 640, H = 262, PL = 58, PR = 16, PT = 54, PB = 30;
@@ -646,18 +680,11 @@ function AnalysisModal({ emp, months, onClose, onOpenEmployee }) {
           <div style={{ fontSize: 13, color: '#C7CBDA', lineHeight: 1.6, border: '1px solid rgba(255,255,255,0.09)', borderRadius: 12, padding: '12px 16px', background: 'rgba(99,102,241,0.07)' }}>
             {results.length === 0 ? 'There is not enough history before or after the appraisal to compare.' : <>In short: <b style={{ color: '#5EEAD4' }}>{better} measure{better === 1 ? '' : 's'} gained</b>, <b style={{ color: '#F87171' }}>{worse} dipped</b>{results.length - better - worse > 0 ? `, ${results.length - better - worse} unchanged` : ''} after the appraisal.</>}
           </div>
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 11.5, color: '#8A90A8', alignItems: 'center' }}>
-            <span><span style={{ display: 'inline-block', width: 18, height: 3, background: '#A5A7FA', verticalAlign: 'middle', marginRight: 6 }} />monthly value (hover a dot)</span>
-            <span><span style={{ display: 'inline-block', width: 12, height: 10, background: 'rgba(245,158,11,0.35)', verticalAlign: 'middle', marginRight: 6 }} />months compared — before</span>
-            <span><span style={{ display: 'inline-block', width: 12, height: 10, background: 'rgba(20,184,166,0.35)', verticalAlign: 'middle', marginRight: 6 }} />months compared — after</span>
-            <span><span style={{ display: 'inline-block', width: 18, height: 0, borderTop: '2px dashed #F472B6', verticalAlign: 'middle', marginRight: 6 }} />appraisal date</span>
-            <span><span style={{ display: 'inline-block', width: 18, height: 0, borderTop: '3px dashed #F59E0B', verticalAlign: 'middle', marginRight: 6 }} />trend line (straight line fitted through the compared months)</span>
-          </div>
           {metrics.map((mt) => (
-            <AppraisalChart key={mt.key} series={metricSeries(emp, mt.key)} metric={mt} appraisalDate={impact.appraisalDate} win={win} change={impact.metrics[mt.key]} fmtVal={fmtVal} />
+            <AppraisalDataTable key={mt.key} series={metricSeries(emp, mt.key)} metric={mt} win={win} change={impact.metrics[mt.key]} fmtVal={fmtVal} />
           ))}
           <div style={{ fontSize: 11.5, color: '#6E7488', lineHeight: 1.5 }}>
-            The appraisal month itself is left out of the comparison, and only completed months are used.
+            The appraisal month itself is left out, and only completed months are used.
           </div>
           <div onClick={onOpenEmployee} style={{ cursor: 'pointer', color: '#A5A7FA', fontSize: 12.5, textDecoration: 'underline', textUnderlineOffset: 3, width: 'fit-content' }}>Open full employee record</div>
         </div>
@@ -713,13 +740,13 @@ function AppraisalImpactView({ employees, setModal }) {
     if (!better && !worse) return { label: 'No change', color: '#8A90A8' };
     if (better && !worse) return { label: 'Gain', color: '#5EEAD4' };
     if (worse && !better) return { label: 'Dip', color: '#F87171' };
-    return { label: `Mixed · ${better} gain, ${worse} dip`, color: '#F59E0B' };
+    return { label: 'Mixed', color: '#F59E0B' };
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <div style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(99,102,241,0.06)', borderRadius: 14, padding: '14px 18px', fontSize: 12.5, color: '#A8AEC4', lineHeight: 1.6 }}>
-        How delivery changed after each person's latest appraisal. The same number of full months is compared before and after (the appraisal month itself is left out, and only completed months count). A cell shows <span style={{ color: '#C7CBDA' }}>before → after</span> and the change; green is a gain, red a dip (for negative feedback, more of it is the dip). “—” means there is not enough history on one side. Only the appraisal date is used (salary is encrypted at source and not shown). Click a row for the chart and trend lines.
+        Monthly average <span style={{ color: '#C7CBDA' }}>before → after</span> each person's latest appraisal, over the same number of full months. Green is a gain, red a dip (for negative feedback, more is a dip). Click a row to see the month-by-month numbers.
       </div>
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
