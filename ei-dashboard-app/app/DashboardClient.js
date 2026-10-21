@@ -680,7 +680,10 @@ function AppraisalImpactView({ employees, setModal }) {
   const rows = employees
     .filter((e) => e.active && e.team === team)
     .map((e) => ({ e, r: computeAppraisalImpact(e, months) }))
-    .filter(({ r }) => r && !r.tooRecent);
+    // Only people appraised at least `months` full months ago, so the 3-month
+    // view excludes anyone appraised in the last 3 months (the window would
+    // otherwise shrink to fewer months for them). Cards below count this list.
+    .filter(({ r }) => r && !r.tooRecent && r.k === months);
   const q = search.trim().toLowerCase();
   const shown = rows.filter(({ e }) => !q || e.name.toLowerCase().includes(q));
   // Sort by the first metric's change (NR for Sales, utilization for Trainer).
@@ -698,7 +701,7 @@ function AppraisalImpactView({ employees, setModal }) {
     const list = rows.map(({ r }) => r.metrics[m.key]).filter(Boolean);
     return { m, total: list.length, up: list.filter((c) => c.delta > 0).length, down: list.filter((c) => c.delta < 0).length };
   });
-  const tooRecent = employees.filter((e) => e.active && e.team === team).filter((e) => computeAppraisalImpact(e, months)?.tooRecent).length;
+  const tooRecent = employees.filter((e) => e.active && e.team === team).filter((e) => { const r = computeAppraisalImpact(e, months); return r && (r.tooRecent || r.k < months); }).length;
   const fmtDay = (d) => { const [y, m, day] = d.split('-'); return `${day} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m) - 1]} ${y}`; };
   const chip = (active, label, onClick) => (
     <div key={label} onClick={onClick} style={{ cursor: 'pointer', border: `1px solid ${active ? 'rgba(99,102,241,0.5)' : 'rgba(255,255,255,0.1)'}`, background: active ? 'rgba(99,102,241,0.14)' : 'transparent', color: active ? '#A5A7FA' : '#8A90A8', borderRadius: 10, padding: '9px 14px', fontSize: 13 }}>{label}</div>
@@ -724,7 +727,7 @@ function AppraisalImpactView({ employees, setModal }) {
         <span style={{ width: 10 }} />
         <span style={{ fontSize: 12, color: '#8A90A8' }}>Compare</span>
         {[3, 6].map((n) => chip(months === n, `${n} months`, () => setMonths(n)))}
-        <span style={{ fontSize: 12, color: '#6E7488' }}>before vs after (or fewer if the appraisal is more recent)</span>
+        <span style={{ fontSize: 12, color: '#6E7488' }}>before vs after — only people appraised at least this many months ago</span>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(${metrics.length},1fr)`, gap: 10 }}>
@@ -780,7 +783,7 @@ function AppraisalImpactView({ employees, setModal }) {
         {!shown.length && <div style={{ padding: 18, fontSize: 12.5, color: '#6E7488' }}>No one in this view has a completed month after their appraisal yet.</div>}
       </div>
       {detail && <AnalysisModal emp={detail} months={months} onClose={() => setDetail(null)} onOpenEmployee={() => { setModal(detail); setDetail(null); }} />}
-      {tooRecent > 0 && <div style={{ fontSize: 11.5, color: '#6E7488' }}>{tooRecent} {team === 'Trainer' ? 'trainers' : 'Sales employees'} not shown — appraised too recently for a completed month after it.</div>}
+      {tooRecent > 0 && <div style={{ fontSize: 11.5, color: '#6E7488' }}>{tooRecent} {team === 'Trainer' ? 'trainers' : 'Sales employees'} not shown — appraised less than {months} months ago.</div>}
     </div>
   );
 }
