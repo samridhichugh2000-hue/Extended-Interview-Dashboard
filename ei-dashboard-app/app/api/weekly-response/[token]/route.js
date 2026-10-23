@@ -14,7 +14,22 @@ function confirmationEmailHtml({ name, week, q1, a1, q2, a2 }) {
     </div>`;
 }
 
-export async function POST(request, { params }) {
+// An uncaught error here (e.g. the database refusing writes) used to come back
+// as an empty 500, which the form then failed to parse as JSON. Always answer
+// with JSON so the NJ sees a real message and can retry.
+export async function POST(request, ctx) {
+  try {
+    return await handlePost(request, ctx);
+  } catch (err) {
+    console.error('Weekly response submit failed:', err.message);
+    return NextResponse.json(
+      { ok: false, error: 'We could not save your response just now. Nothing was lost on your side — please try again in a few minutes.' },
+      { status: 503 },
+    );
+  }
+}
+
+async function handlePost(request, { params }) {
   const { token } = params;
   const body = await request.json().catch(() => null);
   const a1 = body?.a1?.trim();

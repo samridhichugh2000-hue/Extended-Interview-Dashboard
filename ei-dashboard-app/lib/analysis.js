@@ -98,11 +98,11 @@ export const ANALYSIS_METRICS = {
   ],
 };
 
-export function computeAppraisalImpact(e, maxMonths) {
-  const latest = (e.appraisalDetails || [])[0];
-  if (!latest?.appraisalDate) return null;
-  const win = appraisalWindow(latest.appraisalDate, maxMonths);
-  if (!win) return { appraisalDate: latest.appraisalDate, tooRecent: true };
+// The same before/after comparison around any dated event — an appraisal, an
+// RnR award, a PA or a PIP being issued (eventDate is 'YYYY-MM-DD').
+export function computeEventImpact(e, eventDate, maxMonths) {
+  const win = appraisalWindow(eventDate, maxMonths);
+  if (!win) return { eventDate, tooRecent: true };
   const doj = dojIdx(e.doj);
   const metrics = {};
   if (e.team === 'Sales') {
@@ -113,7 +113,41 @@ export function computeAppraisalImpact(e, maxMonths) {
     metrics.util = change(monthlyAvg(e.utilMonthlyDetails, 'util', win, doj));
     metrics.neg = change(eventRate(e.negFeedbackDetails, (x) => x.feedbackDate, FEED_START.negFeedback, win, doj, false));
   }
-  return { appraisalDate: latest.appraisalDate, k: win.k, metrics };
+  return { eventDate, k: win.k, metrics };
+}
+
+export function computeAppraisalImpact(e, maxMonths) {
+  const latest = (e.appraisalDetails || [])[0];
+  if (!latest?.appraisalDate) return null;
+  return computeEventImpact(e, latest.appraisalDate, maxMonths);
+}
+
+// pip_status.issued_on is a display string like '14 Oct 2026'.
+export function displayDateToIso(s) {
+  const m = /^(\d{1,2})\s+([A-Za-z]{3})[A-Za-z]*\s+(\d{4})$/.exec(String(s || '').trim());
+  if (!m) return null;
+  const mi = MON.indexOf(m[2].toLowerCase());
+  return mi < 0 ? null : `${m[3]}-${String(mi + 1).padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+}
+
+// The most recently issued PA or PIP ('PA' | 'PIP') -> { date, label } or null.
+export function latestPipEvent(e, type) {
+  const cases = (e.pipHistory || [])
+    .filter((p) => p.type === type)
+    .map((p) => ({ date: displayDateToIso(p.issuedOn), reviewBy: p.reviewBy }))
+    .filter((p) => p.date)
+    .sort((a, b) => b.date.localeCompare(a.date));
+  return cases[0] ? { date: cases[0].date, label: cases[0].reviewBy ? `review by ${cases[0].reviewBy}` : '' } : null;
+}
+
+// Awards are for the quarter just ended and handed out after it, so the event
+// is the 1st of the month after the quarter: the quarter's own months are the
+// "before" window, and the months from the award onwards are "after".
+export function rnrAwardDate(quarter, year) {
+  const q = Number(String(quarter).replace(/\D/g, ''));
+  if (!q) return null;
+  const idx = year * 12 + q * 3;
+  return `${Math.floor(idx / 12)}-${String((idx % 12) + 1).padStart(2, '0')}-01`;
 }
 
 // ---- chart data ----

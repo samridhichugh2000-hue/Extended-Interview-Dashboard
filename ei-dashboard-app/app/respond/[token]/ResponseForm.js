@@ -35,8 +35,10 @@ export default function ResponseForm({ token, q1, q2, hint1, hint2 }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ a1: a1.trim(), a2: a2.trim() }),
       });
-      const json = await res.json();
-      if (!res.ok || !json.ok) throw new Error(json.error || 'Submission failed.');
+      // A timeout or crash can return an empty/non-JSON body; don't let that
+      // surface as a raw "Unexpected end of JSON input".
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.ok) throw new Error(json.error || 'We could not save your response just now. Please try again in a few minutes.');
       setState('done');
     } catch (err) {
       setError(err.message);

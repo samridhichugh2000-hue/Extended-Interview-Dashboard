@@ -107,7 +107,7 @@ export const TITLES = {
   papip: ['PA / PIP Detection', 'Every open case, grouped by department'],
   paalgo: ['PA Algo', 'Proposed PA/PIP candidacy, not issued — Trainer (salary-tier and delivery-based) or Sales (Net Revenue-based).'],
   worryindex: ['Worry Index', 'How every signal is scored, and where every NJ lands · 2026-W30'],
-  analysis: ['Analysis', 'What changed after each appraisal — Sales NR and SCs, Trainer utilization and negative feedback'],
+  analysis: ['Analysis', 'What changed after each appraisal, RnR award, PA and PIP — Sales NR and SCs, Trainer utilization and negative feedback'],
   graphcalls: ['Graph API Calls', "Sales' Teams meetings via Microsoft Graph — join timing and audio/video quality. Not yet feeding the Worry Index."],
   reports: ['Reports', 'Weekly and 15-day reporting'],
 };
