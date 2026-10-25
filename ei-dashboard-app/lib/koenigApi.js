@@ -95,3 +95,26 @@ export function classifySection(department) {
   if (department === 'HR - Talent acquisition') return 'Recruitment Team';
   return 'PT Team';
 }
+
+// Interviews created by one recruiter between `from` and `to` (YYYY-MM-DD),
+// apikey 468. Returns [{ date: 'YYYY-MM-DDTHH:mm:ss', interviewer }]. Same
+// stale-token retry as getNewJoiners.
+export async function getRecruiterInterviews(empCode, from, to) {
+  let json;
+  for (let attempt = 1; ; attempt++) {
+    const token = await getToken({ forceRefresh: attempt > 1 });
+    const url = `${BASE_URL}/api/Kites/Operator/common?apikey=468&accessToken=${encodeURIComponent(token.accessToken)}&deviceToken=${encodeURIComponent(token.deviceToken)}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ EmpCode: Number(empCode), StartDate: from, EndDate: to }),
+    });
+    if (!res.ok) throw new Error(`Koenig recruiter interviews API failed: ${res.status} ${res.statusText}`);
+    json = await res.json();
+    if (json.statuscode === 200) break;
+    if (attempt >= 4) throw new Error(`Koenig recruiter interviews API error: ${json.message}`);
+    await new Promise((r) => setTimeout(r, 500 * attempt + Math.random() * 1500));
+  }
+  const rows = typeof json.content === 'string' ? JSON.parse(json.content) : (json.content ?? []);
+  return rows.map((r) => ({ date: r.Date, interviewer: r.Interviewers }));
+}

@@ -142,6 +142,8 @@ export async function getEmployees() {
       kgtDetails: e.kgt_details ? JSON.parse(e.kgt_details) : [],
       fmInterviewsCount: e.fm_interviews_count,
       fmInterviewsDetails: e.fm_interviews_details ? JSON.parse(e.fm_interviews_details) : [],
+      recruiterInterviewsCount: e.recruiter_interviews_count,
+      recruiterInterviewsDetails: e.recruiter_interviews_details ? JSON.parse(e.recruiter_interviews_details) : [],
       mgrFeedbackCount: e.mgr_feedback_count,
       mgrFeedbackDetails: e.mgr_feedback_details ? JSON.parse(e.mgr_feedback_details) : [],
       unrepliedEmailCount: e.unreplied_email_count,

@@ -37,6 +37,7 @@ const SCRIPTS = [
   'sync-polls.mjs',
   'sync-kgt.mjs',
   'sync-fminterviews.mjs',
+  'sync-recruiterinterviews.mjs',
   'sync-mgrfeedback.mjs',
   'sync-ideas.mjs',
   'sync-salary.mjs',

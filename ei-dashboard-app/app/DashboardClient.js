@@ -1337,6 +1337,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
   const [pollsModal, setPollsModal] = useState(null);
   const [kgtModal, setKgtModal] = useState(null);
   const [fmInterviewsModal, setFmInterviewsModal] = useState(null);
+  const [recruiterInterviewsModal, setRecruiterInterviewsModal] = useState(null);
   const [ideasModal, setIdeasModal] = useState(null);
   const deptEmpAllTenure = employees.filter((e) => e.team === dept);
   // New Joiners only (default) vs every tracked employee in this dept —
@@ -1381,7 +1382,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
   const baseHeads = METRIC_HEADS[dept] || METRIC_HEADS.Sales;
   const mh = dept === 'Sales' ? [...baseHeads, 'Neg. Audits', 'SCs Raised', 'Tech Calls', 'Shoddy Log', 'Mgr Feedback', 'Polls', 'KGT', 'Ideas', 'Video On', 'Common Index']
     : dept === 'Trainer' ? [...baseHeads, 'Exams', 'Neg. Feedback', 'Assignments', 'Skills', 'In-House Skills', 'Tech Calls', 'TBTs', 'Shoddy Log', 'Mgr Feedback', 'Polls', 'KGT', 'Ideas', 'Video On', 'Common Index']
-    : [...baseHeads, 'Shoddy Log', ...(dept === 'FM Team' ? ['Interviews'] : []), 'Mgr Feedback', 'Polls', 'KGT', 'Ideas', 'Video On', 'Common Index'];
+    : [...baseHeads, 'Shoddy Log', ...(dept === 'FM Team' ? ['Interviews'] : dept === 'Recruitment Team' ? recruiterMonths().map((m) => m.label) : []), 'Mgr Feedback', 'Polls', 'KGT', 'Ideas', 'Video On', 'Common Index'];
   const rows = filtered.map((e) => {
     const d = decorate(e);
     const cells = baseHeads.map((_, i) => ({
@@ -1467,6 +1468,16 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
         color: e.active === false ? '#6E7488' : (e.fmInterviewsCount > 0 ? '#5EEAD4' : '#6E7488'),
         onClick: e.active !== false && e.fmInterviewsCount > 0 ? () => setFmInterviewsModal(e) : null,
       });
+    }
+    if (dept === 'Recruitment Team') {
+      for (const m of recruiterMonths()) {
+        const n = e.recruiterInterviewsCount == null ? null : e.recruiterInterviewsDetails.filter((d) => d.date.startsWith(m.key)).reduce((sum, d) => sum + d.count, 0);
+        cells.push({
+          value: e.active === false || n == null ? '—' : n,
+          color: e.active === false ? '#6E7488' : (n > 0 ? '#5EEAD4' : '#6E7488'),
+          onClick: e.active !== false && n > 0 ? () => setRecruiterInterviewsModal({ emp: e, month: m }) : null,
+        });
+      }
     }
     cells.push({
       value: e.active === false ? '—' : (e.mgrFeedbackCount ?? '—'),
@@ -1591,6 +1602,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
       {videoModal && <VideoModal emp={videoModal} onClose={() => setVideoModal(null)} />}
       {pollsModal && <PollsModal emp={pollsModal} onClose={() => setPollsModal(null)} />}
       {fmInterviewsModal && <FmInterviewsModal emp={fmInterviewsModal} onClose={() => setFmInterviewsModal(null)} />}
+      {recruiterInterviewsModal && <RecruiterInterviewsModal emp={recruiterInterviewsModal.emp} month={recruiterInterviewsModal.month} onClose={() => setRecruiterInterviewsModal(null)} />}
       {kgtModal && <KgtModal emp={kgtModal} onClose={() => setKgtModal(null)} />}
       {ideasModal && <IdeasModal emp={ideasModal} onClose={() => setIdeasModal(null)} />}
       {examModal && <ExamSummaryModal emp={examModal} onClose={() => setExamModal(null)} />}
@@ -1804,6 +1816,53 @@ function FmInterviewsModal({ emp, onClose }) {
                 {Object.entries(d.by_source || {}).map(([s, n]) => `${FM_SOURCE_LABELS[s] || s}: ${n}`).join(' · ')}
               </span>
               <span style={{ color: '#5EEAD4', fontWeight: 600 }}>{d.count}</span>
+            </div>
+          ))}
+          {!days.length && <div style={{ fontSize: 12.5, color: '#6E7488' }}>No interviews on file.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Trailing 6 calendar months, oldest first, matching the sync window in
+// syncRecruiterInterviews: key 'YYYY-MM' matches the detail dates, label is 'Jun 26'.
+function recruiterMonths() {
+  const now = new Date();
+  const out = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    out.push({ key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, label: `${d.toLocaleString('en-US', { month: 'short' })} ${String(d.getFullYear()).slice(2)}` });
+  }
+  return out;
+}
+
+// Interviews created by a recruiter: per-day groups listing each interview's
+// slot time and interviewer, since this feed (unlike FM's) returns
+// individual rows rather than daily counts.
+function RecruiterInterviewsModal({ emp, month, onClose }) {
+  const days = emp.recruiterInterviewsDetails.filter((d) => d.date.startsWith(month.key)).sort((a, b) => (a.date < b.date ? 1 : -1));
+  const total = days.reduce((sum, d) => sum + d.count, 0);
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 560, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — Interviews</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>{total} interview{total === 1 ? '' : 's'} created in {month.label}</div>
+          </div>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+        </div>
+        <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {days.map((d) => (
+            <div key={d.date} style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 12, padding: '12px 16px', fontSize: 12.5 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: '#C7CBDA' }}>{d.date}</span>
+                <span style={{ color: '#5EEAD4', fontWeight: 600 }}>{d.count}</span>
+              </div>
+              <div style={{ color: '#8A90A8', marginTop: 6, lineHeight: 1.6 }}>
+                {d.interviews.map((i, k) => <div key={k}>{i.time} · {i.interviewer}</div>)}
+              </div>
             </div>
           ))}
           {!days.length && <div style={{ fontSize: 12.5, color: '#6E7488' }}>No interviews on file.</div>}

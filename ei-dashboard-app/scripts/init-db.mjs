@@ -73,6 +73,8 @@ for (const stmt of [
   'ALTER TABLE employees ADD COLUMN polls_details TEXT',
   'ALTER TABLE employees ADD COLUMN fm_interviews_count INTEGER',
   'ALTER TABLE employees ADD COLUMN fm_interviews_details TEXT',
+  'ALTER TABLE employees ADD COLUMN recruiter_interviews_count INTEGER',
+  'ALTER TABLE employees ADD COLUMN recruiter_interviews_details TEXT',
   'ALTER TABLE employees ADD COLUMN in_house_skills_count INTEGER',
   'ALTER TABLE employees ADD COLUMN in_house_skills_details TEXT',
   'ALTER TABLE employees ADD COLUMN mgr_feedback_count INTEGER',

@@ -1202,7 +1202,52 @@ export async function syncFmInterviews() {
   return { message: `Synced interviews for ${statements.length} FMs (${withInterviews} had interviews in the last ${FM_INTERVIEWS_LOOKBACK_DAYS} days, ${noEmail} had no email on file).` };
 }
 
-const GRAPH_MEETINGS_LOOKBACK_DAYS = Number(process.env.GRAPH_MEETINGS_LOOKBACK_DAYS || 7);
+// Interviews created per recruiter over the trailing 6 calendar months (the
+// first of the month five months back, up to today) from the Koenig common
+// API, one call per active Recruitment Team member keyed by emp code. Details
+// are grouped per day with the slot time and interviewer of each interview.
+export async function syncRecruiterInterviews() {
+  const db = getDb();
+  const { getRecruiterInterviews } = await import('./koenigApi.js');
+
+  const istDay = (offsetDays) => new Date(Date.now() + 330 * 60000 - offsetDays * 86400000).toISOString().slice(0, 10);
+  const to = istDay(0);
+  const [y, m] = to.split('-').map(Number);
+  const first = new Date(Date.UTC(y, m - 1 - 5, 1));
+  const from = first.toISOString().slice(0, 10);
+
+  const recruiters = await db.execute("SELECT id FROM employees WHERE team = 'Recruitment Team' AND active = 1");
+  let withInterviews = 0;
+  let failed = 0;
+  const statements = [];
+  for (const rec of recruiters.rows) {
+    let rows;
+    try {
+      rows = await getRecruiterInterviews(String(rec.id).replace('EMP', ''), from, to);
+    } catch {
+      failed++;
+      continue;
+    }
+    const byDay = new Map();
+    for (const r of rows) {
+      const day = String(r.date).slice(0, 10);
+      if (!byDay.has(day)) byDay.set(day, { date: day, count: 0, interviews: [] });
+      const d = byDay.get(day);
+      d.count++;
+      d.interviews.push({ time: String(r.date).slice(11, 16), interviewer: r.interviewer });
+    }
+    if (rows.length) withInterviews++;
+    statements.push({
+      sql: 'UPDATE employees SET recruiter_interviews_count = ?, recruiter_interviews_details = ? WHERE id = ?',
+      args: [rows.length, JSON.stringify([...byDay.values()]), rec.id],
+    });
+  }
+  if (statements.length) await db.batch(statements, 'write');
+
+  return { message: `Synced interviews for ${statements.length} recruiters (${withInterviews} had interviews since ${from}, ${failed} failed).` };
+}
+
+const GRAPH_MEETINGS_LOOKBACK_DAYS =Number(process.env.GRAPH_MEETINGS_LOOKBACK_DAYS || 7);
 
 // A recurring/reconvened meeting keeps the same onlineMeetingId across every
 // occurrence, so attendanceReports for it can span weeks/months of past
@@ -1937,6 +1982,7 @@ export const SYNC_RUNNERS = {
   polls: syncPolls,
   kgt: syncKgt,
   fminterviews: syncFmInterviews,
+  recruiterinterviews: syncRecruiterInterviews,
   mgrfeedback: syncMgrFeedback,
   ideas: syncIdeas,
   salary: syncSalary,

@@ -53,6 +53,8 @@ CREATE TABLE IF NOT EXISTS employees (
   kgt_details TEXT,              -- JSON array of {kgt_id, topic, department, submitted_at, release_date, closure_date}
   fm_interviews_count INTEGER,   -- interviews scheduled in the last 30 days (FM Team only), from the Outreach Dashboard scheduled-calls API. 0 means none in the window.
   fm_interviews_details TEXT,    -- JSON array of {date, count, by_source:{naukri_outreach,linkedin,enquiry}}
+  recruiter_interviews_count INTEGER,   -- interviews created in the trailing 6 calendar months (Recruitment Team only), from Koenig common API apikey 468.
+  recruiter_interviews_details TEXT,    -- JSON array of {date, count, interviews:[{time, interviewer}]}
   mgr_feedback_count INTEGER,    -- count of manager feedback entries on file (All teams)
   mgr_feedback_details TEXT,     -- JSON array of {managerEmpCode, managerName, strength, improvement, other, date}
   meetings_count INTEGER,        -- count of Teams meetings tracked from the rep's calendar (Sales only, via Graph API Calls)
