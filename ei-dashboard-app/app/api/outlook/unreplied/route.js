@@ -26,16 +26,16 @@ export async function GET(request) {
   try {
     const saved = live ? null : await loadUnreplied(emp.id);
     if (saved) {
-      return NextResponse.json({ ...base, source: 'saved', syncedAt: emp.unreplied_synced_at, unrepliedCount: saved.unreplied.length, unreplied: saved.unreplied, notNeeded: saved.notNeeded });
+      return NextResponse.json({ ...base, source: 'saved', syncedAt: emp.unreplied_synced_at, unrepliedCount: saved.unreplied.length, unreplied: saved.unreplied, needsReview: saved.needsReview, notNeeded: saved.notNeeded });
     }
-    const { threadsConsidered, eligibleMessages, unreplied, notNeeded } = await getUnrepliedThreads(emp.email);
+    const { threadsConsidered, eligibleMessages, unreplied, notNeeded, needsReview } = await getUnrepliedThreads(emp.email, { employee: emp });
     const syncedAt = new Date().toISOString();
-    await saveUnreplied(emp.id, unreplied, notNeeded);
+    await saveUnreplied(emp.id, unreplied, notNeeded, needsReview);
     await db.execute({
-      sql: 'UPDATE employees SET unreplied_email_count = ?, unreplied_email_total = ?, unreplied_synced_at = ? WHERE id = ?',
-      args: [unreplied.length, threadsConsidered, syncedAt, emp.id],
+      sql: 'UPDATE employees SET unreplied_email_count = ?, unreplied_review_count = ?, unreplied_email_total = ?, unreplied_synced_at = ? WHERE id = ?',
+      args: [unreplied.length, needsReview.length, threadsConsidered, syncedAt, emp.id],
     });
-    return NextResponse.json({ ...base, source: 'live', syncedAt, threadsConsidered, eligibleMessages, unrepliedCount: unreplied.length, unreplied, notNeeded });
+    return NextResponse.json({ ...base, source: 'live', syncedAt, threadsConsidered, eligibleMessages, unrepliedCount: unreplied.length, unreplied, needsReview, notNeeded });
   } catch (err) {
     return NextResponse.json({ ok: false, error: err.message }, { status: err.status || 500 });
   }

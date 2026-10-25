@@ -1,14 +1,16 @@
 import { graphFetch } from './graphAuth.js';
 import { isExcludedMeeting } from './meetingFilters.js';
-import { classifyEmail, getCachedClassifications } from './classifyEmail.js';
+import { judgeEmailThread, getCachedVerdicts } from './judgeEmailThread.js';
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 
-export const UNREPLIED_LOOKBACK_DAYS = Number(process.env.UNREPLIED_LOOKBACK_DAYS || 14);
-// A mail only counts as "not responded" once 7 full calendar days have passed
-// without a reply (weekends included — plain elapsed time, no business-day
-// math). The lookback must exceed this, so with 14 days the window is mail
-// received 7-14 days ago that is now overdue.
+export const UNREPLIED_LOOKBACK_DAYS = Number(process.env.UNREPLIED_LOOKBACK_DAYS || 30);
+// A request only counts as "not responded" once 7 full calendar days have
+// passed since it was received/assigned without a meaningful response from the
+// employee (weekends included — plain elapsed time, no business-day math). The
+// 7 days run from the FIRST request the employee has not answered, so a
+// reminder or follow-up never resets them. The lookback must exceed this, so
+// with 30 days the window is requests received 7-30 days ago.
 export const UNREPLIED_GRACE_HOURS = Number(process.env.UNREPLIED_GRACE_HOURS || 168);
 
 async function* pages(url) {
@@ -107,34 +109,88 @@ function isRealPerson(address) {
 }
 
 
-const CLASSIFY_PARALLEL = 4;
+const JUDGE_PARALLEL = 3;
+const MAX_THREAD_MESSAGES = 10;
+
 // Newest part of a message only: the plain-text body cut at the first quoted
 // reply header ("From: … Sent: …", "On … wrote:", "-----Original Message-----").
-async function fetchLatestText(user, id) {
-  const res = await graphFetch(`${user}/messages/${encodeURIComponent(id)}?$select=body`, { headers: { Prefer: 'outlook.body-content-type="text"' } });
-  if (!res.ok) return '';
-  const body = (await res.json()).body?.content || '';
-  const cut = body.search(/\r?\n\s*(From:\s.+|On .{5,120} wrote:|-{3,}\s*Original Message\s*-{3,})/i);
-  return (cut > 40 ? body.slice(0, cut) : body).replace(/\s+/g, ' ').trim();
+function latestPart(body, max) {
+  const text = body || '';
+  const cut = text.search(/\r?\n\s*(From:\s.+|On .{5,120} wrote:|-{3,}\s*Original Message\s*-{3,})/i);
+  return (cut > 40 ? text.slice(0, cut) : text).replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
-// Threads in `email`'s Inbox (last UNREPLIED_LOOKBACK_DAYS days, older than
-// the grace period) that were addressed to them directly and that they have
-// not replied to. A thread counts as replied once any item in their Sent
-// Items shares its conversationId and was sent after the latest eligible
-// inbound message. Nothing is stored — callers keep only the counts.
-export async function getUnrepliedThreads(email, { days = UNREPLIED_LOOKBACK_DAYS, graceHours = UNREPLIED_GRACE_HOURS } = {}) {
+// Every message of one conversation in this mailbox (Inbox, Sent Items and any
+// other folder), oldest first, as a plain-text transcript for the judge.
+async function buildTranscript(user, me, conversationId, clockMessageId) {
+  const url = `${user}/messages?` + new URLSearchParams({
+    $filter: `conversationId eq '${conversationId.replace(/'/g, "''")}'`,
+    $select: 'id,from,toRecipients,ccRecipients,sentDateTime,receivedDateTime,isDraft,body,subject',
+    $top: '50',
+  });
+  const headers = { Prefer: 'outlook.body-content-type="text"' };
+  const msgs = [];
+  let res = await graphFetch(url, { headers });
+  for (let attempt = 1; attempt <= 3 && [429, 502, 503, 504].includes(res.status); attempt++) {
+    await new Promise((r) => setTimeout(r, attempt * 1500));
+    res = await graphFetch(url, { headers });
+  }
+  if (!res.ok) { const err = new Error(`thread fetch failed: ${res.status}`); err.status = res.status; throw err; }
+  let json = await res.json();
+  msgs.push(...(json.value || []));
+  while (json['@odata.nextLink'] && msgs.length < 100) {
+    const r = await graphFetch(json['@odata.nextLink'], { headers });
+    if (!r.ok) break;
+    json = await r.json();
+    msgs.push(...(json.value || []));
+  }
+  const live = msgs.filter((m) => !m.isDraft).sort((a, b) => (a.sentDateTime || a.receivedDateTime || '').localeCompare(b.sentDateTime || b.receivedDateTime || ''));
+  // Keep the newest messages, but never drop the request that starts the clock.
+  let kept = live.slice(-MAX_THREAD_MESSAGES);
+  const clockMsg = live.find((m) => m.id === clockMessageId);
+  if (clockMsg && !kept.includes(clockMsg)) kept = [clockMsg, ...kept.slice(1)];
+  return kept.map((m) => {
+    const sender = (m.from?.emailAddress?.address || '').toLowerCase();
+    const dir = sender === me ? 'SENT BY EMPLOYEE' : 'RECEIVED';
+    const addrs = (list) => (list || []).map((r) => r.emailAddress?.address).filter(Boolean).join(', ') || '-';
+    const mark = m.id === clockMessageId ? '  [REQUEST CLOCK STARTS HERE]' : '';
+    return `--- ${dir} | ${(m.sentDateTime || m.receivedDateTime || '').slice(0, 16).replace('T', ' ')} UTC | From: ${m.from?.emailAddress?.name || sender} <${sender}> | To: ${addrs(m.toRecipients)} | Cc: ${addrs(m.ccRecipients)}${mark}\n${latestPart(m.body?.content, m.id === clockMessageId ? 1800 : 1100)}`;
+  }).join('\n\n');
+}
+
+// Request-level check of `email`'s mailbox (last UNREPLIED_LOOKBACK_DAYS days).
+//   1. Candidates: mail addressed to them directly (To, not Cc / not a list they
+//      merely belong to — so hunt-group mail is never assigned to a person
+//      automatically), minus automated / promotional / system mail.
+//   2. Per conversation, the 7-day clock starts at the FIRST such request after
+//      their last sent message in that conversation. Reminders don't reset it,
+//      and a conversation they have since replied to has no open request.
+//   3. Each conversation whose open request is more than 7 days old is judged
+//      on its WHOLE thread (received + sent) by judgeEmailThread: unanswered /
+//      answered / not_actionable / needs_review. Only "unanswered" is counted;
+//      "needs_review" is listed separately and never counted. Nothing is stored
+//      except subject/sender/date/verdict — callers keep only the counts.
+export async function getUnrepliedThreads(email, { days = UNREPLIED_LOOKBACK_DAYS, graceHours = UNREPLIED_GRACE_HOURS, employee = null } = {}) {
   const me = email.toLowerCase();
   const from = new Date(Date.now() - days * 864e5).toISOString();
   const cutoff = Date.now() - graceHours * 36e5;
   const user = `${GRAPH_BASE}/users/${encodeURIComponent(email)}`;
+  const emp = employee || { id: me, name: email.split('@')[0], email };
 
   const sentByConversation = new Map();
   const sentUrl = `${user}/mailFolders/sentitems/messages?` + new URLSearchParams({
-    $filter: `sentDateTime ge ${from}`, $select: 'conversationId,sentDateTime', $top: '100',
+    $filter: `sentDateTime ge ${from}`, $select: 'conversationId,sentDateTime,subject,toRecipients,ccRecipients', $top: '100',
   });
+  // Every sent item (when, subject, who to): a reply written as a NEW email to
+  // the same person — not in the original conversation — still counts as a
+  // response, so the judge is shown those too.
+  const sentItems = [];
   for await (const page of pages(sentUrl)) {
     for (const m of page) {
+      sentItems.push({
+        conv: m.conversationId, at: m.sentDateTime, subject: m.subject || '(no subject)',
+        to: new Set([...(m.toRecipients || []), ...(m.ccRecipients || [])].map((r) => (r.emailAddress?.address || '').toLowerCase())),
+      });
       if (!m.conversationId) continue;
       if (!sentByConversation.has(m.conversationId) || m.sentDateTime > sentByConversation.get(m.conversationId)) {
         sentByConversation.set(m.conversationId, m.sentDateTime);
@@ -163,87 +219,114 @@ export async function getUnrepliedThreads(email, { days = UNREPLIED_LOOKBACK_DAY
     }
   }));
 
-  const latestByConversation = new Map();
+  // Eligible inbound requests per conversation, oldest first.
+  const inboundByConversation = new Map();
   let eligibleMessages = 0;
-  {
-    for (const m of inboxMessages) {
-      if (m.isDraft) continue;
-      const sender = (m.from?.emailAddress?.address || '').toLowerCase();
-      if (!sender || sender === me) continue;
-      if (!(m.toRecipients || []).some((r) => (r.emailAddress?.address || '').toLowerCase() === me)) continue; // CC-only / list mail
-      if (isAutomatedOrPromotional(m)) continue;
-      eligibleMessages++;
-      const key = m.conversationId || m.id;
-      const prev = latestByConversation.get(key);
-      if (!prev || m.receivedDateTime > prev.receivedDateTime) latestByConversation.set(key, m);
-    }
+  for (const m of inboxMessages) {
+    if (m.isDraft) continue;
+    const sender = (m.from?.emailAddress?.address || '').toLowerCase();
+    if (!sender || sender === me) continue;
+    if (!(m.toRecipients || []).some((r) => (r.emailAddress?.address || '').toLowerCase() === me)) continue; // CC-only / list mail
+    if (isAutomatedOrPromotional(m)) continue;
+    eligibleMessages++;
+    const key = m.conversationId || m.id;
+    if (!inboundByConversation.has(key)) inboundByConversation.set(key, []);
+    inboundByConversation.get(key).push(m);
   }
 
-  // Notification streams that slip past the per-message checks. Judged per
-  // sender over the whole window: (a) an internal address with no user account
-  // behind it is a group/shared mailbox, never a person; (b) a sender with
-  // many threads to this person, none ever answered, is a feed; (c) the same
-  // template (sender + first three subject words) over and over, never
-  // answered, is a notification, e.g. "New Lead from…", "Skill Level Update".
-  const bySender = new Map();
-  const byTemplate = new Map();
-  for (const [key, m] of latestByConversation) {
-    const sender = m.from.emailAddress.address.toLowerCase();
-    const repliedTo = sentByConversation.has(key) && sentByConversation.get(key) > m.receivedDateTime;
-    const s = bySender.get(sender) || { threads: 0, replied: 0 };
-    s.threads++; if (repliedTo) s.replied++;
-    bySender.set(sender, s);
-    const tkey = `${sender}|${templateKey(m.subject)}`;
-    const t = byTemplate.get(tkey) || { threads: 0, replied: 0 };
-    t.threads++; if (repliedTo) t.replied++;
-    byTemplate.set(tkey, t);
-  }
-  const dropped = new Set();
-  for (const [key, m] of latestByConversation) {
-    const sender = m.from.emailAddress.address.toLowerCase();
-    const s = bySender.get(sender);
-    const t = byTemplate.get(`${sender}|${templateKey(m.subject)}`);
-    if ((s.threads >= FEED_SENDER_MIN_THREADS && s.replied === 0) || (t.threads >= TEMPLATE_MIN_THREADS && t.replied === 0) || !(await isRealPerson(sender))) dropped.add(key);
-  }
-  for (const key of dropped) latestByConversation.delete(key);
-
-  const unreplied = [];
-  for (const [key, m] of latestByConversation) {
-    const replied = sentByConversation.get(key);
-    if (replied && replied > m.receivedDateTime) continue;
-    if (new Date(m.receivedDateTime).getTime() > cutoff) continue;
-    unreplied.push({
-      id: m.id,
-      subject: m.subject || '(no subject)',
-      fromName: m.from?.emailAddress?.name || null,
-      fromAddress: m.from?.emailAddress?.address || null,
-      to: (m.toRecipients || []).map((r) => r.emailAddress?.address).filter(Boolean),
-      cc: (m.ccRecipients || []).map((r) => r.emailAddress?.address).filter(Boolean),
-      receivedDateTime: m.receivedDateTime,
-      isRead: !!m.isRead,
-      preview: m.bodyPreview || '',
-      webLink: m.webLink || null,
+  // One entry per conversation: its open request (the first message after the
+  // employee's last sent one), or none if they have answered everything.
+  const conversations = [];
+  for (const [key, msgs] of inboundByConversation) {
+    msgs.sort((a, b) => a.receivedDateTime.localeCompare(b.receivedDateTime));
+    const lastSent = sentByConversation.get(key) || null;
+    const open = msgs.filter((m) => !lastSent || m.receivedDateTime > lastSent);
+    conversations.push({
+      key, lastSent, latest: msgs[msgs.length - 1], request: open[0] || null,
+      sender: (open[0] || msgs[0]).from.emailAddress.address.toLowerCase(),
     });
   }
-  // Read each thread's last message and keep only those that really need a
-  // reply — reports, "ok"/"thanks" and FYI mail are set aside (and shown
-  // separately in the live view), not counted.
-  const cached = await getCachedClassifications(unreplied.map((m) => m.id));
-  let nextItem = 0;
-  await Promise.all(Array.from({ length: Math.min(CLASSIFY_PARALLEL, unreplied.length) }, async () => {
-    while (nextItem < unreplied.length) {
-      const m = unreplied[nextItem++];
-      let verdict = cached.get(m.id);
-      if (!verdict) {
-        const text = await fetchLatestText(user, m.id).catch(() => '');
-        verdict = await classifyEmail({ id: m.id, subject: m.subject, from: m.fromAddress, text });
-      }
-      m.category = verdict.label;
-      m.categoryReason = verdict.reason;
+
+  // Notification streams that slip past the per-message checks: a sender with
+  // many threads to this person, none ever answered, or the same template
+  // (sender + first three subject words) over and over, never answered. These
+  // are not dropped blindly — a manager could send six unanswered tasks too —
+  // one representative is judged and the verdict decides for the whole stream.
+  const bySender = new Map();
+  const byTemplate = new Map();
+  for (const c of conversations) {
+    const answered = !c.request;
+    const s = bySender.get(c.sender) || { threads: 0, replied: 0 }; s.threads++; if (answered) s.replied++; bySender.set(c.sender, s);
+    const tkey = `${c.sender}|${templateKey(c.request?.subject || c.latest.subject)}`;
+    const t = byTemplate.get(tkey) || { threads: 0, replied: 0 }; t.threads++; if (answered) t.replied++; byTemplate.set(tkey, t);
+    c.tkey = tkey;
+  }
+  for (const c of conversations) {
+    const s = bySender.get(c.sender), t = byTemplate.get(c.tkey);
+    c.streamKey = (t.threads >= TEMPLATE_MIN_THREADS && t.replied === 0) ? c.tkey : (s.threads >= FEED_SENDER_MIN_THREADS && s.replied === 0) ? `sender|${c.sender}` : null;
+  }
+
+  const due = conversations.filter((c) => c.request && new Date(c.request.receivedDateTime).getTime() <= cutoff);
+  const cached = await getCachedVerdicts(emp.id);
+  // Mail the employee sent to the request's sender after it arrived, outside
+  // this conversation (a reply typed as a fresh email).
+  const otherSentTo = (c) => sentItems.filter((s) => s.conv !== c.key && s.at > c.request.receivedDateTime && s.to.has(c.sender)).sort((a, b) => a.at.localeCompare(b.at)).slice(-6);
+  const threadKey = (c) => `${c.latest.id}|${c.lastSent || ''}|${otherSentTo(c).length}`;
+  const unreadable = { verdict: 'needs_review', reason: 'Conversation could not be read — check manually', failed: true };
+
+  async function judge(c) {
+    const hit = cached.get(c.key);
+    if (hit && hit.lastMessageId === threadKey(c)) return { verdict: hit.verdict, reason: hit.reason };
+    let thread;
+    try { thread = await buildTranscript(user, me, c.key, c.request.id); } catch { return unreadable; }
+    if (!thread) return unreadable;
+    const requestFrom = c.request.from.emailAddress.name ? `${c.request.from.emailAddress.name} <${c.sender}>` : c.sender;
+    const sharedSender = !(await isRealPerson(c.sender));
+    // Reminder / notification mail from a group or system mailbox (e.g. "Reminder:
+    // interview starts in 15 minutes") announces an event, it does not ask for a reply.
+    if (sharedSender && /^(reminder|notification|alert|notice)\b/i.test((c.request.subject || '').trim())) return { verdict: 'not_actionable', reason: 'System reminder / notification from a group mailbox' };
+    const otherSent = otherSentTo(c).map((s) => `${s.at.slice(0, 16).replace('T', ' ')} UTC — "${s.subject}"`).join('\n');
+    return judgeEmailThread({ employee: emp, conversationId: c.key, lastMessageId: threadKey(c), requestFrom, sharedSender, thread, otherSent });
+  }
+  const runPool = async (items, fn) => {
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(JUDGE_PARALLEL, items.length) }, async () => { while (next < items.length) { await fn(items[next++]); } }));
+  };
+
+  // Streams: judge the newest member; carry on with the rest only if it is real.
+  const streams = new Map();
+  for (const c of due) if (c.streamKey) { if (!streams.has(c.streamKey)) streams.set(c.streamKey, []); streams.get(c.streamKey).push(c); }
+  await runPool([...streams.values()], async (members) => {
+    members.sort((a, b) => b.request.receivedDateTime.localeCompare(a.request.receivedDateTime));
+    const rep = members[0];
+    rep.result = await judge(rep);
+    if (rep.result.verdict === 'not_actionable' || rep.result.verdict === 'answered') {
+      for (const c of members.slice(1)) c.result = { verdict: 'not_actionable', reason: `Notification stream — ${rep.result.reason}` };
     }
-  }));
-  unreplied.sort((a, b) => b.receivedDateTime.localeCompare(a.receivedDateTime));
-  const needsResponse = unreplied.filter((m) => m.category === 'needs_response');
-  const notNeeded = unreplied.filter((m) => m.category !== 'needs_response');
-  return { threadsConsidered: latestByConversation.size, eligibleMessages, unreplied: needsResponse, notNeeded };
+  });
+  await runPool(due.filter((c) => !c.result), async (c) => { c.result = await judge(c); });
+
+  const toItem = (c) => ({
+    id: c.request.id,
+    subject: c.request.subject || '(no subject)',
+    fromName: c.request.from?.emailAddress?.name || null,
+    fromAddress: c.request.from?.emailAddress?.address || null,
+    to: (c.request.toRecipients || []).map((r) => r.emailAddress?.address).filter(Boolean),
+    cc: (c.request.ccRecipients || []).map((r) => r.emailAddress?.address).filter(Boolean),
+    receivedDateTime: c.request.receivedDateTime, // when the open request arrived — the 7-day clock
+    isRead: !!c.request.isRead,
+    preview: c.request.bodyPreview || '',
+    webLink: c.request.webLink || null,
+    category: c.result.verdict,
+    categoryReason: c.result.reason,
+  });
+  const items = due.filter((c) => c.result).map(toItem).sort((a, b) => b.receivedDateTime.localeCompare(a.receivedDateTime));
+  return {
+    threadsConsidered: conversations.length,
+    eligibleMessages,
+    judgeFailures: due.filter((c) => c.result?.failed).length,
+    unreplied: items.filter((m) => m.category === 'unanswered'),
+    needsReview: items.filter((m) => m.category === 'needs_review'),
+    notNeeded: items.filter((m) => m.category === 'answered' || m.category === 'not_actionable'),
+  };
 }

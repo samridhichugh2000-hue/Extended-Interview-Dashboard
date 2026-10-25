@@ -27,18 +27,19 @@ async function ensureTable(db) {
   ensured = true;
 }
 
-// Replace this employee's saved list with `needsResponse` + `notNeeded`.
-export async function saveUnreplied(employeeId, needsResponse, notNeeded) {
+// Replace this employee's saved list with the unanswered, needs-review and
+// set-aside (answered / no action needed) threads.
+export async function saveUnreplied(employeeId, unanswered, notNeeded, needsReview = []) {
   const db = getDb();
   await ensureTable(db);
   const stmts = [{ sql: 'DELETE FROM unreplied_emails WHERE employee_id = ?', args: [employeeId] }];
-  for (const m of [...needsResponse, ...notNeeded]) {
+  for (const m of [...unanswered, ...needsReview, ...notNeeded]) {
     stmts.push({
       sql: `INSERT OR REPLACE INTO unreplied_emails
         (employee_id, message_id, subject, from_name, from_address, to_json, cc_json, received_at, is_read, web_link, category, reason)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [employeeId, m.id, m.subject, m.fromName, m.fromAddress, JSON.stringify(m.to || []), JSON.stringify(m.cc || []),
-        m.receivedDateTime, m.isRead ? 1 : 0, m.webLink, m.category || 'needs_response', m.categoryReason || null],
+        m.receivedDateTime, m.isRead ? 1 : 0, m.webLink, m.category || 'unanswered', m.categoryReason || null],
     });
   }
   stmts.push({ sql: 'INSERT OR REPLACE INTO unreplied_lists_saved (employee_id, saved_at) VALUES (?, ?)', args: [employeeId, new Date().toISOString()] });
@@ -61,8 +62,11 @@ export async function loadUnreplied(employeeId) {
     receivedDateTime: r.received_at, isRead: !!r.is_read, preview: '', webLink: r.web_link,
     category: r.category, categoryReason: r.reason,
   }));
+  // 'needs_response' is the label older saved lists used for what is now 'unanswered'.
+  const isUnanswered = (m) => m.category === 'unanswered' || m.category === 'needs_response';
   return {
-    unreplied: items.filter((m) => m.category === 'needs_response'),
-    notNeeded: items.filter((m) => m.category !== 'needs_response'),
+    unreplied: items.filter(isUnanswered),
+    needsReview: items.filter((m) => m.category === 'needs_review'),
+    notNeeded: items.filter((m) => !isUnanswered(m) && m.category !== 'needs_review'),
   };
 }

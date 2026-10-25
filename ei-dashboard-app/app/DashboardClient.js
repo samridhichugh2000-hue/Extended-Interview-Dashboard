@@ -3144,19 +3144,20 @@ function UnrepliedEmailsPanel({ employees }) {
   const confirmed = rows.filter((e) => e.unrepliedListSaved);
   const total = confirmed.reduce((sum, e) => sum + e.unrepliedEmailCount, 0);
   const withAny = confirmed.filter((e) => e.unrepliedEmailCount > 0).length;
+  const reviewTotal = confirmed.reduce((sum, e) => sum + (e.unrepliedReviewCount || 0), 0);
   const pending = rows.length - confirmed.length;
   const lastSynced = (employees || []).map((e) => e.unrepliedSyncedAt).filter(Boolean).sort().pop();
-  const gridCols = '1.6fr .9fr .9fr 1fr 1.2fr';
+  const gridCols = '1.6fr .9fr .9fr .9fr 1fr 1.2fr';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ border: '1px solid rgba(99,102,241,0.25)', background: 'rgba(99,102,241,0.06)', borderRadius: 12, padding: '12px 16px', fontSize: 12.5, color: '#A8AEC4', lineHeight: 1.5 }}>
-        Counts come from each employee's Outlook Inbox via Microsoft Graph: email threads addressed to them directly (not Cc, not lists or broadcasts) received in the last 14 days that have gone 7 days or more (weekends included) with no reply from them. Advertising, newsletters and system mail (bulk-mail headers, no-reply senders, OTPs, ILO / Course Advice notices, calendar responses, Outlook's "Other" tab) are left out. The last message of each remaining thread is then read (by AI) and only counts if it actually needs a response — reports, "ok"/"thanks" acknowledgements and FYI mail are set aside and listed separately. Each employee's list (subject, sender, date and a one-line verdict — no email body) is saved at sync time and shown when you click "Load emails"; "Refresh live" re-reads the mailbox. Employees marked "check mailbox" have no saved list yet, so no count is shown for them.
+        Counts come from each employee's Outlook via Microsoft Graph. A request counts as unanswered only when it was addressed to them directly (To, not Cc, and never a hunt group or shared mailbox unless it was forwarded or assigned to them), it needs their response or action, more than 7 calendar days have passed since it reached them (a reminder or follow-up never restarts the 7 days), and no meaningful response is found in the whole conversation or in what they sent. Each candidate thread is read in full, received and sent mail together, by AI. Advertising, newsletters, system mail, announcements, FYI mail and mail that was already answered are not counted. If who is responsible, or whether they already responded, cannot be confirmed (cold outreach, polls and portal actions answered outside email, unclear assignment) the thread is marked Needs review and is NOT counted. Each employee's list (subject, sender, date and a one-line reason — no email body) is saved at sync time and shown when you click "Load emails"; "Refresh live" re-reads the mailbox. Employees marked "check mailbox" have no saved list yet.
         {lastSynced ? ` Counts last refreshed ${fmtIst(lastSynced)}.` : ''}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
-        {[{ label: 'Unreplied threads', value: total, color: '#F59E0B' }, { label: 'Employees with unreplied mail', value: withAny, color: '#A5A7FA' }, { label: pending ? `Employees confirmed (${pending} still to check)` : 'Employees covered', value: confirmed.length, color: '#5EEAD4' }].map((c) => (
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
+        {[{ label: 'Unanswered > 7 days', value: total, color: '#F59E0B' }, { label: 'Employees with unanswered mail', value: withAny, color: '#A5A7FA' }, { label: 'Needs review (not counted)', value: reviewTotal, color: '#8A90A8' }, { label: pending ? `Employees confirmed (${pending} still to check)` : 'Employees covered', value: confirmed.length, color: '#5EEAD4' }].map((c) => (
           <div key={c.label} style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.025)', borderRadius: 12, padding: '13px 14px' }}>
             <div className="disp" style={{ fontSize: 24, fontWeight: 600, color: c.color, letterSpacing: '-0.02em' }}>{c.value}</div>
             <div style={{ fontSize: 11, color: '#A8AEC4', marginTop: 3 }}>{c.label}</div>
@@ -3177,13 +3178,14 @@ function UnrepliedEmailsPanel({ employees }) {
 
       <div style={{ ...card, overflow: 'hidden' }}>
         <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <span>Employee</span><span>Team</span><span style={{ textAlign: 'right' }}>Unreplied</span><span style={{ textAlign: 'right' }}>Of threads</span><span style={{ textAlign: 'right' }}>Emails</span>
+          <span>Employee</span><span>Team</span><span style={{ textAlign: 'right' }}>Unanswered</span><span style={{ textAlign: 'right' }}>Needs review</span><span style={{ textAlign: 'right' }}>Of threads</span><span style={{ textAlign: 'right' }}>Emails</span>
         </div>
         {rows.map((e) => (
           <div key={e.id} className="hoverrow" style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '13px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
             <span style={{ fontWeight: 600 }}>{e.name}</span>
             <span style={{ fontSize: 12, color: '#6E7488' }}>{e.team}</span>
             <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 13, color: !e.unrepliedListSaved ? '#6E7488' : e.unrepliedEmailCount > 0 ? '#F59E0B' : '#6E7488' }}>{e.unrepliedListSaved ? e.unrepliedEmailCount : '—'}</span>
+            <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: '#8A90A8' }}>{e.unrepliedListSaved ? (e.unrepliedReviewCount ?? '—') : '—'}</span>
             <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: '#8A90A8' }}>{e.unrepliedListSaved ? (e.unrepliedEmailTotal ?? '—') : 'check mailbox'}</span>
             <span onClick={() => setDetail(e)} style={{ textAlign: 'right', fontSize: 12.5, color: '#A5A7FA', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>Load emails</span>
           </div>
@@ -3225,7 +3227,7 @@ function UnrepliedEmailsModal({ emp, onClose }) {
           <div>
             <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — unreplied emails</div>
             <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>
-              {state.loading ? (liveNonce ? 'Reading the mailbox from Outlook — can take a minute…' : 'Loading…') : state.error ? 'Could not load' : `${list.length} thread${list.length === 1 ? '' : 's'} awaiting a reply · received in the last ${state.data.lookbackDays} days, no reply after ${Math.round(state.data.graceHours / 24)}+ days · ${state.data.source === 'live' ? 'read live just now' : `as of ${fmtIst(state.data.syncedAt)}`}`}
+              {state.loading ? (liveNonce ? 'Reading the mailbox from Outlook — can take a minute…' : 'Loading…') : state.error ? 'Could not load' : `${list.length} unanswered request${list.length === 1 ? '' : 's'} (waiting more than ${Math.round(state.data.graceHours / 24)} days, looked back ${state.data.lookbackDays} days)${(state.data.needsReview || []).length ? ` · ${state.data.needsReview.length} to review, not counted` : ''} ·${state.data.source === 'live' ? 'read live just now' : `as of ${fmtIst(state.data.syncedAt)}`}`}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flex: 'none' }}>
@@ -3241,7 +3243,7 @@ function UnrepliedEmailsModal({ emp, onClose }) {
                 <span style={{ color: '#C7CBDA', fontWeight: m.isRead ? 400 : 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.subject}</span>
                 <span className="mono" style={{ fontSize: 11, color: '#8A90A8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.fromName || m.fromAddress}</span>
                 <span className="mono" style={{ fontSize: 11, color: '#8A90A8' }}>{fmtIst(m.receivedDateTime)}</span>
-                <span className="mono" style={{ fontSize: 11, color: '#F59E0B', textAlign: 'right' }}>{fmtAge(m.receivedDateTime)} old</span>
+                <span className="mono" style={{ fontSize: 11, color: '#F59E0B', textAlign: 'right' }}>{fmtAge(m.receivedDateTime)} waiting</span>
               </div>
               {open === m.id && (
                 <div style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 10, padding: 14, margin: '0 0 12px', display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12 }}>
@@ -3250,22 +3252,37 @@ function UnrepliedEmailsModal({ emp, onClose }) {
                   {m.cc.length > 0 && <div><span style={{ color: '#8A90A8' }}>Cc </span><span style={{ color: '#C7CBDA' }}>{m.cc.join(', ')}</span></div>}
                   <div><span style={{ color: '#8A90A8' }}>Status </span><span style={{ color: '#C7CBDA' }}>{m.isRead ? 'Read, not replied' : 'Unread'}</span></div>
                   <div style={{ color: '#A8AEC4', lineHeight: 1.5, marginTop: 4 }}>{m.preview || '(no preview)'}</div>
-                  {m.categoryReason && <div style={{ fontSize: 11.5, color: '#6E7488' }}>Read as: needs a response — {m.categoryReason}</div>}
+                  {m.categoryReason && <div style={{ fontSize: 11.5, color: '#6E7488' }}>Why: {m.categoryReason}</div>}
                   {m.webLink && <a href={m.webLink} target="_blank" rel="noreferrer" style={{ color: '#A5A7FA', marginTop: 4 }}>Open in Outlook ↗</a>}
                 </div>
               )}
             </div>
           ))}
           {!state.loading && !state.error && !list.length && <div style={{ fontSize: 12.5, color: '#6E7488', paddingTop: 12 }}>Nothing awaiting a reply.</div>}
+          {(state.data?.needsReview || []).length > 0 && (
+            <div style={{ marginTop: 18 }}>
+              <div className="mono" style={{ fontSize: 10, letterSpacing: '.12em', color: '#F59E0B', textTransform: 'uppercase', marginBottom: 6 }}>
+                Needs review — responsibility or response could not be confirmed, not counted ({state.data.needsReview.length})
+              </div>
+              {state.data.needsReview.map((m) => (
+                <div key={m.id} style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr .6fr 1.7fr', gap: 10, padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 12 }}>
+                  <span style={{ color: '#C7CBDA', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.subject}>{m.webLink ? <a href={m.webLink} target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>{m.subject}</a> : m.subject}</span>
+                  <span style={{ color: '#8A90A8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.fromName || m.fromAddress}</span>
+                  <span className="mono" style={{ fontSize: 11, color: '#8A90A8' }}>{fmtAge(m.receivedDateTime)}</span>
+                  <span style={{ color: '#6E7488', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.categoryReason}>{m.categoryReason}</span>
+                </div>
+              ))}
+            </div>
+          )}
           {(state.data?.notNeeded || []).length > 0 && (
             <div style={{ marginTop: 18 }}>
               <div className="mono" style={{ fontSize: 10, letterSpacing: '.12em', color: '#5C6178', textTransform: 'uppercase', marginBottom: 6 }}>
-                Read and set aside — no reply needed ({state.data.notNeeded.length})
+                Read and set aside — answered or no reply needed ({state.data.notNeeded.length})
               </div>
               {state.data.notNeeded.map((m) => (
                 <div key={m.id} style={{ display: 'grid', gridTemplateColumns: '1.8fr .9fr 1.5fr', gap: 10, padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 12, opacity: 0.8 }}>
                   <span style={{ color: '#A8AEC4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.subject}>{m.subject}</span>
-                  <span style={{ fontSize: 10.5, color: '#8A90A8', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 6, padding: '2px 7px', justifySelf: 'start' }}>{{ acknowledgement: 'Acknowledgement', report_fyi: 'Report / FYI', information: 'Information only' }[m.category] || m.category}</span>
+                  <span style={{ fontSize: 10.5, color: '#8A90A8', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 6, padding: '2px 7px', justifySelf: 'start' }}>{{ answered: 'Answered / resolved', not_actionable: 'No action needed', acknowledgement: 'Acknowledgement', report_fyi: 'Report / FYI', information: 'Information only' }[m.category] || m.category}</span>
                   <span style={{ color: '#6E7488', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.categoryReason}>{m.categoryReason}</span>
                 </div>
               ))}

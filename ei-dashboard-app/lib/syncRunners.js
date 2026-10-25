@@ -1559,18 +1559,19 @@ export async function syncUnrepliedEmails() {
   const db = getDb();
   const { getUnrepliedThreads } = await import('./graphUnreplied.js');
   const { saveUnreplied } = await import('./unrepliedStore.js');
-  const employees = (await db.execute("SELECT id, email FROM employees WHERE active = 1 AND email IS NOT NULL AND email != ''")).rows;
+  const employees = (await db.execute("SELECT id, name, email FROM employees WHERE active = 1 AND email IS NOT NULL AND email != ''")).rows;
 
-  let done = 0, apiErrors = 0, noMailbox = 0, next = 0;
+  let done = 0, apiErrors = 0, noMailbox = 0, next = 0, judgeFailures = 0;
   async function worker() {
     while (next < employees.length) {
       const emp = employees[next++];
       try {
-        const { threadsConsidered, unreplied, notNeeded } = await getUnrepliedThreads(emp.email);
-        await saveUnreplied(emp.id, unreplied, notNeeded);
+        const { threadsConsidered, unreplied, notNeeded, needsReview, judgeFailures: failed } = await getUnrepliedThreads(emp.email, { employee: emp });
+        judgeFailures += failed;
+        await saveUnreplied(emp.id, unreplied, notNeeded, needsReview);
         await db.execute({
-          sql: 'UPDATE employees SET unreplied_email_count = ?, unreplied_email_total = ?, unreplied_synced_at = ? WHERE id = ?',
-          args: [unreplied.length, threadsConsidered, new Date().toISOString(), emp.id],
+          sql: 'UPDATE employees SET unreplied_email_count = ?, unreplied_review_count = ?, unreplied_email_total = ?, unreplied_synced_at = ? WHERE id = ?',
+          args: [unreplied.length, needsReview.length, threadsConsidered, new Date().toISOString(), emp.id],
         });
         done++;
       } catch (err) {
@@ -1583,7 +1584,9 @@ export async function syncUnrepliedEmails() {
     }
   }
   await Promise.all(Array.from({ length: UNREPLIED_CONCURRENCY }, worker));
-  return { message: `Synced unreplied-email counts for ${done} employees (${apiErrors} mailbox errors, ${noMailbox} with no mailbox in the tenant, ${employees.length} active mailboxes).` };
+  const { judgeUsage } = await import('./judgeEmailThread.js');
+  console.log(`Thread judge usage: ${judgeUsage.calls} calls, ${judgeUsage.promptTokens} prompt tokens, ${judgeUsage.completionTokens} completion tokens.`);
+  return { message: `Synced unreplied-email counts for ${done} employees (${apiErrors} mailbox errors, ${noMailbox} with no mailbox in the tenant, ${employees.length} active mailboxes, ${judgeFailures} threads the reader could not judge and left as needs-review).` };
 }
 
 // Non-RMS Tasks By EmpID — feeds the "Ideas for improvement" Worry Index

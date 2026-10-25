@@ -148,6 +148,7 @@ export async function getEmployees() {
       mgrFeedbackDetails: e.mgr_feedback_details ? JSON.parse(e.mgr_feedback_details) : [],
       unrepliedEmailCount: e.unreplied_email_count,
       unrepliedEmailTotal: e.unreplied_email_total,
+      unrepliedReviewCount: e.unreplied_review_count,
       unrepliedSyncedAt: e.unreplied_synced_at,
       unrepliedListSaved: unrepliedSaved.has(e.id),
       meetingsCount: e.meetings_count,

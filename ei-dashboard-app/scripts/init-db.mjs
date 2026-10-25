@@ -263,6 +263,7 @@ for (const stmt of [
   'ALTER TABLE employees ADD COLUMN true_nr_details TEXT',
   'ALTER TABLE employees ADD COLUMN unreplied_email_count INTEGER',
   'ALTER TABLE employees ADD COLUMN unreplied_email_total INTEGER',
+  'ALTER TABLE employees ADD COLUMN unreplied_review_count INTEGER',
   'ALTER TABLE employees ADD COLUMN unreplied_synced_at TEXT',
 ]) {
   try {
