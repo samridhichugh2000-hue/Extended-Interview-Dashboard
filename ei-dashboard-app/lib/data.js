@@ -1,5 +1,6 @@
 import { getIsoWeek, isPastWednesdayCheckIn, weekDateRange } from './weekUtils.js';
 import { structuredFeedbackRating } from './feedbackStructured.js';
+import { F2F_EVENTS } from './f2fAttendees.js';
 
 export const C = { rose: '#F43F5E', amber: '#F59E0B', indigo: '#8B8CF6', teal: '#14B8A6', purple: '#A855F7' };
 
@@ -294,6 +295,19 @@ function parseRecordDate(v) {
   const d = m ? new Date(Number(m[3]), MON.indexOf(m[2].toLowerCase()), Number(m[1])) : new Date(v);
   return isNaN(d) ? null : d;
 }
+// Signed-in F2F attendees by lowercased email -> [{ date, presenter }], one
+// entry per event.
+const F2F_BY_EMAIL = new Map();
+for (const ev of F2F_EVENTS) {
+  for (const a of ev.attendees) {
+    if (!a.signedIn || !a.email) continue;
+    const key = a.email.toLowerCase();
+    if (!F2F_BY_EMAIL.has(key)) F2F_BY_EMAIL.set(key, []);
+    F2F_BY_EMAIL.get(key).push({ date: ev.date, presenter: !!a.presenter });
+  }
+}
+const f2fRecords = (e) => F2F_BY_EMAIL.get(String(e.email || '').toLowerCase()) || [];
+const f2fPresented = (e) => f2fRecords(e).filter((r) => r.presenter);
 function countDatedRecords(details, dateField, since, until) {
   return (details || []).filter((d) => {
     const dt = parseRecordDate(d?.[dateField]);
@@ -457,6 +471,20 @@ export const SIGNAL_DEFS = [
     fires: (e) => e.ideasCount > 0,
     count: (e) => e.ideasCount,
     countInWindow: (e, since, until) => countDatedRecords(e.ideasDetails, 'createdDateTime', since, until) },
+  // Face-to-face events (lib/f2fAttendees.js), matched by email. The sheets
+  // list only people who signed in, so there is no "invited but absent" to
+  // penalise — attending earns the points, not attending costs nothing. Each
+  // event counts once; a presenter earns both signals for that event.
+  { label: 'Attending F2F (if invited)', teams: 'All', pts: 1, live: true,
+    hasData: (e) => !!e.email,
+    fires: (e) => f2fRecords(e).length > 0,
+    count: (e) => f2fRecords(e).length,
+    countInWindow: (e, since, until) => countDatedRecords(f2fRecords(e), 'date', since, until) },
+  { label: 'Delivering PPTs (F2F presenter)', teams: 'All', pts: 0.5, live: true,
+    hasData: (e) => !!e.email,
+    fires: (e) => f2fPresented(e).length > 0,
+    count: (e) => f2fPresented(e).length,
+    countInWindow: (e, since, until) => countDatedRecords(f2fPresented(e), 'date', since, until) },
   // negative, live
   // Boolean absence-of-any state, not a count — either they have zero
   // assignments for every week since joining (including future weeks) or
