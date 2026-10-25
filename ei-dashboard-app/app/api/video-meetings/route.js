@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '../../../lib/db';
-import { VIDEO_MIN_ATTEND_SECONDS, VIDEO_WINDOW_DAYS, videoMeetingQualifies } from '../../../lib/videoRules';
+import { VIDEO_MIN_ATTEND_SECONDS, videoWindowStart, videoMeetingQualifies } from '../../../lib/videoRules';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,7 +16,7 @@ export async function GET(request) {
     sql: `SELECT v.started_at, v.attended_seconds, v.camera_on, v.is_external, v.participant_count, i.subject, i.organizer_name, i.participants
           FROM video_meetings v LEFT JOIN video_meeting_info i ON i.call_record_id = v.call_record_id
           WHERE v.employee_id = ? AND v.started_at >= ? AND v.attended_seconds >= ? ORDER BY v.started_at DESC`,
-    args: [employeeId, new Date(Date.now() - VIDEO_WINDOW_DAYS * 86400000).toISOString(), VIDEO_MIN_ATTEND_SECONDS],
+    args: [employeeId, videoWindowStart(), VIDEO_MIN_ATTEND_SECONDS],
   }).catch(() => ({ rows: [] }));
   const meetings = res.rows
     .filter((r) => videoMeetingQualifies(team, r.is_external))

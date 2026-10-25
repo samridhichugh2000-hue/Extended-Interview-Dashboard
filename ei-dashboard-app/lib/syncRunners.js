@@ -1247,7 +1247,7 @@ export async function syncRecruiterInterviews() {
   return { message: `Synced interviews for ${statements.length} recruiters (${withInterviews} had interviews since ${from}, ${failed} failed).` };
 }
 
-const GRAPH_MEETINGS_LOOKBACK_DAYS =Number(process.env.GRAPH_MEETINGS_LOOKBACK_DAYS || 7);
+const GRAPH_MEETINGS_LOOKBACK_DAYS = Number(process.env.GRAPH_MEETINGS_LOOKBACK_DAYS || 7);
 
 // A recurring/reconvened meeting keeps the same onlineMeetingId across every
 // occurrence, so attendanceReports for it can span weeks/months of past

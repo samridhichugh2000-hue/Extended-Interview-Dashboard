@@ -1,5 +1,5 @@
 import { getDb } from './db.js';
-import { VIDEO_MIN_ATTEND_SECONDS, VIDEO_WINDOW_DAYS, videoMeetingQualifies } from './videoRules.js';
+import { VIDEO_MIN_ATTEND_SECONDS, videoWindowStart, videoMeetingQualifies } from './videoRules.js';
 import { isExcludedGraphMeeting } from './meetingFilters.js';
 import { computeSignalReport, computeWorryScore, trendNoteFor, isScoredEmployee } from './data.js';
 import { getIsoWeek, isWeekOver } from './weekUtils.js';
@@ -36,7 +36,7 @@ export async function getEmployees() {
   const videoRes = await db.execute({
     sql: `SELECT employee_id, is_external, camera_on, COUNT(*) AS n FROM video_meetings
           WHERE started_at >= ? AND attended_seconds >= ? GROUP BY employee_id, is_external, camera_on`,
-    args: [new Date(Date.now() - VIDEO_WINDOW_DAYS * 86400000).toISOString(), VIDEO_MIN_ATTEND_SECONDS],
+    args: [videoWindowStart(), VIDEO_MIN_ATTEND_SECONDS],
   }).catch(() => ({ rows: [] }));
   const videoRowsByEmp = new Map();
   for (const r of videoRes.rows) {
