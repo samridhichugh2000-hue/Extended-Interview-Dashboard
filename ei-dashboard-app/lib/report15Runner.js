@@ -166,10 +166,12 @@ export async function buildReport15Html(employees) {
     // per-unit weight — each response scores its own points by rating, so
     // the "weight" column shows the range instead of d.pts (a reference
     // value only, not what any individual response actually scores).
-    const weightDisplay = d.computeTotal ? '−2 to +2' : fmtPts(d.pts);
-    const color = d.computeTotal ? '#8C8A7F' : d.pts > 0 ? '#2F6E5E' : '#B23A2E';
+    // legendWeight / legendBasis (set on the low-activity signals) override the
+    // weekly-response wording below, which only fits that one signal.
+    const weightDisplay = d.legendWeight || (d.computeTotal ? '−2 to +2' : fmtPts(d.pts));
+    const color = d.computeTotal || d.pts === 0 ? '#8C8A7F' : d.pts > 0 ? '#2F6E5E' : '#B23A2E';
     const tracked = d.live ? '' : ' <span style="color:#B5793A;font-size:10px;">(not tracked yet)</span>';
-    const basis = d.computeTotal ? 'sum per rated response: +2 (5), +1 (4), 0 (3), -1 (2), -2 (1 or 0)' : d.count ? 'per occurrence' : 'flat, if condition met';
+    const basis = d.legendBasis || (d.computeTotal ? 'sum per rated response: +2 (5), +1 (4), 0 (3), -1 (2), -2 (1 or 0)' : d.count ? 'per occurrence' : 'flat, if condition met');
     return `<tr>
       <td style="padding:6px 8px;border-bottom:1px solid #ECEAE1;">${esc(d.label)}${tracked}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #ECEAE1;color:#8C8A7F;">${esc(d.teams)}</td>
