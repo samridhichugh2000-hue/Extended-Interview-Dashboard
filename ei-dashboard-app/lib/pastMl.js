@@ -36,19 +36,6 @@ export const PAST_ML = {
      ]
     },
     {
-     "key": "hours",
-     "label": "Hours delivered",
-     "kind": "hours",
-     "values": [
-      9,
-      152,
-      46,
-      17,
-      32,
-      14
-     ]
-    },
-    {
      "key": "assign",
      "label": "Assignments started",
      "kind": "count",
@@ -233,19 +220,6 @@ export const PAST_ML = {
      ]
     },
     {
-     "key": "hours",
-     "label": "Hours delivered",
-     "kind": "hours",
-     "values": [
-      18,
-      60,
-      91,
-      50,
-      64,
-      50
-     ]
-    },
-    {
      "key": "assign",
      "label": "Assignments started",
      "kind": "count",
@@ -287,19 +261,6 @@ export const PAST_ML = {
       51,
       46,
       10
-     ]
-    },
-    {
-     "key": "hours",
-     "label": "Hours delivered",
-     "kind": "hours",
-     "values": [
-      108,
-      139,
-      122,
-      111,
-      82,
-      17
      ]
     },
     {
@@ -347,19 +308,6 @@ export const PAST_ML = {
      ]
     },
     {
-     "key": "hours",
-     "label": "Hours delivered",
-     "kind": "hours",
-     "values": [
-      155,
-      62,
-      129,
-      59,
-      102,
-      52
-     ]
-    },
-    {
      "key": "assign",
      "label": "Assignments started",
      "kind": "count",
@@ -401,19 +349,6 @@ export const PAST_ML = {
       65,
       9,
       16
-     ]
-    },
-    {
-     "key": "hours",
-     "label": "Hours delivered",
-     "kind": "hours",
-     "values": [
-      16,
-      120,
-      70,
-      114,
-      16,
-      28
      ]
     },
     {
@@ -601,19 +536,6 @@ export const PAST_ML = {
      ]
     },
     {
-     "key": "hours",
-     "label": "Hours delivered",
-     "kind": "hours",
-     "values": [
-      120,
-      68,
-      48,
-      62,
-      52,
-      36
-     ]
-    },
-    {
      "key": "assign",
      "label": "Assignments started",
      "kind": "count",
@@ -655,19 +577,6 @@ export const PAST_ML = {
       89,
       61,
       66
-     ]
-    },
-    {
-     "key": "hours",
-     "label": "Hours delivered",
-     "kind": "hours",
-     "values": [
-      40,
-      80,
-      124,
-      156,
-      108,
-      116
      ]
     },
     {
@@ -785,19 +694,6 @@ export const PAST_ML = {
      ]
     },
     {
-     "key": "hours",
-     "label": "Hours delivered",
-     "kind": "hours",
-     "values": [
-      21,
-      75,
-      96,
-      80,
-      92,
-      84
-     ]
-    },
-    {
      "key": "assign",
      "label": "Assignments started",
      "kind": "count",
@@ -839,19 +735,6 @@ export const PAST_ML = {
       23,
       33,
       38
-     ]
-    },
-    {
-     "key": "hours",
-     "label": "Hours delivered",
-     "kind": "hours",
-     "values": [
-      16,
-      56,
-      40,
-      40,
-      58,
-      76
      ]
     },
     {
@@ -1036,19 +919,6 @@ export const PAST_ML = {
       49,
       42,
       55
-     ]
-    },
-    {
-     "key": "hours",
-     "label": "Hours delivered",
-     "kind": "hours",
-     "values": [
-      174,
-      95,
-      80,
-      86,
-      74,
-      96
      ]
     },
     {

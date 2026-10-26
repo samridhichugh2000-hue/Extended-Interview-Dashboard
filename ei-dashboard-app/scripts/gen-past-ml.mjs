@@ -2,7 +2,7 @@
 // For every Trainer / Sales employee with a maternity leave (any approval
 // status, 30+ days) that has already started, it records the leave period and
 // the six months BEFORE the leave, month by month:
-//   Trainer: utilisation %, hours, assignments started
+//   Trainer: utilisation %, assignments started
 //   Sales:   quarter target, target achievement (quarter-to-date True NR /
 //            quarter target — True NR only), True NR, SCs raised
 // Leave comes from the Koenig "Get Employee Leave Details" feed (apikey 237),
@@ -79,7 +79,6 @@ for (const e of emps) {
     for (const x of J(e.assignments_details)) { const k = ymOf(x.startDate); if (k) asg[k] = (asg[k] || 0) + 1; }
     rowsOut = [
       { key: 'util', label: 'Utilisation', kind: 'pct', values: series(utilPct) },
-      { key: 'hours', label: 'Hours delivered', kind: 'hours', values: series((m) => round(h.util_total_hours?.[m] ?? hrs[m], 0) ?? null) },
       { key: 'assign', label: 'Assignments started', kind: 'count', values: series((m) => (afterJoin(m) && m >= '2020-01' ? (h.assignments_started?.[m] ?? asg[m] ?? 0) : null)) },
     ];
   } else {
