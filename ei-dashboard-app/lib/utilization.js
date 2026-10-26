@@ -8,10 +8,9 @@
 // up to NON_SC_UTIL_CAP percentage points — SC delivery is what really
 // counts. Plain constants, no server-only imports.
 //
-// UTIL_CAPACITY_HOURS: 176 = 22 working days x 8h. Inferred from Koenig's own
-// combined feed, whose displayed percentage tracked total hours / 176 (e.g.
-// 104h -> 59%, 158h -> 89%) — worth confirming with Koenig if the monthly
-// capacity is ever defined differently.
+// UTIL_CAPACITY_HOURS: 176 = 22 working days x 8h. Confirmed as the monthly
+// capacity (it also matches Koenig's own combined feed, whose displayed
+// percentage tracked total hours / 176, e.g. 104h -> 59%, 158h -> 89%).
 export const UTIL_CAPACITY_HOURS = 176;
 export const NON_SC_UTIL_CAP = 15;
 
