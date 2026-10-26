@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import {
   STATUS, decorate, band, isNewJoiner, NAV, TITLES, PATHS, METRIC_HEADS,
   WORRY_BANDS, POS_SIGNALS, NEG_SIGNALS, NJ_QUESTIONS, appliesToTeam, feedbackRating, FEEDBACK_RATING_UI,
-  computeSignalReport, computeWorryScore, trendNoteFor, WORRY_WINDOWS, windowSince,
+  computeSignalReport, computeWorryScore, trendNoteFor, WORRY_WINDOWS, windowSince, lowActivityDays,
 } from '../lib/data';
 import { computeEventImpact, latestPipEvent, rnrAwardDate, ANALYSIS_METRICS, appraisalWindow, metricSeries, linearTrend, appraisalPosition } from '../lib/analysis';
 import { JOB_LABELS } from '../lib/jobLabels';
@@ -956,6 +956,55 @@ function PastMlSection({ employees, setModal }) {
         );
       })}
       {!cases.length && <div style={{ fontSize: 12.5, color: '#6E7488' }}>No one matches.</div>}
+    </div>
+  );
+}
+
+// On-demand list of the exact working days behind one low-activity signal. The
+// default view only shows "X of Y working days"; this opens when someone asks.
+// Only dates are kept (no click counts, menus or email details).
+const LOW_ACTIVITY_SIGNALS = {
+  'Low RMS activity (under 5 clicks a day)': { which: 'rms', title: 'Days with under 5 RMS clicks', note: 'Counted over every RMS menu. Weekends and approved-leave days are not included.' },
+  'No emails sent (low email activity)': { which: 'email', title: 'Days with no email sent', note: 'Based on Outlook Sent Items — mail received does not count. Weekends and approved-leave days are not included. Email history is collected from late September, so earlier days are not covered.' },
+  'Days with no meeting attended': { which: 'meeting', title: 'Days with no Teams meeting attended', note: 'Based on stored Teams call records, which only start on 20 Sep 2026. Weekends and approved-leave days are not included.' },
+};
+function LowActivityDaysModal({ emp, signalLabel, since, until, windowLabel, onClose }) {
+  const def = LOW_ACTIVITY_SIGNALS[signalLabel];
+  const r = lowActivityDays(emp, def.which, since, until);
+  const byMonth = new Map();
+  for (const d of r?.days || []) { const k = d.slice(0, 7); if (!byMonth.has(k)) byMonth.set(k, []); byMonth.get(k).push(d); }
+  const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 70 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 560, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+          <div>
+            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{def.title}</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>{emp.name} · {windowLabel}{r && r.total ? ` · ${r.flagged} of ${r.total} working days` : ''}</div>
+          </div>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+        </div>
+        <div style={{ padding: '16px 24px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {byMonth.size === 0 && <div style={{ fontSize: 13, color: '#8A90A8' }}>No low days in this window.</div>}
+          {[...byMonth.entries()].map(([k, list]) => {
+            const [y, m] = k.split('-');
+            return (
+              <div key={k}>
+                <div className="mono" style={{ fontSize: 10, letterSpacing: '.1em', color: '#5C6178', textTransform: 'uppercase', marginBottom: 7 }}>{MONTHS[Number(m) - 1]} {y} · {list.length} day{list.length === 1 ? '' : 's'}</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {list.map((d) => (
+                    <span key={d} className="mono" style={{ fontSize: 11.5, color: '#E4E6F0', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '4px 9px' }}>
+                      {WD[new Date(`${d}T00:00:00Z`).getUTCDay()]} {Number(d.slice(8))}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+          <div style={{ fontSize: 11.5, color: '#6E7488', lineHeight: 1.5 }}>{def.note} Only the dates are kept — not click counts, menus or email details.</div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -4138,6 +4187,7 @@ function EmployeeModal({ emp, onClose }) {
   // time' with no `since` reproduces the exact all-time score above.
   const [windowKey, setWindowKey] = useState('3month');
   const [eiHistoryOpen, setEiHistoryOpen] = useState(false);
+  const [lowDaysView, setLowDaysView] = useState(null); // label of the low-activity signal whose days are open
   const [customRange, setCustomRange] = useState({ from: '', to: '' });
   const isCustomWindow = windowKey === 'custom';
   const windowDef = WORRY_WINDOWS.find((w) => w.key === windowKey) || WORRY_WINDOWS[0];
@@ -4199,6 +4249,7 @@ function EmployeeModal({ emp, onClose }) {
               <div style={{ marginTop: 12, fontSize: 12.5, color: '#8A90A8', lineHeight: 1.55 }}>{trendNote}</div>
               <div onClick={() => setEiHistoryOpen(true)} style={{ marginTop: 10, fontSize: 11.5, color: '#A5A7FA', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3, width: 'fit-content' }}>Score history</div>
               {eiHistoryOpen && <EiHistoryModal emp={emp} startWindow={windowKey} onClose={() => setEiHistoryOpen(false)} />}
+              {lowDaysView && <LowActivityDaysModal emp={emp} signalLabel={lowDaysView} since={since} until={until} windowLabel={isCustomWindow ? windowTrendPhrase : windowDef.label} onClose={() => setLowDaysView(null)} />}
             </div>
             <div>
               <div className="mono" style={{ fontSize: 10, letterSpacing: '.12em', color: '#5C6178', textTransform: 'uppercase', marginBottom: 10 }}>Signal breakdown — every parameter for {emp.team}</div>
@@ -4223,6 +4274,9 @@ function EmployeeModal({ emp, onClose }) {
                           <span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>×{s.count}</span>
                         )}
                         {s.detail && <span className="mono" style={{ fontSize: 10.5, color: s.detail.startsWith('Below') ? '#F87171' : s.detail.startsWith('Above') ? '#5EEAD4' : '#A5A7FA' }}>{s.detail}</span>}
+                        {LOW_ACTIVITY_SIGNALS[s.label] && s.detail && (
+                          <span onClick={() => setLowDaysView(s.label)} style={{ fontSize: 10.5, color: '#A5A7FA', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>View days</span>
+                        )}
                         {s.status !== 'fired' && (
                           <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase', flex: 'none' }}>
                             {s.status === 'not-tracked' ? 'not tracked' : s.status === 'no-data' ? 'no data traced' : s.status === 'not-windowed' ? 'no dated records' : 'no incident'}

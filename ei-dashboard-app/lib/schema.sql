@@ -99,6 +99,11 @@ CREATE TABLE IF NOT EXISTS employees (
   nr_future_details TEXT,         -- JSON array of {month: 'Mon-YYYY', nr: <number>} (Sales only), the 6 calendar months AFTER the current one, from the same Koenig CC/ENR feed as nr_monthly_details but with a future end date. Kept out of nr_monthly_details on purpose: PA Algo trailing-average/ROI checks must only ever see past + current months.
   appraisal_details TEXT,         -- JSON [{appraisalDate, nextAppraisalDate}] newest first — the last two appraisals from the Koenig GetLastTwoAppraisals feed (Sales + Trainer). Salary is encrypted by Koenig, so it is not stored. Powers the Analysis screen's before/after-appraisal comparison.
   true_nr_details TEXT,           -- JSON [{month:'Oct-2026', trueNr}] oldest first — "True NR" (after salary and marketing cost) from the old Get Employee NR API, which only returns ~3 months per call, so each sync merges new months in so the history grows (Sales only).
+  low_rms_days TEXT,              -- JSON array of YYYY-MM-DD: working days in the last ~6 months with fewer than 5 RMS clicks (no menu is ignored). Never displayed as daily data; the Worry Index would only show a count for the chosen window. See lib/lowActivity.js.
+  low_email_days TEXT,            -- JSON array of YYYY-MM-DD: working days with no email sent (Outlook Sent Items). NULL = no mailbox, i.e. unknown.
+  low_meeting_days TEXT,          -- JSON array of YYYY-MM-DD: working days with no Teams meeting attended. Only days from 2026-09-20 onward (when call-record storage began) are ever counted.
+  low_activity_meta TEXT,         -- JSON {from:{rms,email,meeting} (first day each check has data for), leave:[YYYY-MM-DD] (approved-leave working days)} — the denominators the Worry Index needs for "low days out of working days" in any window.
+  low_activity_synced_at TEXT,    -- ISO timestamp of the last low-activity sync; the next run only adds days after it. Weekends and approved-leave days are never counted.
   pipeline_synced_at TEXT         -- ISO timestamp of the last successful sync for this employee — each CSM is a separate ~3s API call, so this can lag by longer than other feeds mid-run.
 );
 

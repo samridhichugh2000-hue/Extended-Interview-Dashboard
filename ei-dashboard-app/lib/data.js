@@ -338,6 +338,51 @@ function weeksInWindow(e, since, until) {
 // next week isn't one this window's employee has attended yet.
 const untilOrNow = (until) => until || new Date();
 
+// ---- Low-activity days (RMS / email / meetings) ----------------------------
+// scripts/sync-lowactivity.mjs stores, per employee, the working days on which
+// each check was low (lib/lowActivity.js). Scoring is by SHARE of working days
+// in the chosen window — flagged days out of working days, leaving out
+// weekends, approved-leave days and days before joining — so a 1-, 3- or
+// 6-month window is judged on the same scale. A check is only judged on the
+// days it has data for (email starts later than RMS; meetings from 20 Sep).
+const ymd = (d) => d.toISOString().slice(0, 10);
+const LOW_ACTIVITY_MIN_DAYS = 5;      // fewer evaluated days than this isn't scored
+const LOW_ACTIVITY_CAP = -3;          // RMS + email together can never take off more than this
+const rmsLowPts = (s) => (s >= 0.8 ? -2 : s >= 0.6 ? -1 : s >= 0.4 ? -0.5 : 0);
+const emailLowPts = (s) => (s >= 0.9 ? -2 : s >= 0.7 ? -1 : s >= 0.5 ? -0.5 : 0);
+function lowActivityShare(e, list, key, since, until) {
+  const first = e.lowActivityMeta?.from?.[key];
+  if (!Array.isArray(list) || !first) return null;
+  const yesterday = new Date(Date.now() - 864e5);
+  const endDay = ymd(until && until < yesterday ? until : yesterday);
+  let startDay = first;
+  if (since && ymd(since) > startDay) startDay = ymd(since);
+  if (e.tenure != null) { const join = ymd(new Date(Date.now() - e.tenure * 864e5)); if (join > startDay) startDay = join; }
+  const leave = new Set(e.lowActivityMeta?.leave || []);
+  let total = 0;
+  for (let t = new Date(`${startDay}T00:00:00Z`); ymd(t) <= endDay; t = new Date(t.getTime() + 864e5)) {
+    const dow = t.getUTCDay();
+    if (dow !== 0 && dow !== 6 && !leave.has(ymd(t))) total++;
+  }
+  const days = list.filter((d) => d >= startDay && d <= endDay && !leave.has(d)).sort();
+  return { flagged: days.length, total, days, startDay, endDay };
+}
+// The flagged dates behind one low-activity signal, for the on-demand "View days" popup.
+// which: 'rms' | 'email' | 'meeting'. Same window rules as the score.
+export function lowActivityDays(e, which, since, until) {
+  const list = which === 'rms' ? e.lowRmsDays : which === 'email' ? e.lowEmailDays : e.lowMeetingDays;
+  return lowActivityShare(e, list, which, since, until);
+}
+function lowActivityPoints(e, since, until) {
+  const r = lowActivityShare(e, e.lowRmsDays, 'rms', since, until);
+  const m = lowActivityShare(e, e.lowEmailDays, 'email', since, until);
+  const rms = r && r.total >= LOW_ACTIVITY_MIN_DAYS ? rmsLowPts(r.flagged / r.total) : 0;
+  const email = Math.max(m && m.total >= LOW_ACTIVITY_MIN_DAYS ? emailLowPts(m.flagged / m.total) : 0, LOW_ACTIVITY_CAP - rms);
+  return { r, m, rms, email };
+}
+const lowActivityDetail = (x) => (x && x.total ? `${x.flagged} of ${x.total} working days (${Math.round((x.flagged / x.total) * 100)}%)` : null);
+
+
 // Same "cumulative, not just current" rule as missedWeeksCount, restricted
 // to weeks whose date range (weekUtils.weekDateRange) falls at or after the
 // window start — a week is "in the window" if it hadn't fully ended before
@@ -560,6 +605,26 @@ export const SIGNAL_DEFS = [
     weightLabel: '+2 to −2', weightNote: '5★ +2 · 4★ +1 · 3★ 0 · 2★ −1 · 1★ −2 (per response)',
     hasData: (e) => (e.weeks || []).some((w) => w.aiRating != null),
     computeTotal: weeklyResponseRatingPoints },
+  // Low-activity days — see lowActivityShare above. RMS and email are scored on
+  // the share of working days flagged; meetings are shown only (0 points) because
+  // nearly half of all days have no meeting, so it can't tell people apart yet.
+  { label: 'Low RMS activity (under 5 clicks a day)', teams: 'All', pts: -2, live: true,
+    weightLabel: '0 to −2', weightNote: 'Share of working days with under 5 RMS clicks: 40% −0.5 · 60% −1 · 80% −2',
+    hasData: (e) => Array.isArray(e.lowRmsDays),
+    computeTotal: (e, since, until) => lowActivityPoints(e, since, until).rms,
+    detail: (e, since, until) => lowActivityDetail(lowActivityPoints(e, since, until).r) },
+  { label: 'No emails sent (low email activity)', teams: 'All', pts: -2, live: true,
+    weightLabel: '0 to −2', weightNote: 'Share of working days with no email sent: 50% −0.5 · 70% −1 · 90% −2 (RMS + email capped at −3)',
+    hasData: (e) => Array.isArray(e.lowEmailDays),
+    computeTotal: (e, since, until) => lowActivityPoints(e, since, until).email,
+    detail: (e, since, until) => lowActivityDetail(lowActivityPoints(e, since, until).m) },
+  { label: 'Days with no meeting attended', teams: 'All', pts: 0, live: true,
+    weightLabel: 'shown only', weightNote: 'Working days with no Teams meeting (tracked from 20 Sep 2026). No points for now.',
+    hasData: (e) => Array.isArray(e.lowMeetingDays),
+    fires: (e) => (e.lowMeetingDays || []).length > 0,
+    count: (e) => (e.lowMeetingDays || []).length,
+    countInWindow: (e, since, until) => lowActivityShare(e, e.lowMeetingDays, 'meeting', since, until)?.flagged || 0,
+    detail: (e, since, until) => lowActivityDetail(lowActivityShare(e, e.lowMeetingDays, 'meeting', since, until)) },
   { label: 'Audio / video not OK in meetings', teams: 'All', pts: -1, live: false, hasData: () => false, fires: () => false },
   { label: 'Weekly email shows less progress', teams: 'All', pts: -2, live: false, hasData: () => false, fires: () => false },
   { label: 'Not on time for meetings', teams: 'All', pts: -2, live: false, hasData: () => false, fires: () => false },
@@ -614,7 +679,7 @@ export function computeSignalReport(e, { since, until } = {}) {
         if (!d.hasData(e)) return { label: d.label, pts: d.pts, ptsStr: fmtPts(d.pts), weight: weightClass(d.pts), status: 'no-data', count: null };
         const total = d.computeTotal(e, since, until);
         const status = total !== 0 ? 'fired' : 'clear';
-        return { label: d.label, pts: total, ptsStr: fmtPts(total), weight: weightClass(total || d.pts), status, count: null };
+        return { label: d.label, pts: total, ptsStr: fmtPts(total), weight: weightClass(total || d.pts), status, count: null, detail: d.detail ? d.detail(e, since, until) : null };
       }
       let status, count = null;
       if (!d.live) {

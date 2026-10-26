@@ -265,6 +265,11 @@ for (const stmt of [
   'ALTER TABLE employees ADD COLUMN unreplied_email_total INTEGER',
   'ALTER TABLE employees ADD COLUMN unreplied_review_count INTEGER',
   'ALTER TABLE employees ADD COLUMN unreplied_synced_at TEXT',
+  'ALTER TABLE employees ADD COLUMN low_rms_days TEXT',
+  'ALTER TABLE employees ADD COLUMN low_email_days TEXT',
+  'ALTER TABLE employees ADD COLUMN low_meeting_days TEXT',
+  'ALTER TABLE employees ADD COLUMN low_activity_meta TEXT',
+  'ALTER TABLE employees ADD COLUMN low_activity_synced_at TEXT',
 ]) {
   try {
     await db.execute(stmt);
