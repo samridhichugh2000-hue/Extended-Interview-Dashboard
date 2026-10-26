@@ -10,6 +10,7 @@ import { computeEventImpact, latestPipEvent, rnrAwardDate, ANALYSIS_METRICS, app
 import { JOB_LABELS } from '../lib/jobLabels';
 import { F2F_EVENTS } from '../lib/f2fAttendees';
 import { RNR_WINNERS } from '../lib/rnrWinners';
+import { PAST_ML } from '../lib/pastMl';
 import { TRAINER_SALARY_TIERS, SALES_REGIONS, TARGET_QUARTERS, quarterMonthKeys, formatTenure } from '../lib/paAlgo';
 import { draftToHtml } from '../lib/emailDraft';
 import { VIDEO_MIN_MEETINGS_TO_SHOW } from '../lib/videoRules';
@@ -864,7 +865,7 @@ function AppraisalImpactView({ employees, setModal, mode = 'appraisal' }) {
 // Analysis screen: a tab row switches between the appraisal-impact view and
 // the event/recognition lists, so the latter are one click away rather than
 // further down a long page.
-const ANALYSIS_VIEWS = [['appraisal', 'Appraisal impact'], ['f2f', 'F2F Attendees'], ['rnr', 'RnR Winners'], ['rnrImpact', 'RnR before / after'], ['paImpact', 'PA before / after'], ['pipImpact', 'PIP before / after']];
+const ANALYSIS_VIEWS = [['appraisal', 'Appraisal impact'], ['rnr', 'RnR Winners'], ['rnrImpact', 'RnR before / after'], ['paImpact', 'PA before / after'], ['pipImpact', 'PIP before / after'], ['pastMl', 'Past ML']];
 function AnalysisPanel({ employees, setModal }) {
   const [view, setView] = useState('appraisal');
   return (
@@ -875,11 +876,73 @@ function AnalysisPanel({ employees, setModal }) {
         ))}
       </div>
       {view === 'appraisal' && <AppraisalImpactView employees={employees} setModal={setModal} />}
-      {view === 'f2f' && <F2fAttendeesSection employees={employees} setModal={setModal} />}
       {view === 'rnr' && <RnrWinnersSection employees={employees} setModal={setModal} />}
       {view === 'rnrImpact' && <AppraisalImpactView employees={employees} setModal={setModal} mode="rnr" />}
       {view === 'paImpact' && <AppraisalImpactView employees={employees} setModal={setModal} mode="pa" />}
       {view === 'pipImpact' && <AppraisalImpactView employees={employees} setModal={setModal} mode="pip" />}
+      {view === 'pastMl' && <PastMlSection employees={employees} setModal={setModal} />}
+    </div>
+  );
+}
+
+// Past maternity-leave (ML) cases: who, when they were on ML, and the six
+// months before it, month by month. A static snapshot (lib/pastMl.js, built by
+// scripts/gen-past-ml.mjs) — review only, never fed into the Worry Index, PA
+// or PIP.
+const ML_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const mlMonth = (ym) => { const [y, m] = ym.split('-'); return `${ML_MONTHS[Number(m) - 1]} ${y}`; };
+const mlDay = (d) => { const [y, m, dd] = d.split('-'); return `${Number(dd)} ${ML_MONTHS[Number(m) - 1]} ${y}`; };
+function fmtMl(kind, v) {
+  if (v == null) return '—';
+  if (kind === 'money') return Math.abs(v) >= 100000 ? `${v < 0 ? '-' : ''}₹${(Math.abs(v) / 100000).toFixed(1)}L` : `₹${Math.round(v / 1000)}k`;
+  if (kind === 'pct') return `${v}%`;
+  if (kind === 'hours') return `${v}h`;
+  return String(v);
+}
+function PastMlSection({ employees, setModal }) {
+  const [team, setTeam] = useState('Trainer');
+  const [search, setSearch] = useState('');
+  const byId = new Map(employees.map((e) => [e.id, e]));
+  const q = search.trim().toLowerCase();
+  const cases = PAST_ML.cases.filter((c) => c.team === team && (!q || c.name.toLowerCase().includes(q)));
+  const chip = (active, label, onClick) => (
+    <div key={label} onClick={onClick} style={{ cursor: 'pointer', border: `1px solid ${active ? 'rgba(99,102,241,0.5)' : 'rgba(255,255,255,0.1)'}`, background: active ? 'rgba(99,102,241,0.14)' : 'transparent', color: active ? '#A5A7FA' : '#8A90A8', borderRadius: 999, padding: '6px 14px', fontSize: 12.5 }}>{label}</div>
+  );
+  const th = { fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase' };
+  const cols = 'minmax(0,1.7fr) repeat(6,minmax(0,1fr))';
+  const approvalColor = (a) => (a === 'Approved' ? '#5EEAD4' : a === 'In process' ? '#F59E0B' : '#F87171');
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div className="disp" style={{ fontSize: 20, fontWeight: 600 }}>Past ML</div>
+        <span style={{ width: 6 }} />
+        {['Trainer', 'Sales'].map((t) => chip(team === t, `${t} (${PAST_ML.cases.filter((c) => c.team === t).length})`, () => setTeam(t)))}
+      </div>
+      <div style={{ fontSize: 12.5, color: '#8A90A8', lineHeight: 1.6 }}>
+        Everyone who has gone on maternity leave, whether or not it was approved, and the six months before it started — month by month. {team === 'Trainer' ? 'Utilisation, hours delivered and assignments started.' : 'NR, quarter target, target achieved (True NR only, quarter to date), True NR and SCs raised.'} “—” means no data for that month. Review only — not used in the Worry Index, PA or PIP. Snapshot {PAST_ML.generated}.
+      </div>
+      <input value={search} onChange={(ev) => setSearch(ev.target.value)} placeholder={`Search ${team.toLowerCase()} by name…`} style={{ border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '9px 14px', fontSize: 13, color: '#E4E6F0', outline: 'none' }} />
+      {cases.map((c) => {
+        const emp = byId.get(c.id);
+        return (
+          <div key={c.id} style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, background: 'rgba(255,255,255,0.02)', overflow: 'hidden' }}>
+            <div style={{ padding: '13px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+              <span onClick={emp ? () => setModal(emp) : undefined} style={{ fontSize: 14.5, fontWeight: 600, cursor: emp ? 'pointer' : 'default', textDecoration: emp ? 'underline' : 'none', textUnderlineOffset: 3 }}>{c.name}</span>
+              <span style={{ fontSize: 12.5, color: '#A8AEC4' }}>On ML: <b style={{ color: '#E4E6F0' }}>{mlDay(c.mlFrom)} → {mlDay(c.mlTo)}</b> · <span style={{ color: approvalColor(c.approval) }}>{c.approval === 'Rejected' ? 'Not approved' : c.approval}</span></span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 8, padding: '9px 18px', borderBottom: '1px solid rgba(255,255,255,0.06)', ...th }}>
+              <span>6 months before ML</span>{c.months.map((m) => <span key={m} style={{ textAlign: 'right' }}>{mlMonth(m)}</span>)}
+            </div>
+            {c.rows.map((r) => (
+              <div key={r.key} style={{ display: 'grid', gridTemplateColumns: cols, gap: 8, padding: '9px 18px', borderBottom: '1px solid rgba(255,255,255,0.04)', fontSize: 12.5, alignItems: 'center' }}>
+                <span style={{ color: '#A8AEC4' }}>{r.label}</span>
+                {r.values.map((v, i) => <span key={i} className="mono" style={{ textAlign: 'right', color: v == null ? '#5C6178' : v < 0 ? '#F87171' : '#E4E6F0' }}>{fmtMl(r.kind, v)}</span>)}
+              </div>
+            ))}
+          </div>
+        );
+      })}
+      {!cases.length && <div style={{ fontSize: 12.5, color: '#6E7488' }}>No one matches.</div>}
     </div>
   );
 }

@@ -1,0 +1,1218 @@
+// Snapshot behind Analysis > "Past ML", generated 2026-10-26 by scripts/gen-past-ml.mjs
+// (re-run it to refresh). Static on purpose: it describes leaves that already
+// started. Review only — NOT used by the Worry Index, PA or PIP.
+// Per person: the leave period and the six months before it, month by month.
+// null = no data for that month (before joining, or before the feed's history).
+export const PAST_ML = {
+ "generated": "2026-10-26",
+ "cases": [
+  {
+   "id": "EMP3714",
+   "name": "Kavitha Varthya",
+   "team": "Trainer",
+   "mlFrom": "2026-10-01",
+   "mlTo": "2027-03-31",
+   "approval": "Approved",
+   "months": [
+    "2026-04",
+    "2026-05",
+    "2026-06",
+    "2026-07",
+    "2026-08",
+    "2026-09"
+   ],
+   "rows": [
+    {
+     "key": "util",
+     "label": "Utilisation",
+     "kind": "pct",
+     "values": [
+      5,
+      86,
+      26,
+      10,
+      18,
+      8
+     ]
+    },
+    {
+     "key": "hours",
+     "label": "Hours delivered",
+     "kind": "hours",
+     "values": [
+      9,
+      152,
+      46,
+      17,
+      32,
+      14
+     ]
+    },
+    {
+     "key": "assign",
+     "label": "Assignments started",
+     "kind": "count",
+     "values": [
+      0,
+      4,
+      1,
+      0,
+      1,
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "id": "EMP2768",
+   "name": "Priya Singh",
+   "team": "Sales",
+   "mlFrom": "2026-09-25",
+   "mlTo": "2027-03-25",
+   "approval": "In process",
+   "months": [
+    "2026-03",
+    "2026-04",
+    "2026-05",
+    "2026-06",
+    "2026-07",
+    "2026-08"
+   ],
+   "rows": [
+    {
+     "key": "nr",
+     "label": "NR",
+     "kind": "money",
+     "values": [
+      1776004,
+      1176297,
+      576610,
+      -7516,
+      -35394,
+      -61228
+     ]
+    },
+    {
+     "key": "target",
+     "label": "Quarter target",
+     "kind": "money",
+     "values": [
+      2000000,
+      2400000,
+      2400000,
+      2400000,
+      3000000,
+      3000000
+     ]
+    },
+    {
+     "key": "ach",
+     "label": "Target achieved (True NR, quarter to date)",
+     "kind": "pct",
+     "values": [
+      106,
+      47,
+      68,
+      65,
+      -6,
+      -10
+     ]
+    },
+    {
+     "key": "truenr",
+     "label": "True NR",
+     "kind": "money",
+     "values": [
+      1715696,
+      1116297,
+      516610,
+      -68969,
+      -189708,
+      -121228
+     ]
+    },
+    {
+     "key": "sc",
+     "label": "SCs raised",
+     "kind": "count",
+     "values": [
+      8,
+      4,
+      1,
+      5,
+      1,
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "id": "EMP1814",
+   "name": "Shipra Jaiswal",
+   "team": "Sales",
+   "mlFrom": "2026-09-01",
+   "mlTo": "2027-02-28",
+   "approval": "In process",
+   "months": [
+    "2026-03",
+    "2026-04",
+    "2026-05",
+    "2026-06",
+    "2026-07",
+    "2026-08"
+   ],
+   "rows": [
+    {
+     "key": "nr",
+     "label": "NR",
+     "kind": "money",
+     "values": [
+      -52157,
+      791371,
+      668876,
+      -2629,
+      -5089,
+      263874
+     ]
+    },
+    {
+     "key": "target",
+     "label": "Quarter target",
+     "kind": "money",
+     "values": [
+      37500000,
+      2000000,
+      2000000,
+      2000000,
+      2500000,
+      2500000
+     ]
+    },
+    {
+     "key": "ach",
+     "label": "Target achieved (True NR, quarter to date)",
+     "kind": "pct",
+     "values": [
+      -1,
+      33,
+      60,
+      53,
+      -6,
+      -3
+     ]
+    },
+    {
+     "key": "truenr",
+     "label": "True NR",
+     "kind": "money",
+     "values": [
+      -203578,
+      658294,
+      535876,
+      -135629,
+      -142064,
+      64984
+     ]
+    },
+    {
+     "key": "sc",
+     "label": "SCs raised",
+     "kind": "count",
+     "values": [
+      0,
+      3,
+      1,
+      1,
+      4,
+      3
+     ]
+    }
+   ]
+  },
+  {
+   "id": "EMP2709",
+   "name": "Monika Ahlawat",
+   "team": "Trainer",
+   "mlFrom": "2026-08-01",
+   "mlTo": "2027-01-31",
+   "approval": "Approved",
+   "months": [
+    "2026-02",
+    "2026-03",
+    "2026-04",
+    "2026-05",
+    "2026-06",
+    "2026-07"
+   ],
+   "rows": [
+    {
+     "key": "util",
+     "label": "Utilisation",
+     "kind": "pct",
+     "values": [
+      10,
+      34,
+      52,
+      28,
+      36,
+      29
+     ]
+    },
+    {
+     "key": "hours",
+     "label": "Hours delivered",
+     "kind": "hours",
+     "values": [
+      18,
+      60,
+      91,
+      50,
+      64,
+      50
+     ]
+    },
+    {
+     "key": "assign",
+     "label": "Assignments started",
+     "kind": "count",
+     "values": [
+      0,
+      2,
+      2,
+      1,
+      2,
+      1
+     ]
+    }
+   ]
+  },
+  {
+   "id": "EMP3517",
+   "name": "Divya G",
+   "team": "Trainer",
+   "mlFrom": "2026-02-16",
+   "mlTo": "2026-08-16",
+   "approval": "Approved",
+   "months": [
+    "2025-08",
+    "2025-09",
+    "2025-10",
+    "2025-11",
+    "2025-12",
+    "2026-01"
+   ],
+   "rows": [
+    {
+     "key": "util",
+     "label": "Utilisation",
+     "kind": "pct",
+     "values": [
+      61,
+      51,
+      33,
+      51,
+      46,
+      10
+     ]
+    },
+    {
+     "key": "hours",
+     "label": "Hours delivered",
+     "kind": "hours",
+     "values": [
+      108,
+      139,
+      122,
+      111,
+      82,
+      17
+     ]
+    },
+    {
+     "key": "assign",
+     "label": "Assignments started",
+     "kind": "count",
+     "values": [
+      2,
+      2,
+      0,
+      2,
+      2,
+      1
+     ]
+    }
+   ]
+  },
+  {
+   "id": "EMP2758",
+   "name": "Sonia Chhabra",
+   "team": "Trainer",
+   "mlFrom": "2025-11-05",
+   "mlTo": "2026-04-28",
+   "approval": "Approved",
+   "months": [
+    "2025-05",
+    "2025-06",
+    "2025-07",
+    "2025-08",
+    "2025-09",
+    "2025-10"
+   ],
+   "rows": [
+    {
+     "key": "util",
+     "label": "Utilisation",
+     "kind": "pct",
+     "values": [
+      88,
+      35,
+      73,
+      34,
+      58,
+      30
+     ]
+    },
+    {
+     "key": "hours",
+     "label": "Hours delivered",
+     "kind": "hours",
+     "values": [
+      155,
+      62,
+      129,
+      59,
+      102,
+      52
+     ]
+    },
+    {
+     "key": "assign",
+     "label": "Assignments started",
+     "kind": "count",
+     "values": [
+      5,
+      3,
+      2,
+      2,
+      2,
+      2
+     ]
+    }
+   ]
+  },
+  {
+   "id": "EMP2713",
+   "name": "K M Bilvika",
+   "team": "Trainer",
+   "mlFrom": "2025-10-09",
+   "mlTo": "2026-04-09",
+   "approval": "Approved",
+   "months": [
+    "2025-04",
+    "2025-05",
+    "2025-06",
+    "2025-07",
+    "2025-08",
+    "2025-09"
+   ],
+   "rows": [
+    {
+     "key": "util",
+     "label": "Utilisation",
+     "kind": "pct",
+     "values": [
+      9,
+      68,
+      40,
+      65,
+      9,
+      16
+     ]
+    },
+    {
+     "key": "hours",
+     "label": "Hours delivered",
+     "kind": "hours",
+     "values": [
+      16,
+      120,
+      70,
+      114,
+      16,
+      28
+     ]
+    },
+    {
+     "key": "assign",
+     "label": "Assignments started",
+     "kind": "count",
+     "values": [
+      0,
+      3,
+      4,
+      2,
+      0,
+      1
+     ]
+    }
+   ]
+  },
+  {
+   "id": "EMP3593",
+   "name": "Syeda Ahmed",
+   "team": "Sales",
+   "mlFrom": "2025-08-20",
+   "mlTo": "2026-02-18",
+   "approval": "Approved",
+   "months": [
+    "2025-02",
+    "2025-03",
+    "2025-04",
+    "2025-05",
+    "2025-06",
+    "2025-07"
+   ],
+   "rows": [
+    {
+     "key": "nr",
+     "label": "NR",
+     "kind": "money",
+     "values": [
+      null,
+      null,
+      null,
+      532450,
+      305388,
+      123337
+     ]
+    },
+    {
+     "key": "target",
+     "label": "Quarter target",
+     "kind": "money",
+     "values": [
+      30000,
+      30000,
+      200000,
+      200000,
+      200000,
+      750000
+     ]
+    },
+    {
+     "key": "ach",
+     "label": "Target achieved (True NR, quarter to date)",
+     "kind": "pct",
+     "values": [
+      null,
+      null,
+      -45,
+      153,
+      210,
+      -2
+     ]
+    },
+    {
+     "key": "truenr",
+     "label": "True NR",
+     "kind": "money",
+     "values": [
+      null,
+      -77368,
+      -89357,
+      394385,
+      114056,
+      -16992
+     ]
+    },
+    {
+     "key": "sc",
+     "label": "SCs raised",
+     "kind": "count",
+     "values": [
+      null,
+      1,
+      1,
+      6,
+      8,
+      7
+     ]
+    }
+   ]
+  },
+  {
+   "id": "EMP2913",
+   "name": "Nabasmita Bora",
+   "team": "Sales",
+   "mlFrom": "2025-08-11",
+   "mlTo": "2026-02-11",
+   "approval": "Approved",
+   "months": [
+    "2025-02",
+    "2025-03",
+    "2025-04",
+    "2025-05",
+    "2025-06",
+    "2025-07"
+   ],
+   "rows": [
+    {
+     "key": "nr",
+     "label": "NR",
+     "kind": "money",
+     "values": [
+      null,
+      null,
+      null,
+      104445,
+      1431369,
+      225802
+     ]
+    },
+    {
+     "key": "target",
+     "label": "Quarter target",
+     "kind": "money",
+     "values": [
+      2100000,
+      2100000,
+      2500000,
+      2500000,
+      2500000,
+      2300000
+     ]
+    },
+    {
+     "key": "ach",
+     "label": "Target achieved (True NR, quarter to date)",
+     "kind": "pct",
+     "values": [
+      41,
+      129,
+      9,
+      9,
+      59,
+      6
+     ]
+    },
+    {
+     "key": "truenr",
+     "label": "True NR",
+     "kind": "money",
+     "values": [
+      766992,
+      1846544,
+      218846,
+      372,
+      1255296,
+      148988
+     ]
+    },
+    {
+     "key": "sc",
+     "label": "SCs raised",
+     "kind": "count",
+     "values": [
+      14,
+      5,
+      4,
+      10,
+      10,
+      16
+     ]
+    }
+   ]
+  },
+  {
+   "id": "EMP3487",
+   "name": "Sameeksha Haresh Mandhan",
+   "team": "Trainer",
+   "mlFrom": "2025-06-30",
+   "mlTo": "2025-12-31",
+   "approval": "Approved",
+   "months": [
+    "2024-12",
+    "2025-01",
+    "2025-02",
+    "2025-03",
+    "2025-04",
+    "2025-05"
+   ],
+   "rows": [
+    {
+     "key": "util",
+     "label": "Utilisation",
+     "kind": "pct",
+     "values": [
+      51,
+      38,
+      27,
+      29,
+      15,
+      15
+     ]
+    },
+    {
+     "key": "hours",
+     "label": "Hours delivered",
+     "kind": "hours",
+     "values": [
+      120,
+      68,
+      48,
+      62,
+      52,
+      36
+     ]
+    },
+    {
+     "key": "assign",
+     "label": "Assignments started",
+     "kind": "count",
+     "values": [
+      3,
+      2,
+      2,
+      1,
+      0,
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "id": "EMP3114",
+   "name": "Sonali Sharma",
+   "team": "Trainer",
+   "mlFrom": "2025-06-02",
+   "mlTo": "2025-11-14",
+   "approval": "In process",
+   "months": [
+    "2024-12",
+    "2025-01",
+    "2025-02",
+    "2025-03",
+    "2025-04",
+    "2025-05"
+   ],
+   "rows": [
+    {
+     "key": "util",
+     "label": "Utilisation",
+     "kind": "pct",
+     "values": [
+      23,
+      46,
+      71,
+      89,
+      61,
+      66
+     ]
+    },
+    {
+     "key": "hours",
+     "label": "Hours delivered",
+     "kind": "hours",
+     "values": [
+      40,
+      80,
+      124,
+      156,
+      108,
+      116
+     ]
+    },
+    {
+     "key": "assign",
+     "label": "Assignments started",
+     "kind": "count",
+     "values": [
+      1,
+      2,
+      3,
+      4,
+      3,
+      3
+     ]
+    }
+   ]
+  },
+  {
+   "id": "EMP3272",
+   "name": "Prity Bharti",
+   "team": "Sales",
+   "mlFrom": "2025-06-02",
+   "mlTo": "2025-11-28",
+   "approval": "Approved",
+   "months": [
+    "2024-12",
+    "2025-01",
+    "2025-02",
+    "2025-03",
+    "2025-04",
+    "2025-05"
+   ],
+   "rows": [
+    {
+     "key": "nr",
+     "label": "NR",
+     "kind": "money",
+     "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      122733
+     ]
+    },
+    {
+     "key": "target",
+     "label": "Quarter target",
+     "kind": "money",
+     "values": [
+      null,
+      1300000,
+      1300000,
+      1300000,
+      1500000,
+      1500000
+     ]
+    },
+    {
+     "key": "ach",
+     "label": "Target achieved (True NR, quarter to date)",
+     "kind": "pct",
+     "values": [
+      null,
+      22,
+      24,
+      149,
+      17,
+      20
+     ]
+    },
+    {
+     "key": "truenr",
+     "label": "True NR",
+     "kind": "money",
+     "values": [
+      1058769,
+      290178,
+      19512,
+      1621108,
+      251347,
+      46365
+     ]
+    },
+    {
+     "key": "sc",
+     "label": "SCs raised",
+     "kind": "count",
+     "values": [
+      4,
+      3,
+      7,
+      9,
+      7,
+      5
+     ]
+    }
+   ]
+  },
+  {
+   "id": "EMP3270",
+   "name": "Jasleen Kaur",
+   "team": "Trainer",
+   "mlFrom": "2025-01-02",
+   "mlTo": "2025-07-01",
+   "approval": "Approved",
+   "months": [
+    "2024-07",
+    "2024-08",
+    "2024-09",
+    "2024-10",
+    "2024-11",
+    "2024-12"
+   ],
+   "rows": [
+    {
+     "key": "util",
+     "label": "Utilisation",
+     "kind": "pct",
+     "values": [
+      12,
+      43,
+      55,
+      46,
+      52,
+      48
+     ]
+    },
+    {
+     "key": "hours",
+     "label": "Hours delivered",
+     "kind": "hours",
+     "values": [
+      21,
+      75,
+      96,
+      80,
+      92,
+      84
+     ]
+    },
+    {
+     "key": "assign",
+     "label": "Assignments started",
+     "kind": "count",
+     "values": [
+      2,
+      1,
+      3,
+      3,
+      3,
+      3
+     ]
+    }
+   ]
+  },
+  {
+   "id": "EMP2607",
+   "name": "Shruti Kulshrestha",
+   "team": "Trainer",
+   "mlFrom": "2024-04-15",
+   "mlTo": "2024-10-13",
+   "approval": "Approved",
+   "months": [
+    "2023-10",
+    "2023-11",
+    "2023-12",
+    "2024-01",
+    "2024-02",
+    "2024-03"
+   ],
+   "rows": [
+    {
+     "key": "util",
+     "label": "Utilisation",
+     "kind": "pct",
+     "values": [
+      9,
+      32,
+      23,
+      23,
+      33,
+      38
+     ]
+    },
+    {
+     "key": "hours",
+     "label": "Hours delivered",
+     "kind": "hours",
+     "values": [
+      16,
+      56,
+      40,
+      40,
+      58,
+      76
+     ]
+    },
+    {
+     "key": "assign",
+     "label": "Assignments started",
+     "kind": "count",
+     "values": [
+      1,
+      2,
+      1,
+      1,
+      1,
+      1
+     ]
+    }
+   ]
+  },
+  {
+   "id": "EMP1867",
+   "name": "Nancy Sharma",
+   "team": "Sales",
+   "mlFrom": "2023-08-21",
+   "mlTo": "2024-02-20",
+   "approval": "Approved",
+   "months": [
+    "2023-02",
+    "2023-03",
+    "2023-04",
+    "2023-05",
+    "2023-06",
+    "2023-07"
+   ],
+   "rows": [
+    {
+     "key": "nr",
+     "label": "NR",
+     "kind": "money",
+     "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "key": "target",
+     "label": "Quarter target",
+     "kind": "money",
+     "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "key": "ach",
+     "label": "Target achieved (True NR, quarter to date)",
+     "kind": "pct",
+     "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "key": "truenr",
+     "label": "True NR",
+     "kind": "money",
+     "values": [
+      666519,
+      253185,
+      706484,
+      1607731,
+      1919833,
+      3139401
+     ]
+    },
+    {
+     "key": "sc",
+     "label": "SCs raised",
+     "kind": "count",
+     "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    }
+   ]
+  },
+  {
+   "id": "EMP1893",
+   "name": "Megha Jain",
+   "team": "Sales",
+   "mlFrom": "2023-07-03",
+   "mlTo": "2024-01-03",
+   "approval": "Approved",
+   "months": [
+    "2023-01",
+    "2023-02",
+    "2023-03",
+    "2023-04",
+    "2023-05",
+    "2023-06"
+   ],
+   "rows": [
+    {
+     "key": "nr",
+     "label": "NR",
+     "kind": "money",
+     "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "key": "target",
+     "label": "Quarter target",
+     "kind": "money",
+     "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "key": "ach",
+     "label": "Target achieved (True NR, quarter to date)",
+     "kind": "pct",
+     "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    },
+    {
+     "key": "truenr",
+     "label": "True NR",
+     "kind": "money",
+     "values": [
+      237137,
+      701613,
+      74743,
+      -50520,
+      290591,
+      3234036
+     ]
+    },
+    {
+     "key": "sc",
+     "label": "SCs raised",
+     "kind": "count",
+     "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+     ]
+    }
+   ]
+  },
+  {
+   "id": "EMP2906",
+   "name": "Rashmi Sharma",
+   "team": "Trainer",
+   "mlFrom": "2023-04-03",
+   "mlTo": "2023-10-02",
+   "approval": "Rejected",
+   "months": [
+    "2022-10",
+    "2022-11",
+    "2022-12",
+    "2023-01",
+    "2023-02",
+    "2023-03"
+   ],
+   "rows": [
+    {
+     "key": "util",
+     "label": "Utilisation",
+     "kind": "pct",
+     "values": [
+      null,
+      null,
+      0,
+      5,
+      16,
+      18
+     ]
+    },
+    {
+     "key": "hours",
+     "label": "Hours delivered",
+     "kind": "hours",
+     "values": [
+      null,
+      null,
+      0,
+      8,
+      28,
+      32
+     ]
+    },
+    {
+     "key": "assign",
+     "label": "Assignments started",
+     "kind": "count",
+     "values": [
+      null,
+      null,
+      0,
+      1,
+      2,
+      2
+     ]
+    }
+   ]
+  },
+  {
+   "id": "EMP1577",
+   "name": "Simmi Anand",
+   "team": "Trainer",
+   "mlFrom": "2022-12-01",
+   "mlTo": "2023-05-31",
+   "approval": "Approved",
+   "months": [
+    "2022-06",
+    "2022-07",
+    "2022-08",
+    "2022-09",
+    "2022-10",
+    "2022-11"
+   ],
+   "rows": [
+    {
+     "key": "util",
+     "label": "Utilisation",
+     "kind": "pct",
+     "values": [
+      99,
+      54,
+      46,
+      49,
+      42,
+      55
+     ]
+    },
+    {
+     "key": "hours",
+     "label": "Hours delivered",
+     "kind": "hours",
+     "values": [
+      174,
+      95,
+      80,
+      86,
+      74,
+      96
+     ]
+    },
+    {
+     "key": "assign",
+     "label": "Assignments started",
+     "kind": "count",
+     "values": [
+      6,
+      3,
+      3,
+      5,
+      1,
+      4
+     ]
+    }
+   ]
+  }
+ ]
+};
