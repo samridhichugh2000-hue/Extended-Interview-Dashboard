@@ -56,11 +56,12 @@ for (const e of emps) {
   const rows = e.leaves.filter((r) => /matern/i.test(r.leave_type || '') && Math.round((new Date(r.to_date) - new Date(r.from_date)) / 864e5) + 1 >= 30);
   if (!rows.length) continue;
   const live = rows.filter((r) => r.leave_status !== 'Rejected');
-  const use = live.length ? live : rows;
+  if (!live.length) continue; // a request that was only ever rejected is not a leave
+  const use = live;
   const from = use.map((r) => r.from_date.slice(0, 10)).sort()[0];
   const to = use.map((r) => r.to_date.slice(0, 10)).sort().slice(-1)[0];
   if (from > TODAY) continue; // not started yet
-  const approval = use.some((r) => r.leave_status === 'Approved') ? 'Approved' : live.length ? 'In process' : 'Rejected';
+  const approval = use.some((r) => r.leave_status === 'Approved') ? 'Approved' : 'In process';
   const s = mi(from.slice(0, 7));
   const months = Array.from({ length: 6 }, (_, i) => fromMi(s - 6 + i));
   const h = hist[e.id] || {};

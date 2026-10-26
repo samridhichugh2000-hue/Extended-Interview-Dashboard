@@ -1101,63 +1101,6 @@ export const PAST_ML = {
    ]
   },
   {
-   "id": "EMP2906",
-   "name": "Rashmi Sharma",
-   "team": "Trainer",
-   "mlFrom": "2023-04-03",
-   "mlTo": "2023-10-02",
-   "approval": "Rejected",
-   "months": [
-    "2022-10",
-    "2022-11",
-    "2022-12",
-    "2023-01",
-    "2023-02",
-    "2023-03"
-   ],
-   "rows": [
-    {
-     "key": "util",
-     "label": "Utilisation",
-     "kind": "pct",
-     "values": [
-      null,
-      null,
-      0,
-      5,
-      16,
-      18
-     ]
-    },
-    {
-     "key": "hours",
-     "label": "Hours delivered",
-     "kind": "hours",
-     "values": [
-      null,
-      null,
-      0,
-      8,
-      28,
-      32
-     ]
-    },
-    {
-     "key": "assign",
-     "label": "Assignments started",
-     "kind": "count",
-     "values": [
-      null,
-      null,
-      0,
-      1,
-      2,
-      2
-     ]
-    }
-   ]
-  },
-  {
    "id": "EMP1577",
    "name": "Simmi Anand",
    "team": "Trainer",
