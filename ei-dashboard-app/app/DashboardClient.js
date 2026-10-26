@@ -919,7 +919,7 @@ function PastMlSection({ employees, setModal }) {
         {['Trainer', 'Sales'].map((t) => chip(team === t, `${t} (${PAST_ML.cases.filter((c) => c.team === t).length})`, () => setTeam(t)))}
       </div>
       <div style={{ fontSize: 12.5, color: '#8A90A8', lineHeight: 1.6 }}>
-        Everyone who has gone on maternity leave, whether or not it was approved, and the six months before it started — month by month. {team === 'Trainer' ? 'Utilisation % and assignments started.' : 'Quarter target, target achieved (True NR only, quarter to date), True NR and SCs raised.'} “—” means no data for that month. Review only — not used in the Worry Index, PA or PIP. Snapshot {PAST_ML.generated}.
+        Everyone who has gone on maternity leave, whether or not it was approved, and the six months before it started — month by month. {team === 'Trainer' ? 'Utilisation % and assignments started.' : 'True NR and SCs raised month by month, then the target for each of the last 4 full quarters: target, True NR for the quarter, and achieved % (True NR only).'} “—” means no data for that month. Review only — not used in the Worry Index, PA or PIP. Snapshot {PAST_ML.generated}.
       </div>
       <input value={search} onChange={(ev) => setSearch(ev.target.value)} placeholder={`Search ${team.toLowerCase()} by name…`} style={{ border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '9px 14px', fontSize: 13, color: '#E4E6F0', outline: 'none' }} />
       {cases.map((c) => {
@@ -939,6 +939,19 @@ function PastMlSection({ employees, setModal }) {
                 {r.values.map((v, i) => <span key={i} className="mono" style={{ textAlign: 'right', color: v == null ? '#5C6178' : v < 0 ? '#F87171' : '#E4E6F0' }}>{fmtMl(r.kind, v)}</span>)}
               </div>
             ))}
+            {c.quarters && (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.7fr) repeat(4,minmax(0,1.5fr))', gap: 8, padding: '9px 18px', borderTop: '1px solid rgba(255,255,255,0.08)', borderBottom: '1px solid rgba(255,255,255,0.06)', ...th }}>
+                  <span>Target by quarter (last 4 full quarters)</span>{c.quarters.map((q) => <span key={q.label} style={{ textAlign: 'right' }}>{q.label}</span>)}
+                </div>
+                {[['Target', 'target', 'money'], ['True NR', 'trueNr', 'money'], ['Achieved (True NR ÷ target)', 'ach', 'pct']].map(([label, key, kind]) => (
+                  <div key={key} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.7fr) repeat(4,minmax(0,1.5fr))', gap: 8, padding: '9px 18px', borderBottom: '1px solid rgba(255,255,255,0.04)', fontSize: 12.5, alignItems: 'center' }}>
+                    <span style={{ color: '#A8AEC4' }}>{label}</span>
+                    {c.quarters.map((q) => <span key={q.label} className="mono" style={{ textAlign: 'right', color: q[key] == null ? '#5C6178' : key === 'ach' ? (q[key] >= 100 ? '#5EEAD4' : '#E4E6F0') : q[key] < 0 ? '#F87171' : '#E4E6F0' }}>{fmtMl(kind, q[key])}</span>)}
+                  </div>
+                ))}
+              </>
+            )}
           </div>
         );
       })}

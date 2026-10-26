@@ -3,8 +3,8 @@
 // status, 30+ days) that has already started, it records the leave period and
 // the six months BEFORE the leave, month by month:
 //   Trainer: utilisation %, assignments started
-//   Sales:   quarter target, target achievement (quarter-to-date True NR /
-//            quarter target — True NR only), True NR, SCs raised
+//   Sales:   True NR and SCs raised monthly, plus a quarter view (target, True NR,
+//            achieved % = quarter True NR / quarter target — True NR only)
 // Leave comes from the Koenig "Get Employee Leave Details" feed (apikey 237),
 // monthly history from employee_monthly_history (scripts/backfill-history.mjs)
 // plus the employee columns. Needs leave-API credentials in the environment:
@@ -20,7 +20,8 @@ const { getDb } = await import('../lib/db.js');
 const { computeUtilization } = await import('../lib/utilization.js');
 const db = getDb();
 
-const emps = (await db.execute("SELECT * FROM employees WHERE team IN ('Sales','Trainer')")).rows.map((r) => ({ ...r }));
+// Light columns only for the scan; the heavy JSON columns and history rows are read just for the people who turn out to have a maternity leave (keeps Turso reads small).
+const emps = (await db.execute("SELECT id, name, team, doj FROM employees WHERE team IN ('Sales','Trainer')")).rows.map((r) => ({ ...r }));
 const base = 'https://api.koenig-solutions.com';
 const tk = (await (await fetch(`${base}/api/Kites/Operator/GetToken`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userName: process.env.LU, userPassword: process.env.LP, userRole: 'Get Employee Leave Details' }) })).json()).content;
 if (!tk) throw new Error('leave API login failed — set LU and LP');
@@ -38,8 +39,13 @@ async function worker() {
 }
 await Promise.all(Array.from({ length: 6 }, worker));
 
+const isMl = (r) => /matern/i.test(r.leave_type || '') && Math.round((new Date(r.to_date) - new Date(r.from_date)) / 864e5) + 1 >= 30;
+const caseEmps = emps.filter((e) => e.leaves.some(isMl));
+const ids = caseEmps.map((e) => e.id);
+const marks = ids.map(() => '?').join(',');
+for (const r of (await db.execute({ sql: `SELECT id, util_monthly_details, assignments_details, sc_details FROM employees WHERE id IN (${marks})`, args: ids })).rows) Object.assign(caseEmps.find((e) => e.id === r.id), r);
 const hist = {};
-for (const r of (await db.execute("SELECT employee_id, metric, month, value FROM employee_monthly_history")).rows) ((hist[r.employee_id] ??= {})[r.metric] ??= {})[r.month] = r.value;
+for (const r of (await db.execute({ sql: `SELECT employee_id, metric, month, value FROM employee_monthly_history WHERE employee_id IN (${marks}) AND metric IN ('true_nr','quarter_target','util_sc_hours','util_nonsc_hours','assignments_started')`, args: ids })).rows) ((hist[r.employee_id] ??= {})[r.metric] ??= {})[r.month] = r.value;
 
 const MON = { Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6, Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12 };
 const J = (s) => { try { const v = JSON.parse(s); return Array.isArray(v) ? v : []; } catch { return []; } };
@@ -51,8 +57,15 @@ const qStart = (ym) => { const [y, m] = ym.split('-').map(Number); return `${y}-
 const round = (v, d = 1) => (v == null ? null : Math.round(v * 10 ** d) / 10 ** d);
 const TODAY = '2026-10-26';
 
+// SCs raised: the SC feed holds everything since 2020, but the dashboard only keeps the last two years of it per person, so count straight from the feed (one read-only call, nothing written).
+const scByEmp = {};
+if (caseEmps.some((e) => e.team === 'Sales')) {
+  const { getScList } = await import('../lib/koenigScListApi.js');
+  for (const r of await getScList('2020-01-01', '2030-01-01')) { const k = ymOf(r.createdOn); if (!k) continue; const code = String(r.empCode).replace(/\D/g, ''); ((scByEmp[code] ??= {})[k]) = (scByEmp[code][k] || 0) + 1; }
+}
+
 const cases = [];
-for (const e of emps) {
+for (const e of caseEmps) {
   const rows = e.leaves.filter((r) => /matern/i.test(r.leave_type || '') && Math.round((new Date(r.to_date) - new Date(r.from_date)) / 864e5) + 1 >= 30);
   if (!rows.length) continue;
   const live = rows.filter((r) => r.leave_status !== 'Rejected');
@@ -69,7 +82,7 @@ for (const e of emps) {
   const dojYm = isNaN(d) ? '0000-00' : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   const afterJoin = (ym) => ym >= dojYm;
   const series = (keyFn) => months.map((m) => keyFn(m));
-  let rowsOut;
+  let rowsOut, quarters = null;
   if (e.team === 'Trainer') {
     const util = {}, hrs = {};
     for (const x of J(e.util_monthly_details)) { const k = monKey(x.month); if (k) { util[k] = Number(x.util); hrs[k] = Number(x.hours); } }
@@ -82,26 +95,25 @@ for (const e of emps) {
       { key: 'assign', label: 'Assignments started', kind: 'count', values: series((m) => (afterJoin(m) && m >= '2020-01' ? (h.assignments_started?.[m] ?? asg[m] ?? 0) : null)) },
     ];
   } else {
-    const sc = {};
-    for (const x of J(e.sc_details)) { const k = ymOf(x.createdOn); if (k) sc[k] = (sc[k] || 0) + 1; }
+    const sc = scByEmp[String(e.id).replace(/\D/g, '')] || {};
     const trueNr = (m) => (afterJoin(m) && h.true_nr?.[m] !== undefined ? h.true_nr[m] : null);
-    const target = (m) => h.quarter_target?.[qStart(m)] ?? null;
-    const ach = (m) => {
-      const t = target(m);
-      if (!t) return null;
-      let sum = 0;
-      // Months before joining earned nothing, so they count as 0; a month after joining with no figure leaves the % unknown.
-      for (let k = mi(qStart(m)); k <= mi(m); k++) { const km = fromMi(k); const v = trueNr(km); if (v == null) { if (afterJoin(km)) return null; continue; } sum += v; }
-      return round((sum / t) * 100, 0);
-    };
+    // Target by quarter: the four full quarters before the quarter the leave started in. True NR is summed over the quarter's three months (a month before joining counts as 0; a month after joining with no figure leaves the quarter unknown).
+    const q0 = mi(qStart(from.slice(0, 7)));
+    quarters = [4, 3, 2, 1].map((n) => {
+      const qs = fromMi(q0 - 3 * n);
+      const [qy, qm] = qs.split('-').map(Number);
+      const t = h.quarter_target?.[qs] || null;
+      let sum = 0, known = false, gap = false;
+      for (let k = 0; k < 3; k++) { const km = fromMi(mi(qs) + k); const v = trueNr(km); if (v != null) { sum += v; known = true; } else if (afterJoin(km)) gap = true; }
+      const tn = known && !gap ? sum : null;
+      return { label: `Q${Math.floor((qm - 1) / 3) + 1} ${qy}`, target: t, trueNr: tn, ach: t && tn != null ? round((tn / t) * 100, 0) : null };
+    });
     rowsOut = [
-      { key: 'target', label: 'Quarter target', kind: 'money', values: series(target) },
-      { key: 'ach', label: 'Target achieved (True NR, quarter to date)', kind: 'pct', values: series(ach) },
       { key: 'truenr', label: 'True NR', kind: 'money', values: series(trueNr) },
-      { key: 'sc', label: 'SCs raised', kind: 'count', values: series((m) => (m >= '2024-10' && afterJoin(m) ? (sc[m] || 0) : null)) },
+      { key: 'sc', label: 'SCs raised', kind: 'count', values: series((m) => (m >= '2020-01' && afterJoin(m) ? (sc[m] || 0) : null)) },
     ];
   }
-  cases.push({ id: e.id, name: e.name, team: e.team, mlFrom: from, mlTo: to, approval, months, rows: rowsOut });
+  cases.push({ id: e.id, name: e.name, team: e.team, mlFrom: from, mlTo: to, approval, months, rows: rowsOut, ...(quarters ? { quarters } : {}) });
 }
 cases.sort((a, b) => (a.mlFrom < b.mlFrom ? 1 : -1));
 

@@ -67,32 +67,6 @@ export const PAST_ML = {
    ],
    "rows": [
     {
-     "key": "target",
-     "label": "Quarter target",
-     "kind": "money",
-     "values": [
-      2000000,
-      2400000,
-      2400000,
-      2400000,
-      3000000,
-      3000000
-     ]
-    },
-    {
-     "key": "ach",
-     "label": "Target achieved (True NR, quarter to date)",
-     "kind": "pct",
-     "values": [
-      106,
-      47,
-      68,
-      65,
-      -6,
-      -10
-     ]
-    },
-    {
      "key": "truenr",
      "label": "True NR",
      "kind": "money",
@@ -118,6 +92,32 @@ export const PAST_ML = {
       0
      ]
     }
+   ],
+   "quarters": [
+    {
+     "label": "Q3 2025",
+     "target": 1800000,
+     "trueNr": 303836,
+     "ach": 17
+    },
+    {
+     "label": "Q4 2025",
+     "target": 1500000,
+     "trueNr": 673144,
+     "ach": 45
+    },
+    {
+     "label": "Q1 2026",
+     "target": 2000000,
+     "trueNr": 2128778,
+     "ach": 106
+    },
+    {
+     "label": "Q2 2026",
+     "target": 2400000,
+     "trueNr": 1563938,
+     "ach": 65
+    }
    ]
   },
   {
@@ -136,32 +136,6 @@ export const PAST_ML = {
     "2026-08"
    ],
    "rows": [
-    {
-     "key": "target",
-     "label": "Quarter target",
-     "kind": "money",
-     "values": [
-      37500000,
-      2000000,
-      2000000,
-      2000000,
-      2500000,
-      2500000
-     ]
-    },
-    {
-     "key": "ach",
-     "label": "Target achieved (True NR, quarter to date)",
-     "kind": "pct",
-     "values": [
-      -1,
-      33,
-      60,
-      53,
-      -6,
-      -3
-     ]
-    },
     {
      "key": "truenr",
      "label": "True NR",
@@ -187,6 +161,32 @@ export const PAST_ML = {
       4,
       3
      ]
+    }
+   ],
+   "quarters": [
+    {
+     "label": "Q3 2025",
+     "target": 46000000,
+     "trueNr": -524483,
+     "ach": -1
+    },
+    {
+     "label": "Q4 2025",
+     "target": 40000000,
+     "trueNr": -633948,
+     "ach": -2
+    },
+    {
+     "label": "Q1 2026",
+     "target": 37500000,
+     "trueNr": -534786,
+     "ach": -1
+    },
+    {
+     "label": "Q2 2026",
+     "target": 2000000,
+     "trueNr": 1058541,
+     "ach": 53
     }
    ]
   },
@@ -383,32 +383,6 @@ export const PAST_ML = {
    ],
    "rows": [
     {
-     "key": "target",
-     "label": "Quarter target",
-     "kind": "money",
-     "values": [
-      30000,
-      30000,
-      200000,
-      200000,
-      200000,
-      750000
-     ]
-    },
-    {
-     "key": "ach",
-     "label": "Target achieved (True NR, quarter to date)",
-     "kind": "pct",
-     "values": [
-      0,
-      -258,
-      -45,
-      153,
-      210,
-      -2
-     ]
-    },
-    {
      "key": "truenr",
      "label": "True NR",
      "kind": "money",
@@ -434,6 +408,32 @@ export const PAST_ML = {
       7
      ]
     }
+   ],
+   "quarters": [
+    {
+     "label": "Q3 2024",
+     "target": null,
+     "trueNr": null,
+     "ach": null
+    },
+    {
+     "label": "Q4 2024",
+     "target": null,
+     "trueNr": null,
+     "ach": null
+    },
+    {
+     "label": "Q1 2025",
+     "target": 30000,
+     "trueNr": -77368,
+     "ach": -258
+    },
+    {
+     "label": "Q2 2025",
+     "target": 200000,
+     "trueNr": 419084,
+     "ach": 210
+    }
    ]
   },
   {
@@ -452,32 +452,6 @@ export const PAST_ML = {
     "2025-07"
    ],
    "rows": [
-    {
-     "key": "target",
-     "label": "Quarter target",
-     "kind": "money",
-     "values": [
-      2100000,
-      2100000,
-      2500000,
-      2500000,
-      2500000,
-      2300000
-     ]
-    },
-    {
-     "key": "ach",
-     "label": "Target achieved (True NR, quarter to date)",
-     "kind": "pct",
-     "values": [
-      41,
-      129,
-      9,
-      9,
-      59,
-      6
-     ]
-    },
     {
      "key": "truenr",
      "label": "True NR",
@@ -503,6 +477,32 @@ export const PAST_ML = {
       10,
       16
      ]
+    }
+   ],
+   "quarters": [
+    {
+     "label": "Q3 2024",
+     "target": 1800000,
+     "trueNr": 1905507,
+     "ach": 106
+    },
+    {
+     "label": "Q4 2024",
+     "target": null,
+     "trueNr": 1928106,
+     "ach": null
+    },
+    {
+     "label": "Q1 2025",
+     "target": 2100000,
+     "trueNr": 2699083,
+     "ach": 129
+    },
+    {
+     "label": "Q2 2025",
+     "target": 2500000,
+     "trueNr": 1474514,
+     "ach": 59
     }
    ]
   },
@@ -611,32 +611,6 @@ export const PAST_ML = {
    ],
    "rows": [
     {
-     "key": "target",
-     "label": "Quarter target",
-     "kind": "money",
-     "values": [
-      null,
-      1300000,
-      1300000,
-      1300000,
-      1500000,
-      1500000
-     ]
-    },
-    {
-     "key": "ach",
-     "label": "Target achieved (True NR, quarter to date)",
-     "kind": "pct",
-     "values": [
-      null,
-      22,
-      24,
-      149,
-      17,
-      20
-     ]
-    },
-    {
      "key": "truenr",
      "label": "True NR",
      "kind": "money",
@@ -661,6 +635,32 @@ export const PAST_ML = {
       7,
       5
      ]
+    }
+   ],
+   "quarters": [
+    {
+     "label": "Q2 2024",
+     "target": 1000000,
+     "trueNr": 96784,
+     "ach": 10
+    },
+    {
+     "label": "Q3 2024",
+     "target": 1500000,
+     "trueNr": 1348408,
+     "ach": 90
+    },
+    {
+     "label": "Q4 2024",
+     "target": null,
+     "trueNr": 1119531,
+     "ach": null
+    },
+    {
+     "label": "Q1 2025",
+     "target": 1300000,
+     "trueNr": 1930798,
+     "ach": 149
     }
    ]
   },
@@ -769,32 +769,6 @@ export const PAST_ML = {
    ],
    "rows": [
     {
-     "key": "target",
-     "label": "Quarter target",
-     "kind": "money",
-     "values": [
-      null,
-      null,
-      null,
-      null,
-      null,
-      null
-     ]
-    },
-    {
-     "key": "ach",
-     "label": "Target achieved (True NR, quarter to date)",
-     "kind": "pct",
-     "values": [
-      null,
-      null,
-      null,
-      null,
-      null,
-      null
-     ]
-    },
-    {
      "key": "truenr",
      "label": "True NR",
      "kind": "money",
@@ -812,13 +786,39 @@ export const PAST_ML = {
      "label": "SCs raised",
      "kind": "count",
      "values": [
-      null,
-      null,
-      null,
-      null,
-      null,
-      null
+      9,
+      7,
+      19,
+      18,
+      29,
+      14
      ]
+    }
+   ],
+   "quarters": [
+    {
+     "label": "Q3 2022",
+     "target": null,
+     "trueNr": 2592814,
+     "ach": null
+    },
+    {
+     "label": "Q4 2022",
+     "target": null,
+     "trueNr": 3167745,
+     "ach": null
+    },
+    {
+     "label": "Q1 2023",
+     "target": null,
+     "trueNr": 1288182,
+     "ach": null
+    },
+    {
+     "label": "Q2 2023",
+     "target": null,
+     "trueNr": 4234048,
+     "ach": null
     }
    ]
   },
@@ -839,32 +839,6 @@ export const PAST_ML = {
    ],
    "rows": [
     {
-     "key": "target",
-     "label": "Quarter target",
-     "kind": "money",
-     "values": [
-      null,
-      null,
-      null,
-      null,
-      null,
-      null
-     ]
-    },
-    {
-     "key": "ach",
-     "label": "Target achieved (True NR, quarter to date)",
-     "kind": "pct",
-     "values": [
-      null,
-      null,
-      null,
-      null,
-      null,
-      null
-     ]
-    },
-    {
      "key": "truenr",
      "label": "True NR",
      "kind": "money",
@@ -882,13 +856,39 @@ export const PAST_ML = {
      "label": "SCs raised",
      "kind": "count",
      "values": [
-      null,
-      null,
-      null,
-      null,
-      null,
-      null
+      4,
+      2,
+      1,
+      0,
+      19,
+      12
      ]
+    }
+   ],
+   "quarters": [
+    {
+     "label": "Q3 2022",
+     "target": null,
+     "trueNr": -101922,
+     "ach": null
+    },
+    {
+     "label": "Q4 2022",
+     "target": null,
+     "trueNr": 4380096,
+     "ach": null
+    },
+    {
+     "label": "Q1 2023",
+     "target": null,
+     "trueNr": 1013493,
+     "ach": null
+    },
+    {
+     "label": "Q2 2023",
+     "target": null,
+     "trueNr": 3474107,
+     "ach": null
     }
    ]
   },
