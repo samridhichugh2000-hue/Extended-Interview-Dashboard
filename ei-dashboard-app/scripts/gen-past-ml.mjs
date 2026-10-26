@@ -3,7 +3,7 @@
 // status, 30+ days) that has already started, it records the leave period and
 // the six months BEFORE the leave, month by month:
 //   Trainer: utilisation %, hours, assignments started
-//   Sales:   NR, quarter target, target achievement (quarter-to-date True NR /
+//   Sales:   quarter target, target achievement (quarter-to-date True NR /
 //            quarter target — True NR only), True NR, SCs raised
 // Leave comes from the Koenig "Get Employee Leave Details" feed (apikey 237),
 // monthly history from employee_monthly_history (scripts/backfill-history.mjs)
@@ -83,8 +83,6 @@ for (const e of emps) {
       { key: 'assign', label: 'Assignments started', kind: 'count', values: series((m) => (afterJoin(m) && m >= '2020-01' ? (h.assignments_started?.[m] ?? asg[m] ?? 0) : null)) },
     ];
   } else {
-    const nr = {};
-    for (const x of J(e.nr_monthly_details)) { const k = monKey(x.month); if (k) nr[k] = Number(x.nr); }
     const sc = {};
     for (const x of J(e.sc_details)) { const k = ymOf(x.createdOn); if (k) sc[k] = (sc[k] || 0) + 1; }
     const trueNr = (m) => (afterJoin(m) && h.true_nr?.[m] !== undefined ? h.true_nr[m] : null);
@@ -93,11 +91,11 @@ for (const e of emps) {
       const t = target(m);
       if (!t) return null;
       let sum = 0;
-      for (let k = mi(qStart(m)); k <= mi(m); k++) { const v = trueNr(fromMi(k)); if (v == null) return null; sum += v; }
+      // Months before joining earned nothing, so they count as 0; a month after joining with no figure leaves the % unknown.
+      for (let k = mi(qStart(m)); k <= mi(m); k++) { const km = fromMi(k); const v = trueNr(km); if (v == null) { if (afterJoin(km)) return null; continue; } sum += v; }
       return round((sum / t) * 100, 0);
     };
     rowsOut = [
-      { key: 'nr', label: 'NR', kind: 'money', values: series((m) => nr[m] ?? h.nr_gross?.[m] ?? null) },
       { key: 'target', label: 'Quarter target', kind: 'money', values: series(target) },
       { key: 'ach', label: 'Target achieved (True NR, quarter to date)', kind: 'pct', values: series(ach) },
       { key: 'truenr', label: 'True NR', kind: 'money', values: series(trueNr) },

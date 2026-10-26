@@ -80,19 +80,6 @@ export const PAST_ML = {
    ],
    "rows": [
     {
-     "key": "nr",
-     "label": "NR",
-     "kind": "money",
-     "values": [
-      1776004,
-      1176297,
-      576610,
-      -7516,
-      -35394,
-      -61228
-     ]
-    },
-    {
      "key": "target",
      "label": "Quarter target",
      "kind": "money",
@@ -162,19 +149,6 @@ export const PAST_ML = {
     "2026-08"
    ],
    "rows": [
-    {
-     "key": "nr",
-     "label": "NR",
-     "kind": "money",
-     "values": [
-      -52157,
-      791371,
-      668876,
-      -2629,
-      -5089,
-      263874
-     ]
-    },
     {
      "key": "target",
      "label": "Quarter target",
@@ -474,19 +448,6 @@ export const PAST_ML = {
    ],
    "rows": [
     {
-     "key": "nr",
-     "label": "NR",
-     "kind": "money",
-     "values": [
-      null,
-      null,
-      null,
-      532450,
-      305388,
-      123337
-     ]
-    },
-    {
      "key": "target",
      "label": "Quarter target",
      "kind": "money",
@@ -504,8 +465,8 @@ export const PAST_ML = {
      "label": "Target achieved (True NR, quarter to date)",
      "kind": "pct",
      "values": [
-      null,
-      null,
+      0,
+      -258,
       -45,
       153,
       210,
@@ -556,19 +517,6 @@ export const PAST_ML = {
     "2025-07"
    ],
    "rows": [
-    {
-     "key": "nr",
-     "label": "NR",
-     "kind": "money",
-     "values": [
-      null,
-      null,
-      null,
-      104445,
-      1431369,
-      225802
-     ]
-    },
     {
      "key": "target",
      "label": "Quarter target",
@@ -754,19 +702,6 @@ export const PAST_ML = {
    ],
    "rows": [
     {
-     "key": "nr",
-     "label": "NR",
-     "kind": "money",
-     "values": [
-      null,
-      null,
-      null,
-      null,
-      null,
-      122733
-     ]
-    },
-    {
      "key": "target",
      "label": "Quarter target",
      "kind": "money",
@@ -951,19 +886,6 @@ export const PAST_ML = {
    ],
    "rows": [
     {
-     "key": "nr",
-     "label": "NR",
-     "kind": "money",
-     "values": [
-      null,
-      null,
-      null,
-      null,
-      null,
-      null
-     ]
-    },
-    {
      "key": "target",
      "label": "Quarter target",
      "kind": "money",
@@ -1033,19 +955,6 @@ export const PAST_ML = {
     "2023-06"
    ],
    "rows": [
-    {
-     "key": "nr",
-     "label": "NR",
-     "kind": "money",
-     "values": [
-      null,
-      null,
-      null,
-      null,
-      null,
-      null
-     ]
-    },
     {
      "key": "target",
      "label": "Quarter target",

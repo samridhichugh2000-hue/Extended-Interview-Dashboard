@@ -919,7 +919,7 @@ function PastMlSection({ employees, setModal }) {
         {['Trainer', 'Sales'].map((t) => chip(team === t, `${t} (${PAST_ML.cases.filter((c) => c.team === t).length})`, () => setTeam(t)))}
       </div>
       <div style={{ fontSize: 12.5, color: '#8A90A8', lineHeight: 1.6 }}>
-        Everyone who has gone on maternity leave, whether or not it was approved, and the six months before it started — month by month. {team === 'Trainer' ? 'Utilisation, hours delivered and assignments started.' : 'NR, quarter target, target achieved (True NR only, quarter to date), True NR and SCs raised.'} “—” means no data for that month. Review only — not used in the Worry Index, PA or PIP. Snapshot {PAST_ML.generated}.
+        Everyone who has gone on maternity leave, whether or not it was approved, and the six months before it started — month by month. {team === 'Trainer' ? 'Utilisation, hours delivered and assignments started.' : 'Quarter target, target achieved (True NR only, quarter to date), True NR and SCs raised.'} “—” means no data for that month. Review only — not used in the Worry Index, PA or PIP. Snapshot {PAST_ML.generated}.
       </div>
       <input value={search} onChange={(ev) => setSearch(ev.target.value)} placeholder={`Search ${team.toLowerCase()} by name…`} style={{ border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '9px 14px', fontSize: 13, color: '#E4E6F0', outline: 'none' }} />
       {cases.map((c) => {
