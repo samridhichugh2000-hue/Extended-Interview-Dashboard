@@ -1625,7 +1625,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
       onClick: e.active !== false && e.ideasCount > 0 ? () => setIdeasModal(e) : null,
     });
     // % of qualifying Teams meetings (trailing 6 months, as stored) where the camera was on; the on / off counts are in the popup.
-    // Sales counts external meetings only, every other team counts all meetings.
+    // Every team counts all group Teams meetings (external meetings are tracked separately on Graph API Calls).
     const videoShown = e.videoMeetings >= VIDEO_MIN_MEETINGS_TO_SHOW;
     const videoPct = videoShown ? Math.round((e.videoOn / e.videoMeetings) * 100) : null;
     cells.push({
@@ -2070,7 +2070,7 @@ function IdeasModal({ emp, onClose }) {
 }
 
 // Meeting-by-meeting camera on/off for the trailing 6 months (qualifying meetings
-// only: Sales = external, everyone else = all). Loaded on open from
+// only: every team counts all group Teams meetings). Loaded on open from
 // /api/video-meetings so the list does not bloat the home page payload.
 function VideoModal({ emp, onClose }) {
   const [data, setData] = useState(null);
@@ -2092,7 +2092,7 @@ function VideoModal({ emp, onClose }) {
           <div>
             <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — meetings with video on</div>
             <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>
-              {data ? `Camera tracked for ${meetings.length} ${emp.team === 'Sales' ? 'external ' : ''}meeting${meetings.length === 1 ? '' : 's'}: ${on} on, ${meetings.length - on} off` : 'Loading…'}
+              {data ? `Camera tracked for ${meetings.length} meeting${meetings.length === 1 ? '' : 's'}: ${on} on, ${meetings.length - on} off` : 'Loading…'}
             </div>
           </div>
           <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
@@ -2126,7 +2126,7 @@ function VideoModal({ emp, onClose }) {
           })}
           {data && !meetings.length && <div style={{ fontSize: 12.5, color: '#6E7488', padding: '12px 0' }}>No meetings with camera tracking yet.</div>}
           <div style={{ fontSize: 11.5, color: '#6E7488', marginTop: 14, lineHeight: 1.55 }}>
-            From Microsoft Teams call records. Camera on = a camera video stream was sent (screen sharing does not count). Only Teams meetings of 2 minutes or more are counted. Whether the camera was on only exists in Microsoft's call records, which are kept for about 30 days, so tracking started on 20 Sep 2026 and builds up daily towards the 6-month window. {emp.team === 'Sales' ? 'For Sales, only meetings with an external participant count.' : 'All Teams meetings count.'} Microsoft keeps call records for about 30 days. Only a yes or no is stored, no video or audio.
+            From Microsoft Teams call records. Camera on = a camera video stream was sent (screen sharing does not count). Only Teams meetings of 2 minutes or more are counted. Whether the camera was on only exists in Microsoft's call records, which are kept for about 30 days, so tracking started on 20 Sep 2026 and builds up daily towards the 6-month window. All Teams meetings count, for every team. Microsoft keeps call records for about 30 days. Only a yes or no is stored, no video or audio.
           </div>
         </div>
       </div>
