@@ -4,6 +4,7 @@
 // process.env directly (already populated by Vercel — no dotenv needed here,
 // unlike the standalone CLI scripts these mirror).
 import { getDb } from './db.js';
+import { EXCLUDED_EMP_IDS } from './excludedEmployees.js';
 import { isExcludedGraphMeeting } from './meetingFilters.js';
 
 // Used by syncSc/syncAssignments/syncMgrFeedback — reconstructs an
@@ -86,6 +87,7 @@ export async function syncKoenig() {
   const rawNewJoiners = await getNewJoiners(from, to);
   const newJoiners = rawNewJoiners
     .filter((nj) => nj.section !== null && nj.empId)
+    .filter((nj) => !EXCLUDED_EMP_IDS.has(normalizeEmpId(nj.empId)))
     .map((nj) => ({ ...nj, empId: normalizeEmpId(nj.empId) }));
 
   if (!newJoiners.length) {
