@@ -37,7 +37,7 @@ export async function getCalendarTeamsMeetings(userEmail, fromIso, toIso) {
   let url = `${GRAPH_BASE}/users/${encodeURIComponent(userEmail)}/calendarView?` + new URLSearchParams({
     startDateTime: fromIso,
     endDateTime: toIso,
-    $select: 'subject,start,end,isOnlineMeeting,onlineMeetingProvider,onlineMeeting,organizer,attendees',
+    $select: 'subject,start,end,isOnlineMeeting,onlineMeetingProvider,onlineMeeting,organizer,attendees,isCancelled',
     $top: '50',
   });
   const headers = { Prefer: 'outlook.timezone="UTC"' };
@@ -47,7 +47,8 @@ export async function getCalendarTeamsMeetings(userEmail, fromIso, toIso) {
     events.push(...(json.value || []));
     url = json['@odata.nextLink'] || null;
   }
-  return events.filter((e) => e.isOnlineMeeting && e.onlineMeetingProvider === 'teamsForBusiness' && e.onlineMeeting?.joinUrl);
+  // Cancelled meetings (Graph's isCancelled, or the "Canceled: …" subject Outlook leaves behind) can't be attended, so they are never stored.
+  return events.filter((e) => !e.isCancelled && !/^\s*(canceled|cancelled)\s*:/i.test(e.subject || '') && e.isOnlineMeeting && e.onlineMeetingProvider === 'teamsForBusiness' && e.onlineMeeting?.joinUrl);
 }
 
 // Application-permission calls to /users/{id}/onlineMeetings/... require the
