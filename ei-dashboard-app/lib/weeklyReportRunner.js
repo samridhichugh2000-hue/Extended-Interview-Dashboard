@@ -164,7 +164,7 @@ export async function sendWeeklyReports() {
   const questionsByTeam = new Map(NJ_QUESTIONS.map((q) => [q.team, q]));
   const baseUrl = process.env.APP_BASE_URL;
 
-  const employees = await db.execute("SELECT id, name, email, team, manager, rc_fully_booked_week, rc_fully_booked_sc_hours FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team', 'FM Team', 'Recruitment Team') AND active = 1 AND tenure_days < 182");
+  const employees = await db.execute("SELECT id, name, email, team, manager, rc_fully_booked_week, rc_fully_booked_sc_hours FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team', 'FM Team', 'Recruitment Team') AND active = 1 AND dor IS NULL AND tenure_days < 182");
   const { employees: eligible, skippedFullyBooked } = excludeFullyBookedTrainers(employees.rows, week);
 
   const r = await sendCheckIns({
@@ -217,7 +217,7 @@ export async function sendPaPipWeeklyCheckIns() {
   const today = new Date();
 
   const candidates = await db.execute(
-    "SELECT id, name, email, team, manager, status, rc_fully_booked_week, rc_fully_booked_sc_hours FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team', 'FM Team', 'Recruitment Team') AND active = 1 AND tenure_days >= 182 AND status IN ('PA Issued', 'PIP Issued')"
+    "SELECT id, name, email, team, manager, status, rc_fully_booked_week, rc_fully_booked_sc_hours FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team', 'FM Team', 'Recruitment Team') AND active = 1 AND dor IS NULL AND tenure_days >= 182 AND status IN ('PA Issued', 'PIP Issued')"
   );
 
   const ids = candidates.rows.map((e) => e.id);

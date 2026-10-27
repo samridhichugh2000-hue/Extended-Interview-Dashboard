@@ -107,6 +107,8 @@ export async function getEmployees() {
       feedback: feedbackByEmp.get(e.id) || [],
       hrNote: e.hr_note,
       active: !!e.active,
+      resignedOn: e.dor || null,   // date of resignation, while still on the dashboard
+      lastWorkingDay: e.lwd || null,
       negAudits: e.neg_audits,
       auditRemarks: e.audit_remarks ? JSON.parse(e.audit_remarks) : [],
       scRaised: e.sc_raised,

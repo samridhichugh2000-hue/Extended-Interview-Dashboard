@@ -960,6 +960,23 @@ function PastMlSection({ employees, setModal }) {
   );
 }
 
+// Shown next to a name when Koenig has a resignation date: the person stays on the
+// dashboard, with all their data, until their last working day arrives.
+function ResignedBadge({ e }) {
+  if (!e || !e.resignedOn) return null;
+  const M = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const fmt = (d) => {
+    const [y, m, dd] = String(d).slice(0, 10).split('-');
+    return `${Number(dd)} ${M[Number(m) - 1]}${y === String(new Date().getFullYear()) ? '' : ' ' + y}`;
+  };
+  const tip = `Resigned on ${fmt(e.resignedOn)}${e.lastWorkingDay ? `, last working day ${fmt(e.lastWorkingDay)}` : ' (no last working day recorded yet)'}`;
+  return (
+    <span title={tip} style={{ alignSelf: 'flex-start', fontSize: 9.5, letterSpacing: '.04em', padding: '2px 8px', borderRadius: 999, background: 'rgba(245,158,11,0.14)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.4)', whiteSpace: 'nowrap' }}>
+      Resigned{e.lastWorkingDay ? ` · LWD ${fmt(e.lastWorkingDay)}` : ''}
+    </span>
+  );
+}
+
 // On-demand list of the exact working days behind one low-activity signal. The
 // default view only shows "X of Y working days"; this opens when someone asks.
 // Only dates are kept (no click counts, menus or email details).
@@ -1411,7 +1428,7 @@ function Overview({ employees, newJoiners, deptCounts, go, setModal }) {
           <div style={{ maxHeight: 296, overflow: 'auto' }}>
             {reviewQueue.map((e) => (
               <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: '1.6fr .8fr 1.1fr .9fr .7fr', padding: '13px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontWeight: 600 }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id} · day {e.tenure}</span></div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontWeight: 600 }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id} · day {e.tenure}</span><ResignedBadge e={e} /></div>
                 <span style={{ color: '#A8AEC4', fontSize: 12.5 }}>{e.team}</span>
                 <span style={{ color: '#A8AEC4', fontSize: 12.5 }}>{e.manager}</span>
                 <span style={e.statusLabel ? { justifySelf: 'start', fontSize: 11, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` } : undefined}>{e.statusLabel}</span>
@@ -1689,7 +1706,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
         </div>
         {rows.map((e) => (
           <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '13px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}><span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.id}</span></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}><span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.id}</span><ResignedBadge e={e} /></div>
             <span style={{ color: '#A8AEC4', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.doj}</span>
             <span style={{ color: '#A8AEC4', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.manager}</span>
             <span className="mono" style={{ fontSize: 11, color: '#8A90A8' }}>{e.tenure}</span>
@@ -2511,7 +2528,7 @@ function PaPip({ employees, filter, setFilter, setModal }) {
         </div>
         {rows.map((e) => (
           <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: '1.4fr .7fr .8fr .8fr 1.9fr .7fr', padding: '14px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontWeight: 600 }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id} · {e.team}</span></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontWeight: 600 }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id} · {e.team}</span><ResignedBadge e={e} /></div>
             <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` }}>{e.inactive ? 'Inactive' : e.short}</span>
             <span style={{ fontSize: 12, color: '#A8AEC4' }}>{e.issued}</span>
             <span style={{ fontSize: 12, color: '#A8AEC4' }}>{e.due}</span>
@@ -2781,6 +2798,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                   <span style={{ fontWeight: 600 }}>{e.name}</span>
                   <span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id}{e.inactive ? ' · Inactive' : ''}</span>
+                  <ResignedBadge e={e} />
                   {e.tenure != null && (
                     <span className="mono" style={{ fontSize: 10, color: '#6E7488' }}>{formatTenure(e.tenure)}</span>
                   )}
@@ -4218,6 +4236,7 @@ function EmployeeModal({ emp, onClose }) {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <span className="disp" style={{ fontSize: 23, fontWeight: 600, letterSpacing: '-0.02em' }}>{d.name}</span>
+              <ResignedBadge e={emp} />
               {d.statusLabel && <span style={{ fontSize: 10.5, padding: '4px 10px', borderRadius: 999, background: d.statusBg, color: d.statusColor, border: `1px solid ${d.statusBorder}` }}>{d.statusLabel}</span>}
             </div>
             <div className="mono" style={{ fontSize: 12, color: '#6E7488', marginTop: 6 }}>{d.id} · {d.team} · manager {d.manager} · {isNewJoiner(d.tenure) ? `day ${d.tenure} of 180` : `tenure ${d.tenure} days`}</div>

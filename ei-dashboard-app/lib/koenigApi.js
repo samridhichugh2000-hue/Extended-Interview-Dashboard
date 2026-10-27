@@ -73,16 +73,26 @@ export async function getNewJoiners(from, to) {
     department: r['Department'],
     section: classifySection(r['Department']),
     active: isActive(r.DOR, r.LWD),
+    // Resignation date and last working day (null when Koenig has none) — a resigned
+    // employee stays on the dashboard, highlighted, until the last working day arrives.
+    dor: realDate(r.DOR),
+    lwd: realDate(r.LWD),
   }));
 }
 
 // Koenig has no explicit status field. An EmpID that hasn't exited comes back
 // with the sentinel date 1900-01-01 for both DOR (date of resignation) and
-// LWD (last working day); any real date in either means they've left.
+// LWD (last working day). Only a last working day that has arrived means they've left.
 const SENTINEL_DATE = '1900-01-01';
+const realDate = (v) => (v && !String(v).startsWith(SENTINEL_DATE) ? String(v).slice(0, 10) : null);
+// Someone who has only RESIGNED (DOR) is still active — data stays on the dashboard and they
+// are highlighted. They drop off once their last working day (LWD) has arrived (today or
+// earlier, IST). A DOR with no LWD recorded stays active until Koenig records one.
 function isActive(dor, lwd) {
-  const exited = (v) => v && !String(v).startsWith(SENTINEL_DATE);
-  return !exited(dor) && !exited(lwd);
+  const last = realDate(lwd);
+  if (!last) return true;
+  const todayIst = new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10);
+  return last > todayIst;
 }
 
 // Bifurcates the raw Koenig "Department" value into the dashboard's three

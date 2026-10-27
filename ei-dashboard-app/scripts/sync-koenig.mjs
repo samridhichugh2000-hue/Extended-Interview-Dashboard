@@ -59,9 +59,13 @@ function normalizeEmpId(raw) {
 const { from, to } = fetchRange();
 const rawNewJoiners = await getNewJoiners(from, to);
 const skipped = rawNewJoiners.filter((nj) => nj.section === null || !nj.empId);
+// Blue-collar staff removed from the dashboard (lib/excludedEmployees.js) must not be re-added.
+const { loadExcludedIds } = await import('../lib/excludedEmployees.js');
+const excludedIds = await loadExcludedIds(db);
 const newJoiners = rawNewJoiners
   .filter((nj) => nj.section !== null && nj.empId)
-  .map((nj) => ({ ...nj, empId: normalizeEmpId(nj.empId) }));
+  .map((nj) => ({ ...nj, empId: normalizeEmpId(nj.empId) }))
+  .filter((nj) => !excludedIds.has(nj.empId));
 
 if (skipped.length) {
   console.warn(`Skipped ${skipped.length} of ${rawNewJoiners.length} rows from Koenig (missing section and/or empId):`);
@@ -86,16 +90,16 @@ for (const nj of newJoiners) {
 
   if (knownIds.has(nj.empId)) {
     await db.execute({
-      sql: `UPDATE employees SET name = ?, email = ?, team = CASE WHEN ? = 'PT Team' AND trim(designation) = 'Solutions Manager' THEN 'FM Team' ELSE ? END, manager = ?, doj = ?, tenure_days = ?, active = ?
+      sql: `UPDATE employees SET name = ?, email = ?, team = CASE WHEN ? = 'PT Team' AND trim(designation) = 'Solutions Manager' THEN 'FM Team' ELSE ? END, manager = ?, doj = ?, tenure_days = ?, active = ?, dor = ?, lwd = ?
             WHERE id = ?`,
-      args: [nj.name, nj.email || null, nj.section, nj.section, nj.managerName || '—', displayDate(nj.joiningDate), tenureDays(nj.joiningDate), nj.active ? 1 : 0, nj.empId],
+      args: [nj.name, nj.email || null, nj.section, nj.section, nj.managerName || '—', displayDate(nj.joiningDate), tenureDays(nj.joiningDate), nj.active ? 1 : 0, nj.dor, nj.lwd, nj.empId],
     });
     updatedCount++;
   } else if (nj.active) {
     await db.execute({
-      sql: `INSERT INTO employees (id, name, email, team, manager, doj, tenure_days, status, score, trend_note, hr_note, metric1, metric2, metric3, alert, active)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'In Progress', 0, NULL, NULL, NULL, NULL, NULL, NULL, ?)`,
-      args: [nj.empId, nj.name, nj.email || null, nj.section, nj.managerName || '—', displayDate(nj.joiningDate), tenureDays(nj.joiningDate), 1],
+      sql: `INSERT INTO employees (id, name, email, team, manager, doj, tenure_days, status, score, trend_note, hr_note, metric1, metric2, metric3, alert, active, dor, lwd)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'In Progress', 0, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, ?)`,
+      args: [nj.empId, nj.name, nj.email || null, nj.section, nj.managerName || '—', displayDate(nj.joiningDate), tenureDays(nj.joiningDate), 1, nj.dor, nj.lwd],
     });
     inserted++;
   } else {

@@ -24,7 +24,7 @@ export async function sendWeeklyResponseReport() {
   const week = getIsoWeek(new Date());
 
   const employees = await db.execute(
-    "SELECT id, name, email, team, manager, status AS pa_pip_status, tenure_days, rc_fully_booked_week, rc_fully_booked_sc_hours FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team', 'FM Team', 'Recruitment Team') AND active = 1 ORDER BY team ASC, name ASC"
+    "SELECT id, name, email, team, manager, status AS pa_pip_status, tenure_days, rc_fully_booked_week, rc_fully_booked_sc_hours FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team', 'FM Team', 'Recruitment Team') AND active = 1 AND dor IS NULL ORDER BY team ASC, name ASC"
   );
   const responses = await db.execute({ sql: 'SELECT * FROM weekly_responses WHERE week = ?', args: [week] });
   const byEmp = new Map(responses.rows.map((r) => [r.employee_id, r]));

@@ -269,6 +269,8 @@ for (const stmt of [
   'ALTER TABLE employees ADD COLUMN low_email_days TEXT',
   'ALTER TABLE employees ADD COLUMN low_meeting_days TEXT',
   'ALTER TABLE employees ADD COLUMN low_activity_meta TEXT',
+  'ALTER TABLE employees ADD COLUMN dor TEXT',
+  'ALTER TABLE employees ADD COLUMN lwd TEXT',
   'ALTER TABLE employees ADD COLUMN low_activity_synced_at TEXT',
 ]) {
   try {
