@@ -1219,8 +1219,9 @@ export async function syncRecruiterInterviews() {
   const first = new Date(Date.UTC(y, m - 1 - 5, 1));
   const from = first.toISOString().slice(0, 10);
 
-  const recruiters = await db.execute("SELECT id FROM employees WHERE team = 'Recruitment Team' AND active = 1");
-  let withInterviews = 0;
+  const recruiters = await db.execute("SELECT id, email FROM employees WHERE team = 'Recruitment Team' AND active = 1");
+  const { getCalendarEvents } = await import('./graphCallsApi.js');
+  let withInterviews = 0, withTitle = 0, totalRows = 0;
   let failed = 0;
   const statements = [];
   for (const rec of recruiters.rows) {
@@ -1231,13 +1232,36 @@ export async function syncRecruiterInterviews() {
       failed++;
       continue;
     }
+    // Title and attendees: the Koenig feed only has time + interviewer, so match each
+    // interview to the invite on the recruiter's own calendar (same start time, IST).
+    let events = [];
+    if (rec.email && rows.length) {
+      try { events = await getCalendarEvents(rec.email, new Date(`${from}T00:00:00+05:30`).toISOString(), new Date(Date.now() + 2 * 86400000).toISOString()); } catch { events = []; }
+    }
+    const eventsWithStart = events.map((ev) => ({ ev, t: new Date(`${ev.start.dateTime.replace(/\.\d+$/, '')}Z`).getTime() }));
+    const nameOf = (a) => a.emailAddress?.name || String(a.emailAddress?.address || '').split('@')[0];
+    const recEmail = String(rec.email || '').toLowerCase();
+    function matchEvent(r) {
+      const t = new Date(`${String(r.date)}+05:30`).getTime();
+      const near = eventsWithStart.filter((x) => Math.abs(x.t - t) <= 2 * 60000).map((x) => x.ev);
+      if (!near.length) return null;
+      // An invite the recruiter sent is the interview. Someone else's invite counts only if it is a small
+      // meeting (up to 3 attendees) that includes the interviewer — never a team meeting that merely overlaps.
+      const byOrg = near.filter((ev) => String(ev.organizer?.emailAddress?.address || '').toLowerCase() === recEmail);
+      const withInterviewer = (list) => list.find((ev) => (ev.attendees || []).some((a) => nameOf(a).toLowerCase() === String(r.interviewer || '').toLowerCase()));
+      if (byOrg.length) return withInterviewer(byOrg) || byOrg[0];
+      return withInterviewer(near.filter((ev) => (ev.attendees || []).length <= 3)) || null;
+    }
     const byDay = new Map();
     for (const r of rows) {
       const day = String(r.date).slice(0, 10);
       if (!byDay.has(day)) byDay.set(day, { date: day, count: 0, interviews: [] });
       const d = byDay.get(day);
       d.count++;
-      d.interviews.push({ time: String(r.date).slice(11, 16), interviewer: r.interviewer });
+      const ev = matchEvent(r);
+      totalRows++;
+      if (ev) withTitle++;
+      d.interviews.push({ time: String(r.date).slice(11, 16), interviewer: r.interviewer, title: ev ? ev.subject : null, attendees: ev ? (ev.attendees || []).map(nameOf).filter((n) => n && n.toLowerCase() !== r.interviewer?.toLowerCase()) : [] });
     }
     if (rows.length) withInterviews++;
     statements.push({
@@ -1247,7 +1271,7 @@ export async function syncRecruiterInterviews() {
   }
   if (statements.length) await db.batch(statements, 'write');
 
-  return { message: `Synced interviews for ${statements.length} recruiters (${withInterviews} had interviews since ${from}, ${failed} failed).` };
+  return { message: `Synced interviews for ${statements.length} recruiters (${withInterviews} had interviews since ${from}, ${failed} failed). ${withTitle} of ${totalRows} interviews matched a calendar invite (title + attendees).` };
 }
 
 const GRAPH_MEETINGS_LOOKBACK_DAYS = Number(process.env.GRAPH_MEETINGS_LOOKBACK_DAYS || 7);

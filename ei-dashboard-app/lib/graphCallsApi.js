@@ -51,6 +51,27 @@ export async function getCalendarTeamsMeetings(userEmail, fromIso, toIso) {
   return events.filter((e) => !e.isCancelled && !/^\s*(canceled|cancelled)\s*:/i.test(e.subject || '') && e.isOnlineMeeting && e.onlineMeetingProvider === 'teamsForBusiness' && e.onlineMeeting?.joinUrl);
 }
 
+// Every calendar event (any kind, not just Teams) on userEmail's calendar between
+// fromIso/toIso, with its title and who was invited — used to put a title and
+// attendees on recruiter interviews. Cancelled events are left out. Times come
+// back in UTC.
+export async function getCalendarEvents(userEmail, fromIso, toIso) {
+  let url = `${GRAPH_BASE}/users/${encodeURIComponent(userEmail)}/calendarView?` + new URLSearchParams({
+    startDateTime: fromIso,
+    endDateTime: toIso,
+    $select: 'subject,start,organizer,attendees,isCancelled',
+    $top: '100',
+  });
+  const headers = { Prefer: 'outlook.timezone="UTC"' };
+  const events = [];
+  while (url) {
+    const json = await graphJson(url, { headers });
+    events.push(...(json.value || []));
+    url = json['@odata.nextLink'] || null;
+  }
+  return events.filter((e) => !e.isCancelled);
+}
+
 // Application-permission calls to /users/{id}/onlineMeetings/... require the
 // organizer's AAD object id (a GUID) — unlike most other /users/{id}
 // endpoints, they 400 ("userId in request URL is not a valid GUID") if

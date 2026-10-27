@@ -1986,7 +1986,13 @@ function RecruiterInterviewsModal({ emp, month, onClose }) {
                 <span style={{ color: '#5EEAD4', fontWeight: 600 }}>{d.count}</span>
               </div>
               <div style={{ color: '#8A90A8', marginTop: 6, lineHeight: 1.6 }}>
-                {d.interviews.map((i, k) => <div key={k}>{i.time} · {i.interviewer}</div>)}
+                {d.interviews.map((i, k) => (
+                  <div key={k} style={{ marginTop: k ? 8 : 0 }}>
+                    <div>{i.time} · {i.interviewer}</div>
+                    {i.title && <div style={{ color: '#E4E6F0', fontWeight: 600 }}>{i.title}</div>}
+                    {i.attendees && i.attendees.length > 0 && <div style={{ color: '#6E7488', fontSize: 11.5 }}>With: {i.attendees.join(', ')}</div>}
+                  </div>
+                ))}
               </div>
             </div>
           ))}
