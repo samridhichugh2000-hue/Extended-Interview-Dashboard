@@ -4,7 +4,7 @@
 // process.env directly (already populated by Vercel — no dotenv needed here,
 // unlike the standalone CLI scripts these mirror).
 import { getDb } from './db.js';
-import { EXCLUDED_EMP_IDS } from './excludedEmployees.js';
+import { loadExcludedIds, removeEmployees, isBlueCollarDesignation } from './excludedEmployees.js';
 import { isExcludedGraphMeeting } from './meetingFilters.js';
 
 // Used by syncSc/syncAssignments/syncMgrFeedback — reconstructs an
@@ -85,9 +85,10 @@ export async function syncKoenig() {
 
   const { from, to } = fetchRange();
   const rawNewJoiners = await getNewJoiners(from, to);
+  const excludedIds = await loadExcludedIds(db);
   const newJoiners = rawNewJoiners
     .filter((nj) => nj.section !== null && nj.empId)
-    .filter((nj) => !EXCLUDED_EMP_IDS.has(normalizeEmpId(nj.empId)))
+    .filter((nj) => !excludedIds.has(normalizeEmpId(nj.empId)))
     .map((nj) => ({ ...nj, empId: normalizeEmpId(nj.empId) }));
 
   if (!newJoiners.length) {
@@ -1672,11 +1673,13 @@ export async function syncEmployeeDetails() {
   let updated = 0;
   let unmatched = 0;
   let apiErrors = 0;
+  const blueCollar = []; // exact blue-collar designations, removed below
   await mapWithConcurrency(allEmployees.rows, SYNC_CONCURRENCY, async (emp) => {
     const empCode = emp.id.replace('EMP', '');
     try {
       const details = await getEmployeeDetails(empCode);
       if (!details) { unmatched++; return; }
+      if (isBlueCollarDesignation(details.designationName)) { blueCollar.push({ id: emp.id, designation: String(details.designationName).trim() }); return; }
       statements.push({
         sql: 'UPDATE employees SET country = ?, emp_city = ?, emp_state = ?, is_overseas = ?, designation = ? WHERE id = ?',
         args: [details.countryName, details.cityName, details.stateName, details.isOverseas ? 1 : 0, details.designationName, emp.id],
@@ -1693,8 +1696,11 @@ export async function syncEmployeeDetails() {
   });
 
   if (statements.length) await db.batch(statements, 'write');
+  for (const designation of new Set(blueCollar.map((b) => b.designation))) {
+    await removeEmployees(db, blueCollar.filter((b) => b.designation === designation).map((b) => b.id), `Blue collar — ${designation}`);
+  }
 
-  return { message: `Synced employee details for ${updated} employees (${unmatched} had no record, ${apiErrors} API errors).` };
+  return { message: `Synced employee details for ${updated} employees (${unmatched} had no record, ${apiErrors} API errors, ${blueCollar.length} blue-collar removed).` };
 }
 
 // Common Index — All teams. Per-employee lookup only (no bulk mode); see
