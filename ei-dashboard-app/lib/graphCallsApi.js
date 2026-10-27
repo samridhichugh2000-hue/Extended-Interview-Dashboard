@@ -37,7 +37,7 @@ export async function getCalendarTeamsMeetings(userEmail, fromIso, toIso) {
   let url = `${GRAPH_BASE}/users/${encodeURIComponent(userEmail)}/calendarView?` + new URLSearchParams({
     startDateTime: fromIso,
     endDateTime: toIso,
-    $select: 'subject,start,end,isOnlineMeeting,onlineMeetingProvider,onlineMeeting,organizer,attendees,isCancelled',
+    $select: 'subject,start,end,isOnlineMeeting,onlineMeetingProvider,onlineMeeting,organizer,attendees,isCancelled,responseStatus',
     $top: '50',
   });
   const headers = { Prefer: 'outlook.timezone="UTC"' };

@@ -47,6 +47,45 @@ export const PAST_ML = {
       1,
       0
      ]
+    },
+    {
+     "key": "meetings",
+     "label": "Teams meetings (calendar)",
+     "kind": "count",
+     "values": [
+      23,
+      44,
+      41,
+      28,
+      20,
+      29
+     ]
+    },
+    {
+     "key": "techcalls",
+     "label": "Tech calls taken",
+     "kind": "count",
+     "values": [
+      2,
+      4,
+      0,
+      2,
+      3,
+      1
+     ]
+    },
+    {
+     "key": "techconv",
+     "label": "Tech calls converted",
+     "kind": "count",
+     "values": [
+      0,
+      1,
+      0,
+      0,
+      0,
+      0
+     ]
     }
    ]
   },
@@ -90,6 +129,19 @@ export const PAST_ML = {
       5,
       1,
       0
+     ]
+    },
+    {
+     "key": "meetings",
+     "label": "Teams meetings (calendar)",
+     "kind": "count",
+     "values": [
+      49,
+      40,
+      29,
+      18,
+      17,
+      16
      ]
     }
    ],
@@ -161,6 +213,19 @@ export const PAST_ML = {
       4,
       3
      ]
+    },
+    {
+     "key": "meetings",
+     "label": "Teams meetings (calendar)",
+     "kind": "count",
+     "values": [
+      340,
+      191,
+      96,
+      112,
+      61,
+      50
+     ]
     }
    ],
    "quarters": [
@@ -231,6 +296,45 @@ export const PAST_ML = {
       2,
       1
      ]
+    },
+    {
+     "key": "meetings",
+     "label": "Teams meetings (calendar)",
+     "kind": "count",
+     "values": [
+      34,
+      26,
+      28,
+      33,
+      34,
+      40
+     ]
+    },
+    {
+     "key": "techcalls",
+     "label": "Tech calls taken",
+     "kind": "count",
+     "values": [
+      0,
+      0,
+      0,
+      0,
+      1,
+      1
+     ]
+    },
+    {
+     "key": "techconv",
+     "label": "Tech calls converted",
+     "kind": "count",
+     "values": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
     }
    ]
   },
@@ -274,6 +378,45 @@ export const PAST_ML = {
       2,
       2,
       1
+     ]
+    },
+    {
+     "key": "meetings",
+     "label": "Teams meetings (calendar)",
+     "kind": "count",
+     "values": [
+      30,
+      62,
+      45,
+      36,
+      28,
+      17
+     ]
+    },
+    {
+     "key": "techcalls",
+     "label": "Tech calls taken",
+     "kind": "count",
+     "values": [
+      1,
+      3,
+      4,
+      5,
+      1,
+      1
+     ]
+    },
+    {
+     "key": "techconv",
+     "label": "Tech calls converted",
+     "kind": "count",
+     "values": [
+      1,
+      2,
+      0,
+      1,
+      0,
+      0
      ]
     }
    ]
@@ -319,6 +462,45 @@ export const PAST_ML = {
       2,
       2
      ]
+    },
+    {
+     "key": "meetings",
+     "label": "Teams meetings (calendar)",
+     "kind": "count",
+     "values": [
+      43,
+      26,
+      35,
+      41,
+      39,
+      30
+     ]
+    },
+    {
+     "key": "techcalls",
+     "label": "Tech calls taken",
+     "kind": "count",
+     "values": [
+      5,
+      4,
+      2,
+      5,
+      0,
+      0
+     ]
+    },
+    {
+     "key": "techconv",
+     "label": "Tech calls converted",
+     "kind": "count",
+     "values": [
+      3,
+      1,
+      0,
+      1,
+      0,
+      0
+     ]
     }
    ]
   },
@@ -363,6 +545,45 @@ export const PAST_ML = {
       0,
       1
      ]
+    },
+    {
+     "key": "meetings",
+     "label": "Teams meetings (calendar)",
+     "kind": "count",
+     "values": [
+      40,
+      67,
+      49,
+      59,
+      45,
+      53
+     ]
+    },
+    {
+     "key": "techcalls",
+     "label": "Tech calls taken",
+     "kind": "count",
+     "values": [
+      5,
+      0,
+      3,
+      2,
+      0,
+      1
+     ]
+    },
+    {
+     "key": "techconv",
+     "label": "Tech calls converted",
+     "kind": "count",
+     "values": [
+      0,
+      0,
+      2,
+      0,
+      0,
+      0
+     ]
     }
    ]
   },
@@ -406,6 +627,19 @@ export const PAST_ML = {
       6,
       8,
       7
+     ]
+    },
+    {
+     "key": "meetings",
+     "label": "Teams meetings (calendar)",
+     "kind": "count",
+     "values": [
+      null,
+      36,
+      20,
+      50,
+      40,
+      33
      ]
     }
    ],
@@ -477,6 +711,19 @@ export const PAST_ML = {
       10,
       16
      ]
+    },
+    {
+     "key": "meetings",
+     "label": "Teams meetings (calendar)",
+     "kind": "count",
+     "values": [
+      69,
+      111,
+      70,
+      119,
+      63,
+      72
+     ]
     }
    ],
    "quarters": [
@@ -547,6 +794,45 @@ export const PAST_ML = {
       0,
       0
      ]
+    },
+    {
+     "key": "meetings",
+     "label": "Teams meetings (calendar)",
+     "kind": "count",
+     "values": [
+      21,
+      24,
+      13,
+      25,
+      21,
+      35
+     ]
+    },
+    {
+     "key": "techcalls",
+     "label": "Tech calls taken",
+     "kind": "count",
+     "values": [
+      2,
+      1,
+      0,
+      1,
+      2,
+      0
+     ]
+    },
+    {
+     "key": "techconv",
+     "label": "Tech calls converted",
+     "kind": "count",
+     "values": [
+      2,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
     }
    ]
   },
@@ -591,6 +877,45 @@ export const PAST_ML = {
       3,
       3
      ]
+    },
+    {
+     "key": "meetings",
+     "label": "Teams meetings (calendar)",
+     "kind": "count",
+     "values": [
+      14,
+      24,
+      21,
+      26,
+      19,
+      41
+     ]
+    },
+    {
+     "key": "techcalls",
+     "label": "Tech calls taken",
+     "kind": "count",
+     "values": [
+      0,
+      1,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    {
+     "key": "techconv",
+     "label": "Tech calls converted",
+     "kind": "count",
+     "values": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
     }
    ]
   },
@@ -634,6 +959,19 @@ export const PAST_ML = {
       9,
       7,
       5
+     ]
+    },
+    {
+     "key": "meetings",
+     "label": "Teams meetings (calendar)",
+     "kind": "count",
+     "values": [
+      49,
+      45,
+      34,
+      48,
+      36,
+      32
      ]
     }
    ],
@@ -705,6 +1043,45 @@ export const PAST_ML = {
       3,
       3
      ]
+    },
+    {
+     "key": "meetings",
+     "label": "Teams meetings (calendar)",
+     "kind": "count",
+     "values": [
+      9,
+      15,
+      18,
+      28,
+      39,
+      44
+     ]
+    },
+    {
+     "key": "techcalls",
+     "label": "Tech calls taken",
+     "kind": "count",
+     "values": [
+      0,
+      0,
+      0,
+      0,
+      4,
+      1
+     ]
+    },
+    {
+     "key": "techconv",
+     "label": "Tech calls converted",
+     "kind": "count",
+     "values": [
+      0,
+      0,
+      0,
+      0,
+      3,
+      0
+     ]
     }
    ]
   },
@@ -749,6 +1126,45 @@ export const PAST_ML = {
       1,
       1
      ]
+    },
+    {
+     "key": "meetings",
+     "label": "Teams meetings (calendar)",
+     "kind": "count",
+     "values": [
+      18,
+      23,
+      20,
+      15,
+      21,
+      12
+     ]
+    },
+    {
+     "key": "techcalls",
+     "label": "Tech calls taken",
+     "kind": "count",
+     "values": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    {
+     "key": "techconv",
+     "label": "Tech calls converted",
+     "kind": "count",
+     "values": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
     }
    ]
   },
@@ -792,6 +1208,19 @@ export const PAST_ML = {
       18,
       29,
       14
+     ]
+    },
+    {
+     "key": "meetings",
+     "label": "Teams meetings (calendar)",
+     "kind": "count",
+     "values": [
+      81,
+      67,
+      76,
+      96,
+      92,
+      90
      ]
     }
    ],
@@ -863,6 +1292,19 @@ export const PAST_ML = {
       19,
       12
      ]
+    },
+    {
+     "key": "meetings",
+     "label": "Teams meetings (calendar)",
+     "kind": "count",
+     "values": [
+      21,
+      22,
+      28,
+      24,
+      27,
+      26
+     ]
     }
    ],
    "quarters": [
@@ -932,6 +1374,45 @@ export const PAST_ML = {
       5,
       1,
       4
+     ]
+    },
+    {
+     "key": "meetings",
+     "label": "Teams meetings (calendar)",
+     "kind": "count",
+     "values": [
+      29,
+      25,
+      32,
+      14,
+      37,
+      27
+     ]
+    },
+    {
+     "key": "techcalls",
+     "label": "Tech calls taken",
+     "kind": "count",
+     "values": [
+      0,
+      2,
+      3,
+      0,
+      4,
+      2
+     ]
+    },
+    {
+     "key": "techconv",
+     "label": "Tech calls converted",
+     "kind": "count",
+     "values": [
+      0,
+      0,
+      0,
+      0,
+      1,
+      1
      ]
     }
    ]
