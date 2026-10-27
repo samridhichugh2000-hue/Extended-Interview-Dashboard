@@ -1901,7 +1901,7 @@ export async function syncVideo() {
   const [records, tenantUsers, empRes, doneRes] = await Promise.all([
     listCallRecords(since.toISOString(), now.toISOString()),
     listTenantUsers(),
-    db.execute('SELECT id, email FROM employees WHERE email IS NOT NULL'),
+    db.execute('SELECT id, email, active FROM employees WHERE email IS NOT NULL'),
     db.execute('SELECT call_record_id, subject, synced_at FROM video_meeting_info'),
   ]);
   // Skip meetings already saved. A meeting saved WITHOUT a title is looked at
@@ -1909,7 +1909,9 @@ export async function syncVideo() {
   // title can be found by then.
   const retryBefore = now.getTime() - 7 * 86400000;
   const done = new Set(doneRes.rows.filter((r) => r.subject || new Date(r.synced_at).getTime() > retryBefore).map((r) => r.call_record_id));
-  const empByEmail = new Map(empRes.rows.map((r) => [String(r.email).toLowerCase(), r.id]));
+  // A rehire gets a new employee code but keeps the same email: attach meetings to the ACTIVE record
+  // (set last, so it wins) and not to the old exited one.
+  const empByEmail = new Map([...empRes.rows].sort((a, b) => Number(a.active) - Number(b.active)).map((r) => [String(r.email).toLowerCase(), r.id]));
   const empByUserId = new Map();
   const nameByUserId = new Map(tenantUsers.filter((u) => u.displayName).map((u) => [u.id, u.displayName]));
   for (const u of tenantUsers) {
