@@ -147,6 +147,8 @@ CREATE TABLE IF NOT EXISTS weekly_responses (
   state TEXT NOT NULL,          -- Pending | Received (Overdue is derived live, not stored)
   q1 TEXT, a1 TEXT,
   q2 TEXT, a2 TEXT,
+  q3 TEXT, a3 TEXT,             -- Sales / Trainer / PT only: experiment-sheet question, answered Yes / No
+  attachment_name TEXT,        -- name of the experiment sheet attached with the response (the file itself is only emailed, never stored)
   ai_rating TEXT,
   ai_rating_reason TEXT,        -- one-sentence rationale Claude gave for ai_rating
   token TEXT UNIQUE,            -- public submission-link token

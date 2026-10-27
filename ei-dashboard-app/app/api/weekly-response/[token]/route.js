@@ -4,13 +4,14 @@ import { getDb } from '../../../../lib/db';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-function confirmationEmailHtml({ name, week, q1, a1, q2, a2 }) {
+function confirmationEmailHtml({ name, week, q1, a1, q2, a2, q3, a3, attachmentName }) {
   return `
     <div style="font-family:system-ui,Segoe UI,Roboto,sans-serif;font-size:14px;color:#1a1a1a;line-height:1.6;">
       <p>Hi ${name},</p>
       <p>Thanks — your check-in for ${week} has been recorded:</p>
       <p><b>${q1}</b><br/>${a1}</p>
       <p><b>${q2}</b><br/>${a2}</p>
+      ${q3 ? `<p><b>${q3}</b><br/>${a3}${attachmentName ? ` - experiment sheet attached (${attachmentName})` : ''}</p>` : ''}
     </div>`;
 }
 
@@ -37,6 +38,17 @@ async function handlePost(request, { params }) {
   if (!a1 || !a2) {
     return NextResponse.json({ ok: false, error: 'Both answers are required.' }, { status: 400 });
   }
+  const a3 = body?.a3 === 'Yes' || body?.a3 === 'No' ? body.a3 : null;
+  // The experiment sheet is only emailed, never stored: validate it, keep its name, drop the bytes after sending.
+  let attachment = null;
+  const att = body?.attachment;
+  if (a3 === 'Yes' && att?.content) {
+    const name = String(att.name || 'experiment-sheet').replace(/[^\w.\- ]+/g, '_').slice(0, 120);
+    const size = Math.floor((String(att.content).length * 3) / 4);
+    if (!/\.(xlsx|xlsm|xls|csv|pdf|docx|doc|pptx|png|jpe?g)$/i.test(name)) return NextResponse.json({ ok: false, error: 'That file type is not accepted.' }, { status: 400 });
+    if (size > 3 * 1024 * 1024) return NextResponse.json({ ok: false, error: 'The attachment is over 3 MB.' }, { status: 400 });
+    attachment = { name, contentType: String(att.type || 'application/octet-stream'), content: String(att.content) };
+  }
 
   const db = getDb();
   const existing = await db.execute({
@@ -52,10 +64,13 @@ async function handlePost(request, { params }) {
   if (row.state === 'Received') {
     return NextResponse.json({ ok: false, error: 'This response has already been submitted.' }, { status: 409 });
   }
+  if (row.q3 && !a3) {
+    return NextResponse.json({ ok: false, error: 'Please answer the experiment-sheet question.' }, { status: 400 });
+  }
 
   await db.execute({
-    sql: `UPDATE weekly_responses SET a1 = ?, a2 = ?, received_at = ?, state = 'Received' WHERE token = ?`,
-    args: [a1, a2, new Date().toISOString(), token],
+    sql: `UPDATE weekly_responses SET a1 = ?, a2 = ?, a3 = ?, attachment_name = ?, received_at = ?, state = 'Received' WHERE token = ?`,
+    args: [a1, a2, row.q3 ? a3 : null, attachment?.name || null, new Date().toISOString(), token],
   });
 
   // Rate immediately so the dashboard (a plain live DB query, no caching)
@@ -93,7 +108,8 @@ async function handlePost(request, { params }) {
         to: row.email,
         cc: getManagerEmail(row.manager),
         subject: `Your response has been recorded — ${row.week}`,
-        html: confirmationEmailHtml({ name: row.name, week: row.week, q1: row.q1, a1, q2: row.q2, a2 }),
+        html: confirmationEmailHtml({ name: row.name, week: row.week, q1: row.q1, a1, q2: row.q2, a2, q3: row.q3, a3, attachmentName: attachment?.name }),
+        ...(attachment ? { attachments: [attachment] } : {}),
       });
     } catch (err) {
       console.error('Weekly response confirmation email failed:', err.message);

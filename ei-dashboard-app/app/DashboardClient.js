@@ -4050,6 +4050,12 @@ function Reports({ employees, responses, week, filter, setFilter }) {
                     <div className="mono" style={{ fontSize: 10.5, color: '#6366F1', marginBottom: 3 }}>{r.q2}</div>
                     <div style={{ fontSize: 13, color: '#C7CBDA', lineHeight: 1.5 }}>{r.a2}</div>
                   </div>
+                  {r.q3 && (
+                    <div>
+                      <div className="mono" style={{ fontSize: 10.5, color: '#6366F1', marginBottom: 3 }}>{r.q3}</div>
+                      <div style={{ fontSize: 13, color: '#C7CBDA', lineHeight: 1.5 }}>{r.a3}{r.attachmentName ? ` — attached: ${r.attachmentName}` : ''}</div>
+                    </div>
+                  )}
                   {r.aiReason && (
                     <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 10 }}>
                       <div className="mono" style={{ fontSize: 10.5, color: '#6366F1', marginBottom: 3 }}>AI rating: {r.ai}/5</div>
@@ -4083,12 +4089,13 @@ function EmailPreviewModal({ onClose, week }) {
           <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 12, padding: 18, background: 'rgba(255,255,255,0.02)', fontSize: 13.5, color: '#C7CBDA', lineHeight: 1.6 }}>
             <p style={{ marginBottom: 12 }}>Hi [Name],</p>
             <p style={{ marginBottom: 12 }}>As part of our regular Check-In, we would like to understand your progress and focus areas for the week.</p>
-            <p style={{ marginBottom: 12 }}>Please take a minute to respond to the following two questions. Please click the button below to submit your responses:</p>
+            <p style={{ marginBottom: 12 }}>Please take a minute to respond to the following questions. Please click the button below to submit your responses:</p>
             {NJ_QUESTIONS.map((q) => (
               <div key={q.team} style={{ marginBottom: 12 }}>
                 <div style={{ fontSize: 11, color: q.color, marginBottom: 3 }}>{q.team} track</div>
                 <div>1. {q.q1}</div>
                 <div>2. {q.q2}</div>
+                {q.q3 && <div>3. {q.q3}</div>}
               </div>
             ))}
             <p style={{ marginBottom: 12 }}>Your responses will help HR track your progress, understand your current priorities, and identify any support required during your initial months with the organization.</p>

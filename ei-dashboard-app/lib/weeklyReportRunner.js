@@ -5,15 +5,16 @@ function genToken() {
   return randomBytes(24).toString('base64url');
 }
 
-export function initialEmailHtml({ name, q1, q2, link }) {
+export function initialEmailHtml({ name, q1, q2, q3, link }) {
   return `
     <div style="font-family:system-ui,Segoe UI,Roboto,sans-serif;font-size:14px;color:#1a1a1a;line-height:1.6;">
       <p>Hi ${name},</p>
       <p>As part of our regular Check-In, we would like to understand your progress and focus areas for the week.</p>
-      <p>Please take a minute to respond to the following two questions. Please click the button below to submit your responses:</p>
+      <p>Please take a minute to respond to the following questions. Please click the button below to submit your responses:</p>
       <ol style="padding-left:18px;">
         <li style="margin-bottom:8px;">${q1}</li>
         <li style="margin-bottom:8px;">${q2}</li>
+        ${q3 ? `<li style="margin-bottom:8px;">${q3}</li>` : ''}
       </ol>
       <p>Your responses will help HR track your progress, understand your current priorities, and identify any support required during your initial months with the organization.</p>
       <p>Thank you for your time and participation.</p>
@@ -27,15 +28,16 @@ export function initialEmailHtml({ name, q1, q2, link }) {
 // is a new joiner (this goes to PA/PIP employees who are past the 6-month NJ
 // check-in window — see sendPaPipWeeklyCheckIns below) — no "initial months
 // with the organization" line, otherwise identical structure/tone.
-export function paPipEmailHtml({ name, q1, q2, link }) {
+export function paPipEmailHtml({ name, q1, q2, q3, link }) {
   return `
     <div style="font-family:system-ui,Segoe UI,Roboto,sans-serif;font-size:14px;color:#1a1a1a;line-height:1.6;">
       <p>Hi ${name},</p>
       <p>As part of our regular Check-In, we would like to understand your progress and focus areas for the week.</p>
-      <p>Please take a minute to respond to the following two questions. Please click the button below to submit your responses:</p>
+      <p>Please take a minute to respond to the following questions. Please click the button below to submit your responses:</p>
       <ol style="padding-left:18px;">
         <li style="margin-bottom:8px;">${q1}</li>
         <li style="margin-bottom:8px;">${q2}</li>
+        ${q3 ? `<li style="margin-bottom:8px;">${q3}</li>` : ''}
       </ol>
       <p>Your responses will help HR track your progress, understand your current priorities, and identify any support you may need going forward.</p>
       <p>Thank you for your time and participation.</p>
@@ -102,13 +104,13 @@ async function sendCheckIns({ db, week, employees, questionsByTeam, baseUrl, sub
         to: emp.email,
         cc: getManagerEmail(emp.manager),
         subject: subjectFor(emp),
-        html: htmlFor({ name: emp.name, q1: q.q1, q2: q.q2, link }),
+        html: htmlFor({ name: emp.name, q1: q.q1, q2: q.q2, q3: q.q3, link }),
       });
 
       await db.execute({
-        sql: `INSERT INTO weekly_responses (employee_id, week, sent_at, received_at, state, q1, a1, q2, a2, ai_rating, token)
-              VALUES (?, ?, ?, NULL, 'Pending', ?, NULL, ?, NULL, NULL, ?)`,
-        args: [emp.id, week, new Date().toISOString(), q.q1, q.q2, token],
+        sql: `INSERT INTO weekly_responses (employee_id, week, sent_at, received_at, state, q1, a1, q2, a2, q3, a3, ai_rating, token)
+              VALUES (?, ?, ?, NULL, 'Pending', ?, NULL, ?, NULL, ?, NULL, NULL, ?)`,
+        args: [emp.id, week, new Date().toISOString(), q.q1, q.q2, q.q3 || null, token],
       });
       sent++;
     } catch (err) {

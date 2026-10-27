@@ -106,6 +106,9 @@ for (const stmt of [
 
 for (const stmt of [
   'ALTER TABLE weekly_responses ADD COLUMN token TEXT',
+  'ALTER TABLE weekly_responses ADD COLUMN q3 TEXT',
+  'ALTER TABLE weekly_responses ADD COLUMN a3 TEXT',
+  'ALTER TABLE weekly_responses ADD COLUMN attachment_name TEXT',
   'ALTER TABLE weekly_responses ADD COLUMN shoddy_marked_at TEXT',
   'ALTER TABLE weekly_responses ADD COLUMN shoddy_incident_id TEXT',
 ]) {

@@ -49,6 +49,12 @@ export default async function RespondPage({ params }) {
               <div className="mono" style={{ fontSize: 14, color: '#6366F1', marginBottom: 4 }}>{r.q2}</div>
               <div style={{ fontSize: 13.5, color: '#C7CBDA', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{r.a2}</div>
             </div>
+            {r.q3 && (
+              <div>
+                <div className="mono" style={{ fontSize: 14, color: '#6366F1', marginBottom: 4 }}>{r.q3}</div>
+                <div style={{ fontSize: 13.5, color: '#C7CBDA', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{r.a3}{r.attachmentName ? ` — attached: ${r.attachmentName}` : ''}</div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -59,7 +65,7 @@ export default async function RespondPage({ params }) {
     <div style={{ padding: '0 20px' }}>
       <div style={card}>
         <div className="disp" style={{ fontSize: 20, fontWeight: 600 }}>Hi {r.name} — quick check-in</div>
-        <ResponseForm token={token} q1={r.q1} q2={r.q2} hint1={NJ_QUESTIONS.find((q) => q.team === r.team)?.hint1} hint2={NJ_QUESTIONS.find((q) => q.team === r.team)?.hint2} />
+        <ResponseForm token={token} q1={r.q1} q2={r.q2} q3={r.q3} hint1={NJ_QUESTIONS.find((q) => q.team === r.team)?.hint1} hint2={NJ_QUESTIONS.find((q) => q.team === r.team)?.hint2} />
       </div>
     </div>
   );

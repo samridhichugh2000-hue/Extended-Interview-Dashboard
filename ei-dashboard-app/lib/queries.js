@@ -304,7 +304,7 @@ export async function getWeeklyResponses(week) {
     state: effectiveState(r.week, r.state),
     ai: r.ai_rating || '—',
     aiReason: r.ai_rating_reason || null,
-    q1: r.q1, a1: r.a1, q2: r.q2, a2: r.a2,
+    q1: r.q1, a1: r.a1, q2: r.q2, a2: r.a2, q3: r.q3 || null, a3: r.a3 || null, attachmentName: r.attachment_name || null,
   }));
 }
 
@@ -325,7 +325,7 @@ export async function getResponseByToken(token) {
     team: r.team,
     week: r.week,
     state: r.state,
-    q1: r.q1, a1: r.a1, q2: r.q2, a2: r.a2,
+    q1: r.q1, a1: r.a1, q2: r.q2, a2: r.a2, q3: r.q3 || null, a3: r.a3 || null, attachmentName: r.attachment_name || null,
   };
 }
 
