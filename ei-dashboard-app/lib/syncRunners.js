@@ -1932,7 +1932,9 @@ export async function syncVideo() {
       u.intervals.push([new Date(s.startDateTime).getTime(), new Date(s.endDateTime).getTime()]);
       for (const g of s.segments || []) for (const m of g.media || []) {
         if (!/^main-video/.test(m.label || '')) continue;
-        if ((m.streams || []).some((st) => /callerToCallee/.test(st.streamDirection || ''))) u.cam = true;
+        // Camera ON only if video frames were really sent: Teams lists an empty sent-video stream for
+        // people who never turned the camera on (no frame rate, codec 'unknown'), so the stream existing proves nothing.
+        if ((m.streams || []).some((st) => /callerToCallee/.test(st.streamDirection || '') && Number(st.averageVideoFrameRate) > 0)) u.cam = true;
       }
       byUser.set(uid, u);
     }
