@@ -3,6 +3,8 @@ import { getEmployees, getWeeklyResponses, getGraphMeetings, slimEmployeesForCli
 import { getNewJoiners } from '../lib/koenigApi';
 import { getIsoWeek } from '../lib/weekUtils';
 import { getFailedJobRuns, getFeedRuns } from '../lib/jobStatus';
+import { loadCsmSeasonality } from '../lib/csmSeasonal';
+import { getDb } from '../lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,6 +33,9 @@ export default async function Page() {
     getFeedRuns(),
   ]);
 
+  // Last year's CSM month-by-month pattern, for the seasonal-adjusted NR view; a failure just hides that view's adjustment.
+  const csmSeasonality = await loadCsmSeasonality(getDb(), employees).catch((err) => { console.error('CSM seasonality failed:', err.message); return {}; });
+
   // "Blue Collared" is excluded from every section, and anyone Koenig reports
   // as exited (DOR/LWD set) shouldn't count as an NJ under watch anywhere —
   // drop both before this reaches the UI at all.
@@ -38,5 +43,5 @@ export default async function Page() {
   const deptCounts = { Sales: 0, Trainer: 0, 'PT Team': 0, 'FM Team': 0, 'Recruitment Team': 0 };
   for (const nj of newJoiners) deptCounts[nj.section]++;
 
-  return <DashboardClient employees={slimEmployeesForClient(employees)} responses={responses} week={week} newJoiners={newJoiners} deptCounts={deptCounts} failedJobs={failedJobs} graphMeetings={graphMeetings} feedRuns={feedRuns} />;
+  return <DashboardClient employees={slimEmployeesForClient(employees)} responses={responses} week={week} newJoiners={newJoiners} deptCounts={deptCounts} failedJobs={failedJobs} graphMeetings={graphMeetings} feedRuns={feedRuns} csmSeasonality={csmSeasonality} />;
 }

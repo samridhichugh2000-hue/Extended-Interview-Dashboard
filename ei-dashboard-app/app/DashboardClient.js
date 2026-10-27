@@ -6,6 +6,7 @@ import {
   WORRY_BANDS, POS_SIGNALS, NEG_SIGNALS, NJ_QUESTIONS, appliesToTeam, feedbackRating, FEEDBACK_RATING_UI,
   computeSignalReport, computeWorryScore, trendNoteFor, WORRY_WINDOWS, windowSince, lowActivityDays,
 } from '../lib/data';
+import { csmSeasonalImpact, consolidate } from '../lib/csmSeasonal';
 import { computeEventImpact, latestPipEvent, rnrAwardDate, ANALYSIS_METRICS, appraisalWindow, metricSeries, linearTrend, appraisalPosition } from '../lib/analysis';
 import { JOB_LABELS } from '../lib/jobLabels';
 import { F2F_EVENTS } from '../lib/f2fAttendees';
@@ -445,7 +446,7 @@ function MissingFilterChips({ defs, active, onToggle }) {
   );
 }
 
-export default function DashboardClient({ employees, responses, week, newJoiners, deptCounts, failedJobs, graphMeetings, feedRuns }) {
+export default function DashboardClient({ employees, responses, week, newJoiners, deptCounts, failedJobs, graphMeetings, feedRuns, csmSeasonality }) {
   const [screen, setScreen] = useState('overview');
   const [dept, setDept] = useState('Sales');
   const [filter, setFilter] = useState(null);
@@ -465,7 +466,7 @@ export default function DashboardClient({ employees, responses, week, newJoiners
           {screen === 'papip' && <PaPip employees={employees} filter={filter} setFilter={setFilter} setModal={setModal} />}
           {screen === 'paalgo' && <PaAlgo employees={employees} filter={filter} setFilter={setFilter} setModal={setModal} />}
           {screen === 'worryindex' && <WorryIndex employees={employees} filter={filter} setFilter={setFilter} setModal={setModal} />}
-          {screen === 'analysis' && <AnalysisPanel employees={employees} setModal={setModal} />}
+          {screen === 'analysis' && <AnalysisPanel employees={employees} setModal={setModal} csmSeasonality={csmSeasonality} />}
           {screen === 'graphcalls' && <GraphCalls meetings={graphMeetings} employees={employees} filter={filter} setFilter={setFilter} />}
           {screen === 'reports' && <Reports employees={employees} responses={responses} week={week} filter={filter} setFilter={setFilter} />}
         </div>
@@ -657,11 +658,12 @@ function AppraisalChart({ series, metric, appraisalDate, win, change, fmtVal }) 
   );
 }
 
-function AnalysisModal({ emp, months, ev, mode, onClose, onOpenEmployee }) {
+function AnalysisModal({ emp, months, ev, mode, csm, onClose, onOpenEmployee }) {
   const word = IMPACT_MODES[mode].word;
   const impact = computeEventImpact(emp, ev.date, months);
   const win = appraisalWindow(impact.eventDate, months);
-  const metrics = ANALYSIS_METRICS[emp.team];
+  const metrics = csm ? CSM_METRICS : ANALYSIS_METRICS[emp.team];
+  const seasonal = csm ? csmSeasonalImpact(emp, ev.date, months, csm) : null;
   const fmtVal = (kind, v) => kind === 'money' ? fmtLakhs(v) : kind === 'percent' ? `${Math.round(v)}%` : kind === 'rate' ? (Math.round(v * 10) / 10).toString() : (Math.round(v * 10) / 10).toString();
   const [y, m, d] = impact.eventDate.split('-');
   const dayLabel = `${d} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m) - 1]} ${y}`;
@@ -682,6 +684,13 @@ function AnalysisModal({ emp, months, ev, mode, onClose, onOpenEmployee }) {
           <div style={{ fontSize: 13, color: '#C7CBDA', lineHeight: 1.6, border: '1px solid rgba(255,255,255,0.09)', borderRadius: 12, padding: '12px 16px', background: 'rgba(99,102,241,0.07)' }}>
             {results.length === 0 ? `There is not enough history before or after the ${word} to compare.` : <>In short: <b style={{ color: '#5EEAD4' }}>{better} measure{better === 1 ? '' : 's'} gained</b>, <b style={{ color: '#F87171' }}>{worse} dipped</b>{results.length - better - worse > 0 ? `, ${results.length - better - worse} unchanged` : ''} after the {word}.</>}
           </div>
+          {csm && (
+            <div style={{ fontSize: 13, color: '#C7CBDA', lineHeight: 1.6, border: '1px solid rgba(255,255,255,0.09)', borderRadius: 12, padding: '12px 16px', background: 'rgba(255,255,255,0.03)' }}>
+              {seasonal?.expected != null
+                ? <>Season alone: last year, NR in the same {impact.k} months moved <b>{Math.round((seasonal.seasonalFactor - 1) * 100) >= 0 ? '+' : ''}{Math.round((seasonal.seasonalFactor - 1) * 100)}%</b> against the {impact.k} months before, so {fmtLakhs(seasonal.before)} would become <b>{fmtLakhs(seasonal.expected)}</b>. Actual {fmtLakhs(seasonal.after)} → net <b style={{ color: seasonal.adjDelta >= 0 ? '#5EEAD4' : '#F87171' }}>{seasonal.adjDelta >= 0 ? '+' : '-'}{fmtLakhs(Math.abs(seasonal.adjDelta))}</b> a month after taking the season out.</>
+                : 'No last-year data to adjust for the season.'}
+            </div>
+          )}
           {metrics.map((mt) => (
             <AppraisalDataTable key={mt.key} series={metricSeries(emp, mt.key)} metric={mt} win={win} change={impact.metrics[mt.key]} fmtVal={fmtVal} />
           ))}
@@ -717,15 +726,36 @@ function rnrLinker(employees) {
   return (w) => (w.empCode && byId.get(`EMP${w.empCode}`)) || byName.get(w.name.toLowerCase()) || null;
 }
 
-function AppraisalImpactView({ employees, setModal, mode = 'appraisal' }) {
+// Sales (CSMs are the Sales team) is compared on NR only, and the change is adjusted for last year's same-month seasonality
+// (lib/csmSeasonal.js).
+// People who have been on maternity leave are left out of the appraisal comparison (lib/pastMl.js).
+const ML_IDS = new Set(PAST_ML.cases.map((c) => c.id));
+// Who each window lists: the 3-month view has everyone whose event is at least
+// 3 full months old, the 6-month view at least 6 — but never an event a year or
+// more old.
+function inAgeBand(eventDate, months) {
+  const a = new Date(`${eventDate}T00:00:00`);
+  if (Number.isNaN(a.getTime())) return false;
+  const now = new Date();
+  const first = a.getFullYear() * 12 + a.getMonth() + (a.getDate() <= 1 ? 0 : 1);
+  const completed = now.getFullYear() * 12 + now.getMonth() - first;
+  return completed >= months && completed < 12;
+}
+const CSM_METRICS = [{ key: 'nr', label: 'NR / month', good: 'up', kind: 'money' }];
+const metricsFor = (team) => (team === 'Sales' ? CSM_METRICS : ANALYSIS_METRICS[team]);
+
+function AppraisalImpactView({ employees, setModal, mode = 'appraisal', index = {} }) {
   const [team, setTeam] = useState('Sales');
   const [months, setMonths] = useState(3);
   const [search, setSearch] = useState('');
-  const [sort, setSort] = useState('dip');
+  const [sort, setSort] = useState('all');
   const [detail, setDetail] = useState(null);
   const quarters = [...new Set(RNR_WINNERS.map((w) => `${w.quarter} ${w.year}`))].sort();
   const [quarter, setQuarter] = useState(quarters[quarters.length - 1]);
-  const metrics = ANALYSIS_METRICS[team];
+  const metrics = metricsFor(team);
+  const isCsmView = team === 'Sales';
+  // Season adjustment applies to appraisal and RnR only; PA / PIP are the plain before vs after.
+  const useSeason = isCsmView && (mode === 'appraisal' || mode === 'rnr');
   const mm = IMPACT_MODES[mode];
 
   // The dated event each employee is compared around: their latest appraisal,
@@ -747,25 +777,28 @@ function AppraisalImpactView({ employees, setModal, mode = 'appraisal' }) {
     return latestPipEvent(e, mode === 'pa' ? 'PA' : 'PIP');
   };
   const withEvent = employees
-    .filter((e) => e.active && e.team === team)
-    .map((e) => { const ev = eventFor(e); return ev ? { e, ev, r: computeEventImpact(e, ev.date, months) } : null; })
+    .filter((e) => e.active && e.team === team && !(mode === 'appraisal' && ML_IDS.has(e.id)))
+    .map((e) => { const ev = eventFor(e); return ev ? { e, ev, r: computeEventImpact(e, ev.date, months), s: isCsmView ? csmSeasonalImpact(e, ev.date, months, index) : null } : null; })
     .filter(Boolean);
 
   // Only people whose event was at least `months` full months ago, so the
   // 3-month view excludes anyone it happened to in the last 3 months (the
   // window would otherwise shrink to fewer months for them). Cards below count
   // this list.
-  const rows = withEvent.filter(({ r }) => !r.tooRecent && r.k === months);
+  const rows = withEvent.filter(({ r, ev }) => !r.tooRecent && r.k === months && inAgeBand(ev.date, months));
   const q = search.trim().toLowerCase();
-  const shown = rows.filter(({ e }) => !q || e.name.toLowerCase().includes(q));
+  const shown0 = rows.filter(({ e }) => !q || e.name.toLowerCase().includes(q));
   // Sort by the first metric's change (NR for Sales, utilization for Trainer).
   const lead = metrics[0].key;
-  shown.sort((a, b) => {
-    const av = a.r.metrics[lead]?.pct, bv = b.r.metrics[lead]?.pct;
+  // CSMs / trainers first, then the assistant managers (ASMs / ATMs); within each, by size of change.
+  const mgrRank = (e) => (/assistant (sales|technical) manager/i.test(e.designation || '') ? 1 : 0);
+  shown0.sort((a, b) => {
+    if (mgrRank(a.e) !== mgrRank(b.e)) return mgrRank(a.e) - mgrRank(b.e);
+    const av = useSeason ? a.s?.adjPct : a.r.metrics[lead]?.pct, bv = useSeason ? b.s?.adjPct : b.r.metrics[lead]?.pct;
     if (av == null && bv == null) return a.e.name.localeCompare(b.e.name);
     if (av == null) return 1;
     if (bv == null) return -1;
-    return sort === 'dip' ? av - bv : bv - av;
+    return sort === 'gain' ? bv - av : av - bv;
   });
 
   const fmtVal = (kind, v) => kind === 'money' ? fmtLakhs(v) : kind === 'percent' ? `${Math.round(v)}%` : kind === 'rate' ? (Math.round(v * 10) / 10).toString() : Math.round(v).toString();
@@ -778,8 +811,12 @@ function AppraisalImpactView({ employees, setModal, mode = 'appraisal' }) {
   const chip = (active, label, onClick) => (
     <div key={label} onClick={onClick} style={{ cursor: 'pointer', border: `1px solid ${active ? 'rgba(99,102,241,0.5)' : 'rgba(255,255,255,0.1)'}`, background: active ? 'rgba(99,102,241,0.14)' : 'transparent', color: active ? '#A5A7FA' : '#8A90A8', borderRadius: 10, padding: '9px 14px', fontSize: 13 }}>{label}</div>
   );
-  const cols = `minmax(0,1.4fr) minmax(0,.9fr) repeat(${metrics.length},minmax(0,1.2fr)) minmax(0,.9fr)`;
-  const overall = (r) => {
+  const cols = useSeason ? 'minmax(0,1.5fr) minmax(0,.9fr) repeat(4,minmax(0,1fr)) minmax(0,1.1fr)' : `minmax(0,1.5fr) minmax(0,.9fr) repeat(${metrics.length},minmax(0,.8fr) minmax(0,.8fr) minmax(0,1fr))`;
+  const overall = (r, s) => {
+    if (useSeason) {
+      if (!s || s.adjDelta == null) return { label: 'No season data', color: '#5C6178' };
+      return s.adjDelta > 0 ? { label: 'Gain', color: '#5EEAD4' } : s.adjDelta < 0 ? { label: 'Dip', color: '#F87171' } : { label: 'No change', color: '#8A90A8' };
+    }
     let better = 0, worse = 0;
     for (const m of metrics) { const c = r.metrics[m.key]; if (!c || c.delta === 0) continue; if (m.good === 'up' ? c.delta > 0 : c.delta < 0) better++; else worse++; }
     if (!better && !worse) return { label: 'No change', color: '#8A90A8' };
@@ -788,6 +825,7 @@ function AppraisalImpactView({ employees, setModal, mode = 'appraisal' }) {
     return { label: 'Mixed', color: '#F59E0B' };
   };
 
+  const shown = sort === 'all' ? shown0 : shown0.filter(({ r, s }) => overall(r, s).label === (sort === 'dip' ? 'Dip' : 'Gain'));
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <div style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(99,102,241,0.06)', borderRadius: 14, padding: '14px 18px', fontSize: 12.5, color: '#A8AEC4', lineHeight: 1.6 }}>
@@ -799,11 +837,64 @@ function AppraisalImpactView({ employees, setModal, mode = 'appraisal' }) {
         <span style={{ width: 10 }} />
         <span style={{ fontSize: 12, color: '#8A90A8' }}>Compare</span>
         {[3, 6].map((n) => chip(months === n, `${n} months`, () => setMonths(n)))}
-        <span style={{ fontSize: 12, color: '#6E7488' }}>before vs after — only people {mm.who} at least this many months ago</span>
+        <span style={{ fontSize: 12, color: '#6E7488' }}>before vs after — people {mm.who} {months} to 12 months ago</span>
         {mode === 'rnr' && <><span style={{ width: 10 }} />{quarters.map((qt) => chip(quarter === qt, qt, () => setQuarter(qt)))}</>}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${metrics.length},1fr)`, gap: 10 }}>
+      {isCsmView && !useSeason && (() => {
+        const list = rows.map(({ r }) => r.metrics.nr).filter(Boolean);
+        const L = (n) => `${n < 0 ? '-' : ''}₹${(Math.abs(n) / 100000).toFixed(1)}L`;
+        const sg = (n) => `${n > 0 ? '+' : ''}${L(n)}`;
+        const before = list.reduce((a, c) => a + c.before, 0), after = list.reduce((a, c) => a + c.after, 0);
+        const delta = after - before, pctv = before > 0 ? (after / before - 1) * 100 : null;
+        const color = delta > 0 ? '#5EEAD4' : delta < 0 ? '#F87171' : '#8A90A8';
+        if (!list.length) return <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, padding: '14px 18px', fontSize: 12.5, color: '#6E7488' }}>No one here has {months} full months of NR before and after the {mm.word}.</div>;
+        const tile = (label, value, c, sub) => (
+          <div style={{ flex: 1, minWidth: 140, border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.03)', borderRadius: 14, padding: '14px 16px' }}>
+            <div style={{ fontSize: 11.5, color: '#8A90A8' }}>{label}</div>
+            <div className="disp" style={{ fontSize: 21, fontWeight: 600, color: c || '#E4E6F0', marginTop: 6 }}>{value}</div>
+            {sub && <div style={{ fontSize: 11, color: '#6E7488', marginTop: 3 }}>{sub}</div>}
+          </div>
+        );
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {tile('Sales counted', list.length, null, `${list.filter((c) => c.delta > 0).length} gained · ${list.filter((c) => c.delta < 0).length} dipped`)}
+              {tile('NR / month before → after', `${L(before)} → ${L(after)}`, null, 'whole group')}
+              {tile('Net change', `${sg(delta)}${pctv != null ? ` (${pctv > 0 ? '+' : ''}${Math.round(pctv)}%)` : ''}`, color, delta >= 0 ? 'net increase' : 'net dip')}
+            </div>
+            <div style={{ fontSize: 11.5, color: '#6E7488', lineHeight: 1.5 }}>Plain before vs after on NR, whole-group NR per month — no seasonal adjustment for {mm.word}. Click a row for the month-by-month numbers.</div>
+          </div>
+        );
+      })()}
+
+      {useSeason && (() => {
+        const cons = consolidate(rows.map(({ e, s }) => s && { e, ...s }).filter(Boolean));
+        const L = (n) => `${n < 0 ? '-' : ''}₹${(Math.abs(n) / 100000).toFixed(1)}L`;
+        const sg = (n) => `${n > 0 ? '+' : ''}${L(n)}`;
+        const col = (n) => (n > 0 ? '#5EEAD4' : n < 0 ? '#F87171' : '#8A90A8');
+        if (!cons.counted) return <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, padding: '14px 18px', fontSize: 12.5, color: '#6E7488' }}>No one here has {months} full months before and after the {mm.word} and last-year data to adjust for the season.</div>;
+        const tile = (label, value, color, sub) => (
+          <div style={{ flex: 1, minWidth: 140, border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.03)', borderRadius: 14, padding: '14px 16px' }}>
+            <div style={{ fontSize: 11.5, color: '#8A90A8' }}>{label}</div>
+            <div className="disp" style={{ fontSize: 21, fontWeight: 600, color: color || '#E4E6F0', marginTop: 6 }}>{value}</div>
+            {sub && <div style={{ fontSize: 11, color: '#6E7488', marginTop: 3 }}>{sub}</div>}
+          </div>
+        );
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {tile('Sales counted', cons.counted, null, cons.noSeasonal ? `${cons.noSeasonal} more lack last-year data` : `${cons.up} above season · ${cons.down} below`)}
+              {tile('NR / month before → after', `${L(cons.before)} → ${L(cons.after)}`, null, `raw ${sg(cons.rawDelta)}${cons.rawPct != null ? ` (${cons.rawPct > 0 ? '+' : ''}${Math.round(cons.rawPct)}%)` : ''}`)}
+              {tile('Season alone', sg(cons.seasonalDelta), '#8A90A8', "last year's same months")}
+              {tile('Net after season', `${sg(cons.adjDelta)}${cons.adjPct != null ? ` (${cons.adjPct > 0 ? '+' : ''}${Math.round(cons.adjPct)}%)` : ''}`, col(cons.adjDelta), cons.adjDelta >= 0 ? 'net increase' : 'net dip')}
+            </div>
+            <div style={{ fontSize: 11.5, color: '#6E7488', lineHeight: 1.5 }}>Sales, NR only, whole-group NR per month. Net = actual after − what the before-average becomes if it moved as last year's same months did (pattern taken from True NR of long-serving CSMs, the core of the Sales team, since the NR feed starts May 2025). Click a row for the month-by-month numbers.</div>
+          </div>
+        );
+      })()}
+
+      {!isCsmView && <div style={{ display: 'grid', gridTemplateColumns: `repeat(${metrics.length},1fr)`, gap: 10 }}>
         {summary.map(({ m, total, up, down }) => (
           <div key={m.key} style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.03)', borderRadius: 14, padding: '14px 16px' }}>
             <div style={{ fontSize: 11.5, color: '#8A90A8' }}>{m.label}</div>
@@ -814,19 +905,23 @@ function AppraisalImpactView({ employees, setModal, mode = 'appraisal' }) {
             </div>
           </div>
         ))}
-      </div>
+      </div>}
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
         <input value={search} onChange={(ev) => setSearch(ev.target.value)} placeholder="Search by employee name…" style={{ flex: 1, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#E4E6F0', outline: 'none' }} />
-        {chip(sort === 'dip', `Biggest ${metrics[0].label.split(' ')[0]} dip first`, () => setSort('dip'))}
-        {chip(sort === 'gain', 'Biggest gain first', () => setSort('gain'))}
+        {chip(sort === 'all', 'All', () => setSort('all'))}
+        {chip(sort === 'dip', 'Dip only', () => setSort('dip'))}
+        {chip(sort === 'gain', 'Gain only', () => setSort('gain'))}
       </div>
 
       <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, background: 'rgba(255,255,255,0.02)', overflow: 'hidden' }}>
         <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <span>Employee</span><span>{mm.col}</span>{metrics.map((m) => <span key={m.key} style={{ textAlign: 'right' }}>{m.label}</span>)}<span style={{ textAlign: 'right' }}>Overall</span>
+          <span>Employee</span><span>{mm.col}</span>
+          {useSeason
+            ? <><span style={{ textAlign: 'right' }}>Before</span><span style={{ textAlign: 'right' }}>After</span><span style={{ textAlign: 'right' }}>Season expects</span><span style={{ textAlign: 'right' }}>Net</span><span style={{ textAlign: 'right' }}>Dip / gain %</span></>
+            : metrics.map((m) => <Fragment key={m.key}><span style={{ textAlign: 'right' }}>{m.label.split(' ')[0]} before</span><span style={{ textAlign: 'right' }}>after</span><span style={{ textAlign: 'right' }}>Dip / gain %</span></Fragment>)}
         </div>
-        {shown.map(({ e, ev, r }) => (
+        {shown.map(({ e, ev, r, s }) => (
           <div key={e.id} className="hoverrow" onClick={() => setDetail({ e, ev })} style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, padding: '12px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <span style={{ fontWeight: 600 }}>{e.name}</span>
@@ -837,26 +932,37 @@ function AppraisalImpactView({ employees, setModal, mode = 'appraisal' }) {
               <span style={{ fontSize: 10.5, color: '#6E7488' }}>{r.k} mo vs {r.k} mo</span>
               {mode === 'rnr' && ev.label && <span style={{ fontSize: 10.5, color: '#8A90A8', lineHeight: 1.3 }}>{ev.label}</span>}
             </div>
-            {metrics.map((m) => {
+            {useSeason ? (() => {
+              const c = r.metrics.nr;
+              if (!c) return <span style={{ gridColumn: '3 / -1', textAlign: 'right', color: '#5C6178', fontSize: 12 }}>not enough NR history</span>;
+              const sg = (n) => `${n > 0 ? '+' : ''}${fmtLakhs(n)}`;
+              const o = overall(r, s);
+              return <>
+                <span className="mono" style={{ textAlign: 'right', fontSize: 12, color: '#C7CBDA' }}>{fmtLakhs(c.before)}</span>
+                <span className="mono" style={{ textAlign: 'right', fontSize: 12, color: '#C7CBDA' }}>{fmtLakhs(c.after)}</span>
+                <span className="mono" style={{ textAlign: 'right', fontSize: 12, color: '#8A90A8' }}>{s?.expected != null ? fmtLakhs(s.expected) : '—'}</span>
+                <span className="mono" style={{ textAlign: 'right', fontSize: 12, color: o.color }}>{s?.adjDelta != null ? sg(s.adjDelta) : '—'}</span>
+                <span className="mono" style={{ textAlign: 'right', fontSize: 12, fontWeight: 600, color: o.color }}>{s?.adjDelta == null ? 'no last-year data' : o.label === 'No change' ? 'No change' : `${o.label === 'Gain' ? '▲' : '▼'} ${o.label} ${s.adjPct != null ? Math.abs(Math.round(s.adjPct)) + '%' : ''}`}</span>
+              </>;
+            })() : metrics.map((m) => {
               const c = r.metrics[m.key];
-              if (!c) return <span key={m.key} style={{ textAlign: 'right', color: '#5C6178', fontSize: 12 }}>—</span>;
+              if (!c) return <span key={m.key} style={{ gridColumn: 'span 3', textAlign: 'right', color: '#5C6178', fontSize: 12 }}>—</span>;
               const better = m.good === 'up' ? c.delta > 0 : c.delta < 0;
               const worse = m.good === 'up' ? c.delta < 0 : c.delta > 0;
               const color = better ? '#5EEAD4' : worse ? '#F87171' : '#8A90A8';
-              const arrow = c.delta > 0 ? '▲' : c.delta < 0 ? '▼' : '=';
               return (
-                <div key={m.key} style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <span className="mono" style={{ fontSize: 11.5, color: '#A8AEC4' }}>{fmtVal(m.kind, c.before)} → {fmtVal(m.kind, c.after)}</span>
-                  <span className="mono" style={{ fontSize: 11.5, color }}>{arrow} {c.pct != null ? `${Math.abs(Math.round(c.pct))}%` : (c.delta === 0 ? 'no change' : 'from 0')}</span>
-                </div>
+                <Fragment key={m.key}>
+                  <span className="mono" style={{ textAlign: 'right', fontSize: 12, color: '#C7CBDA' }}>{fmtVal(m.kind, c.before)}</span>
+                  <span className="mono" style={{ textAlign: 'right', fontSize: 12, color: '#C7CBDA' }}>{fmtVal(m.kind, c.after)}</span>
+                  <span className="mono" style={{ textAlign: 'right', fontSize: 12, fontWeight: 600, color }}>{c.delta === 0 ? 'No change' : `${c.delta > 0 ? '▲' : '▼'} ${better ? 'Gain' : 'Dip'}${c.pct != null ? ` ${Math.abs(Math.round(c.pct))}%` : ''}`}</span>
+                </Fragment>
               );
             })}
-            {(() => { const o = overall(r); return <span style={{ textAlign: "right", fontSize: 11.5, fontWeight: 600, color: o.color }}>{o.label}</span>; })()}
           </div>
         ))}
         {!shown.length && <div style={{ padding: 18, fontSize: 12.5, color: '#6E7488' }}>No one in this view has a completed month after their {mm.word} yet.</div>}
       </div>
-      {detail && <AnalysisModal emp={detail.e} ev={detail.ev} mode={mode} months={months} onClose={() => setDetail(null)} onOpenEmployee={() => { setModal(detail.e); setDetail(null); }} />}
+      {detail && <AnalysisModal emp={detail.e} ev={detail.ev} mode={mode} months={months} csm={useSeason ? index : null} onClose={() => setDetail(null)} onOpenEmployee={() => { setModal(detail.e); setDetail(null); }} />}
       {tooRecent > 0 && <div style={{ fontSize: 11.5, color: '#6E7488' }}>{tooRecent} {team === 'Trainer' ? 'trainers' : 'Sales employees'} not shown — {mm.who} less than {months} months ago.</div>}
     </div>
   );
@@ -866,7 +972,7 @@ function AppraisalImpactView({ employees, setModal, mode = 'appraisal' }) {
 // the event/recognition lists, so the latter are one click away rather than
 // further down a long page.
 const ANALYSIS_VIEWS = [['appraisal', 'Appraisal impact'], ['rnr', 'RnR Winners'], ['rnrImpact', 'RnR before / after'], ['paImpact', 'PA before / after'], ['pipImpact', 'PIP before / after'], ['pastMl', 'Past ML']];
-function AnalysisPanel({ employees, setModal }) {
+function AnalysisPanel({ employees, setModal, csmSeasonality }) {
   const [view, setView] = useState('appraisal');
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -875,11 +981,11 @@ function AnalysisPanel({ employees, setModal }) {
           <div key={key} onClick={() => setView(key)} style={{ cursor: 'pointer', border: `1px solid ${view === key ? 'rgba(99,102,241,0.5)' : 'rgba(255,255,255,0.1)'}`, background: view === key ? 'rgba(99,102,241,0.14)' : 'transparent', color: view === key ? '#A5A7FA' : '#8A90A8', borderRadius: 10, padding: '9px 16px', fontSize: 13, fontWeight: view === key ? 600 : 400 }}>{label}</div>
         ))}
       </div>
-      {view === 'appraisal' && <AppraisalImpactView employees={employees} setModal={setModal} />}
+      {view === 'appraisal' && <AppraisalImpactView employees={employees} setModal={setModal} index={csmSeasonality || {}} />}
       {view === 'rnr' && <RnrWinnersSection employees={employees} setModal={setModal} />}
-      {view === 'rnrImpact' && <AppraisalImpactView employees={employees} setModal={setModal} mode="rnr" />}
-      {view === 'paImpact' && <AppraisalImpactView employees={employees} setModal={setModal} mode="pa" />}
-      {view === 'pipImpact' && <AppraisalImpactView employees={employees} setModal={setModal} mode="pip" />}
+      {view === 'rnrImpact' && <AppraisalImpactView employees={employees} setModal={setModal} mode="rnr" index={csmSeasonality || {}} />}
+      {view === 'paImpact' && <AppraisalImpactView employees={employees} setModal={setModal} mode="pa" index={csmSeasonality || {}} />}
+      {view === 'pipImpact' && <AppraisalImpactView employees={employees} setModal={setModal} mode="pip" index={csmSeasonality || {}} />}
       {view === 'pastMl' && <PastMlSection employees={employees} setModal={setModal} />}
     </div>
   );
