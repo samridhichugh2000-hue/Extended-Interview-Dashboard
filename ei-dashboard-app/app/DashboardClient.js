@@ -2725,6 +2725,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
   const [expandedId, setExpandedId] = useState(null);
   const [futureNrDetail, setFutureNrDetail] = useState(null);
   const [targetDetail, setTargetDetail] = useState(null);
+  const [utilDetail, setUtilDetail] = useState(null); // Trainer: click the utilization cell for the last 6 months + averages
   const [nrMode, setNrMode] = useState('nr'); // Sales only: which NR the quarter-target column uses
 
   // 'ASM' / 'ATM' are sections split out of Sales / Trainer by designation.
@@ -2921,7 +2922,9 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
                   )}
                   {e.activePipRange && <span style={{ fontSize: 10, color: '#F59E0B' }}>{e.activePipRange}</span>}
                 </div>
-                {isTrainer && <span style={{ fontSize: 12, color: util?.isCurrent ? '#A8AEC4' : '#6E7488' }}>{util?.label || '—'}</span>}
+                {isTrainer && (
+                  <span onClick={(ev) => { ev.stopPropagation(); setUtilDetail(e); }} title="Last 6 months + 3 and 6 month averages" style={{ fontSize: 12, color: util?.isCurrent ? '#A5A7FA' : '#8A90A8', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>{util?.label || 'View'}</span>
+                )}
                 <span style={{ fontSize: 12, color: '#A8AEC4' }}>{isTrainer ? (PA_ALGO_TIER_LABELS[algo.tier] || '—') : (PA_ALGO_REGION_LABELS[algo.region] || '—')}</span>
                 {!isTrainer && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -2969,6 +2972,70 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
       </div>
       {futureNrDetail && <FutureNrModal emp={futureNrDetail} onClose={() => setFutureNrDetail(null)} />}
       {targetDetail && <QuarterTargetModal emp={targetDetail.emp} target={targetDetail.target} onClose={() => setTargetDetail(null)} />}
+      {utilDetail && <UtilizationModal emp={utilDetail} onClose={() => setUtilDetail(null)} />}
+    </div>
+  );
+}
+
+// A trainer's utilization for the last 6 completed months (newest first) with
+// the 3 and 6 month averages, plus this month so far for reference. Same
+// utilization figures as the rest of the dashboard (176 h/month capacity).
+const UTIL_MON = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+function UtilizationModal({ emp, onClose }) {
+  const details = emp.utilMonthlyDetails || [];
+  const idxOf = (label) => { const m = /^([A-Za-z]{3})[a-z]*[-\s](\d{4})$/.exec(String(label || '').trim()); return m ? Number(m[2]) * 12 + UTIL_MON.indexOf(m[1].toLowerCase()) : null; };
+  const byIdx = new Map(details.map((d) => [idxOf(d.month), d]));
+  const now = new Date();
+  const cur = now.getFullYear() * 12 + now.getMonth();
+  const label = (i) => `${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][i % 12]} ${Math.floor(i / 12)}`;
+  const six = Array.from({ length: 6 }, (_, k) => cur - 1 - k).map((i) => ({ i, d: byIdx.get(i) || null }));
+  const avgOf = (rows) => { const v = rows.filter((r) => r.d && Number.isFinite(Number(r.d.util))).map((r) => Number(r.d.util)); return v.length ? { avg: v.reduce((s, x) => s + x, 0) / v.length, n: v.length } : null; };
+  const a3 = avgOf(six.slice(0, 3)), a6 = avgOf(six);
+  const thisMonth = byIdx.get(cur) || null;
+  const pc = (v) => (v == null || !Number.isFinite(Number(v)) ? '—' : `${Math.round(Number(v))}%`);
+  const hrs = (v) => (v == null || !Number.isFinite(Number(v)) ? '—' : `${Math.round(Number(v) * 10) / 10}h`);
+  const col = (v) => (v == null ? '#6E7488' : Number(v) >= 50 ? '#5EEAD4' : '#F87171');
+  const gridCols = 'minmax(0,1.2fr) minmax(0,1fr) minmax(0,1fr)';
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — utilization</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>Last 6 completed months</div>
+          </div>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+        </div>
+        <div style={{ padding: '14px 24px 0', display: 'flex', gap: 10 }}>
+          {[['3-month avg', a3], ['6-month avg', a6]].map(([t, a]) => (
+            <div key={t} style={{ flex: 1, border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.03)', borderRadius: 12, padding: '12px 14px' }}>
+              <div style={{ fontSize: 11.5, color: '#8A90A8' }}>{t}</div>
+              <div className="disp" style={{ fontSize: 22, fontWeight: 600, color: col(a?.avg), marginTop: 4 }}>{a ? `${Math.round(a.avg)}%` : '—'}</div>
+              {a && <div style={{ fontSize: 10.5, color: '#6E7488', marginTop: 2 }}>over {a.n} month{a.n === 1 ? '' : 's'} with data</div>}
+            </div>
+          ))}
+        </div>
+        <div style={{ padding: '8px 24px 22px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '10px 0', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            <span>Month</span><span style={{ textAlign: 'right' }}>Utilization</span><span style={{ textAlign: 'right' }}>Hours</span>
+          </div>
+          {six.map(({ i, d }) => (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
+              <span style={{ color: '#C7CBDA' }}>{label(i)}</span>
+              <span className="mono" style={{ textAlign: 'right', color: col(d?.util) }}>{pc(d?.util)}</span>
+              <span className="mono" style={{ textAlign: 'right', color: '#8A90A8' }}>{hrs(d?.hours)}</span>
+            </div>
+          ))}
+          {thisMonth && (
+            <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '10px 0', fontSize: 12.5, opacity: 0.75 }}>
+              <span style={{ color: '#A8AEC4' }}>{label(cur)} <span style={{ fontSize: 10.5, color: '#6E7488' }}>(so far)</span></span>
+              <span className="mono" style={{ textAlign: 'right', color: '#A8AEC4' }}>{pc(thisMonth.util)}</span>
+              <span className="mono" style={{ textAlign: 'right', color: '#8A90A8' }}>{hrs(thisMonth.hours)}</span>
+            </div>
+          )}
+          <div style={{ fontSize: 11.5, color: '#6E7488', lineHeight: 1.5, marginTop: 8 }}>Averages use the completed months only; a month with no figure is left out and the count says how many were used. Green is 50% or more.</div>
+        </div>
+      </div>
     </div>
   );
 }
