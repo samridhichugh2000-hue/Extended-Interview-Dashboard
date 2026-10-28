@@ -158,7 +158,7 @@ export const CARD_DEFS = {
   'Recruitment Team': [['Total', 9, C.purple], ['Not to be Monitored', 3, C.teal], ['Under Watch', 4, C.indigo], ['PA Issued', 1, C.amber], ['PIP Issued', 0, C.rose], ['Feedback Pending', 2, '#FB923C'], ['Below Satisfactory', 2, '#F472B6']],
 };
 export const STATUS_MAP = { 'PA Issued': 'PA Issued', 'PIP Issued': 'PIP Issued' };
-export const METRIC_HEADS = { Sales: ['M1 NR', 'M2 NR', 'M3 NR', 'M4 NR', 'M5 NR', 'M6 NR'], Trainer: ['M1 Util', 'M2 Util', 'M3 Util', 'M4 Util', 'M5 Util', 'M6 Util'], 'PT Team': ['Tasks', 'Improve'], 'FM Team': ['Tasks', 'Improve'], 'Recruitment Team': ['Tasks', 'Improve'] };
+export const METRIC_HEADS = { Sales: ['M1 NR', 'M2 NR', 'M3 NR', 'M4 NR', 'M5 NR', 'M6 NR'], Trainer: ['M1 Util', 'M2 Util', 'M3 Util', 'M4 Util', 'M5 Util', 'M6 Util'], 'PT Team': [], 'FM Team': [], 'Recruitment Team': [] };
 
 export const WORRY_BANDS = [
   { label: 'Critical', color: C.rose, range: 'score ≤ −4', desc: 'PIP review triggered, HR intervenes this week.' },
