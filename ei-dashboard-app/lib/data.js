@@ -308,6 +308,13 @@ for (const ev of F2F_EVENTS) {
 }
 const f2fRecords = (e) => F2F_BY_EMAIL.get(String(e.email || '').toLowerCase()) || [];
 const f2fPresented = (e) => f2fRecords(e).filter((r) => r.presenter);
+// Events attended / presented (all time) and the Worry Index points they carry, for the
+// "Attended F2F" / "Delivered F2F PPT" filters — points come from the two signals' own weights.
+export function f2fSummary(e) {
+  const attended = f2fRecords(e).length, presented = f2fPresented(e).length;
+  const w = (label) => (SIGNAL_DEFS.find((d) => d.label === label) || {}).pts || 0;
+  return { attended, presented, pts: Math.round((attended * w('Attending F2F (if invited)') + presented * w('Delivering PPTs (F2F presenter)')) * 100) / 100 };
+}
 function countDatedRecords(details, dateField, since, until) {
   return (details || []).filter((d) => {
     const dt = parseRecordDate(d?.[dateField]);
@@ -576,7 +583,10 @@ export const SIGNAL_DEFS = [
   { label: 'External meetings < 1 per week', teams: 'Sales', pts: -5, live: true,
     hasData: (e) => e.externalMeetingsCount != null,
     fires: (e) => { const wks = Math.floor((e.tenure ?? 0) / 7); return wks > 0 && (e.externalMeetingsCount ?? 0) < wks; },
-    count: (e) => Math.floor((e.tenure ?? 0) / 7) - (e.externalMeetingsCount ?? 0) },
+    count: (e) => Math.floor((e.tenure ?? 0) / 7) - (e.externalMeetingsCount ?? 0),
+    // Per-meeting start dates (externalMeetingDates, attached from the Graph meetings list by lib/queries.js's attachExternalMeetingDates) —
+    // same meetings the Graph API Calls screen lists, counted by date inside the window.
+    countInWindow: (e, since, until) => Math.max(0, weeksInWindow(e, since, until) - countDatedRecords(e.externalMeetingDates || [], 'd', since, untilOrNow(until))) },
   // negative, not yet tracked
   // Cumulative across every week this NJ has been tracked, not just the
   // current one — 2 missed weeks scores 2 × -2, same convention as other

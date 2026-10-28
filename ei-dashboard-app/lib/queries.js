@@ -286,6 +286,19 @@ export async function getGraphMeetings() {
   }));
 }
 
+// Adds externalMeetingDates ([{ d: ISO start }]) to each employee from the Graph
+// meetings list (getGraphMeetings already drops internal-only and non-client
+// meetings, so every row there is an external meeting). Lets the Worry Index
+// count external meetings inside a date window.
+export function attachExternalMeetingDates(employees, meetings) {
+  const byEmp = new Map();
+  for (const m of meetings) {
+    if (!byEmp.has(m.employeeId)) byEmp.set(m.employeeId, []);
+    byEmp.get(m.employeeId).push({ d: m.scheduledStart });
+  }
+  return employees.map((e) => ({ ...e, externalMeetingDates: byEmp.get(e.id) || [] }));
+}
+
 export async function getWeeklyResponses(week) {
   const db = getDb();
   const res = await db.execute({

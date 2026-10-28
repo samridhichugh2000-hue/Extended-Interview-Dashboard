@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import {
   STATUS, decorate, band, isNewJoiner, NAV, TITLES, PATHS, METRIC_HEADS,
   WORRY_BANDS, POS_SIGNALS, NEG_SIGNALS, NJ_QUESTIONS, appliesToTeam, feedbackRating, FEEDBACK_RATING_UI,
-  computeSignalReport, computeWorryScore, trendNoteFor, WORRY_WINDOWS, windowSince, lowActivityDays,
+  computeSignalReport, computeWorryScore, trendNoteFor, WORRY_WINDOWS, windowSince, lowActivityDays, f2fSummary,
 } from '../lib/data';
 import { csmSeasonalImpact, consolidate } from '../lib/csmSeasonal';
 import { computeEventImpact, latestRealAppraisal, blankReason, latestPipEvent, rnrAwardDate, ANALYSIS_METRICS, appraisalWindow, metricSeries, linearTrend, appraisalPosition } from '../lib/analysis';
@@ -12,6 +12,7 @@ import { JOB_LABELS } from '../lib/jobLabels';
 import { F2F_EVENTS } from '../lib/f2fAttendees';
 import { RNR_WINNERS } from '../lib/rnrWinners';
 import { PAST_ML } from '../lib/pastMl';
+import { maternityNow } from '../lib/maternity';
 import { TRAINER_SALARY_TIERS, SALES_REGIONS, TARGET_QUARTERS, quarterMonthKeys, formatTenure } from '../lib/paAlgo';
 import { draftToHtml } from '../lib/emailDraft';
 import { VIDEO_MIN_MEETINGS_TO_SHOW } from '../lib/videoRules';
@@ -24,6 +25,9 @@ const card = { border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255
 // or shoddy — zero there is good news, not a coverage gap worth searching
 // for), only to the "did this NJ engage with X at all" signals.
 const COMMON_MISSING_FILTERS = [
+  // F2F (face-to-face) events — with one of these on, the rows also show the person's F2F score.
+  { key: 'f2fAttended', label: 'Attended F2F', test: (e) => f2fSummary(e).attended > 0 },
+  { key: 'f2fPresented', label: 'Delivered F2F PPT', test: (e) => f2fSummary(e).presented > 0 },
   { key: 'mgrFeedback', label: 'Without Mgr Feedback', test: (e) => !(e.mgrFeedbackCount > 0) },
   { key: 'polls', label: 'Without Polls', test: (e) => !(e.pollsParticipated > 0) },
   { key: 'kgt', label: 'Without KGT', test: (e) => !(e.kgtCount > 0) },
@@ -428,6 +432,13 @@ function NjOnlyToggle({ value, onChange }) {
       {value ? 'New Joiners only' : 'All employees'}
     </div>
   );
+}
+
+// Under a name when an F2F filter is on: how many F2F events and the points they carry.
+function F2fBadge({ e, active }) {
+  if (!active?.includes('f2fAttended') && !active?.includes('f2fPresented')) return null;
+  const f = f2fSummary(e);
+  return <span className="mono" style={{ fontSize: 10.5, color: '#5EEAD4' }}>F2F attended {f.attended} · presented {f.presented} · score {f.pts > 0 ? '+' : ''}{f.pts}</span>;
 }
 
 function MissingFilterChips({ defs, active, onToggle }) {
@@ -926,6 +937,7 @@ function AppraisalImpactView({ employees, setModal, mode = 'appraisal', index = 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <span style={{ fontWeight: 600 }}>{e.name}</span>
               <span style={{ fontSize: 11, color: '#6E7488' }}>{e.id}</span>
+              <ResignedBadge e={e} />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <span className="mono" style={{ fontSize: 12, color: '#C7CBDA' }}>{fmtDay(r.eventDate)}</span>
@@ -1068,8 +1080,22 @@ function PastMlSection({ employees, setModal }) {
 
 // Shown next to a name when Koenig has a resignation date: the person stays on the
 // dashboard, with all their data, until their last working day arrives.
+// "Maternity" tag under a name while the person's leave is on (lib/maternity.js).
+function MaternityBadge({ e }) {
+  const l = e ? maternityNow(e.id) : null;
+  if (!l) return null;
+  const M = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const fmt = (d) => { const [y, m, dd] = String(d).split('-'); return `${Number(dd)} ${M[Number(m) - 1]} ${y}`; };
+  return (
+    <span title={`Maternity leave ${fmt(l.from)} to ${fmt(l.to)}${l.approval === 'In process' ? ' (approval in process)' : ''}`} style={{ alignSelf: 'flex-start', fontSize: 9.5, letterSpacing: '.04em', padding: '2px 8px', borderRadius: 999, background: 'rgba(244,114,182,0.14)', color: '#F472B6', border: '1px solid rgba(244,114,182,0.35)', textTransform: 'uppercase' }}>
+      Maternity
+    </span>
+  );
+}
+
 function ResignedBadge({ e }) {
-  if (!e || !e.resignedOn) return null;
+  const mat = <MaternityBadge e={e} />;
+  if (!e || !e.resignedOn) return mat;
   const M = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const fmt = (d) => {
     const [y, m, dd] = String(d).slice(0, 10).split('-');
@@ -1077,9 +1103,12 @@ function ResignedBadge({ e }) {
   };
   const tip = `Resigned on ${fmt(e.resignedOn)}${e.lastWorkingDay ? `, last working day ${fmt(e.lastWorkingDay)}` : ' (no last working day recorded yet)'}`;
   return (
+    <>
+    {mat}
     <span title={tip} style={{ alignSelf: 'flex-start', fontSize: 9.5, letterSpacing: '.04em', padding: '2px 8px', borderRadius: 999, background: 'rgba(245,158,11,0.14)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.4)', whiteSpace: 'nowrap' }}>
       Resigned{e.lastWorkingDay ? ` · LWD ${fmt(e.lastWorkingDay)}` : ''}
     </span>
+    </>
   );
 }
 
@@ -1823,7 +1852,7 @@ function Dept({ employees, dept, filter, setFilter, setModal }) {
         </div>
         {rows.map((e) => (
           <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '13px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}><span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.id}</span><ResignedBadge e={e} /></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}><span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.id}</span><ResignedBadge e={e} /><F2fBadge e={e} active={missing} /></div>
             <span style={{ color: '#A8AEC4', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.doj}</span>
             <span style={{ color: '#A8AEC4', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.manager}</span>
             <span className="mono" style={{ fontSize: 11, color: '#8A90A8' }}>{e.tenure}</span>
@@ -2645,7 +2674,7 @@ function PaPip({ employees, filter, setFilter, setModal }) {
         </div>
         {rows.map((e) => (
           <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: '1.4fr .7fr .8fr .8fr 1.9fr .7fr', padding: '14px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontWeight: 600 }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id} · {e.team}</span><ResignedBadge e={e} /></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontWeight: 600 }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id} · {e.team}</span><ResignedBadge e={e} /><F2fBadge e={e} active={missing} /></div>
             <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` }}>{e.inactive ? 'Inactive' : e.short}</span>
             <span style={{ fontSize: 12, color: '#A8AEC4' }}>{e.issued}</span>
             <span style={{ fontSize: 12, color: '#A8AEC4' }}>{e.due}</span>
@@ -3252,6 +3281,62 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
   const posSignals = POS_SIGNALS.filter((s) => !filter || appliesToTeam(s.teams, filter));
   const negSignals = NEG_SIGNALS.filter((s) => !filter || appliesToTeam(s.teams, filter));
 
+  const [showWeights, setShowWeights] = useState(false);
+  const weightsBlock = (
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 22 }}>
+        <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 16, background: 'rgba(20,184,166,0.03)', overflow: 'hidden' }}>
+          <div style={{ padding: '14px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)' }} className="mono">
+            <span style={{ fontSize: 10.5, letterSpacing: '.14em', color: '#14B8A6', textTransform: 'uppercase' }}>Positive signals</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr .8fr .5fr .9fr', padding: '9px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.08em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            <span>Signal</span><span>Applies to</span><span style={{ textAlign: 'right' }}>Weight</span><span style={{ textAlign: 'right' }}>Coverage</span>
+          </div>
+          {posSignals.map((s) => {
+            const cov = coverageFor(s);
+            return (
+              <div key={s.label} style={{ display: 'grid', gridTemplateColumns: '1fr .8fr .5fr .9fr', padding: '10px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.04)', opacity: !s.live ? 0.45 : !s.windowed && since != null ? 0.6 : 1 }}>
+                <span style={{ fontSize: 13, color: '#C7CBDA', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span>{s.label}{s.note && <span className="mono" style={{ display: 'block', fontSize: 10, color: '#6E7488', marginTop: 2 }}>{s.note}</span>}</span>
+                  {!s.live && <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase' }}>not tracked</span>}
+                  {s.live && !s.windowed && since != null && <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase' }}>not dated</span>}
+                </span>
+                <span style={{ fontSize: 11, color: '#6E7488' }}>{s.teams}</span>
+                <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12.5, color: '#14B8A6' }}>{s.w}</span>
+                <span style={{ textAlign: 'right', fontSize: 11, color: '#6E7488' }}>
+                  {s.live ? `fired ${cov.fired}/${cov.eligible}${cov.noData ? ` · ${cov.noData} no data` : ''}${cov.notWindowed ? ` · ${cov.notWindowed} not dated` : ''}` : '—'}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 16, background: 'rgba(244,63,94,0.03)', overflow: 'hidden' }}>
+          <div style={{ padding: '14px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)' }} className="mono">
+            <span style={{ fontSize: 10.5, letterSpacing: '.14em', color: '#F43F5E', textTransform: 'uppercase' }}>Negative signals</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr .8fr .5fr .9fr', padding: '9px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.08em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            <span>Signal</span><span>Applies to</span><span style={{ textAlign: 'right' }}>Weight</span><span style={{ textAlign: 'right' }}>Coverage</span>
+          </div>
+          {negSignals.map((s) => {
+            const cov = coverageFor(s);
+            return (
+              <div key={s.label} style={{ display: 'grid', gridTemplateColumns: '1fr .8fr .5fr .9fr', padding: '10px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.04)', opacity: !s.live ? 0.45 : !s.windowed && since != null ? 0.6 : 1 }}>
+                <span style={{ fontSize: 13, color: '#C7CBDA', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span>{s.label}{s.note && <span className="mono" style={{ display: 'block', fontSize: 10, color: '#6E7488', marginTop: 2 }}>{s.note}</span>}</span>
+                  {!s.live && <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase' }}>not tracked</span>}
+                  {s.live && !s.windowed && since != null && <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase' }}>not dated</span>}
+                </span>
+                <span style={{ fontSize: 11, color: '#6E7488' }}>{s.teams}</span>
+                <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12.5, color: '#F87171' }}>{s.w}</span>
+                <span style={{ textAlign: 'right', fontSize: 11, color: '#6E7488' }}>
+                  {s.live ? `fired ${cov.fired}/${cov.eligible}${cov.noData ? ` · ${cov.noData} no data` : ''}${cov.notWindowed ? ` · ${cov.notWindowed} not dated` : ''}` : '—'}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+  );
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -3260,6 +3345,7 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
             <span>{t.label}</span><span className="mono" style={{ fontSize: 11, opacity: 0.75 }}>{t.count}</span>
           </div>
         ))}
+        <div onClick={() => setShowWeights(true)} style={{ cursor: 'pointer', marginLeft: 'auto', border: '1px solid rgba(99,102,241,0.45)', background: 'rgba(99,102,241,0.16)', color: '#C7C9FB', borderRadius: 999, padding: '8px 16px', fontSize: 13, fontWeight: 600 }}>View Weights</div>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <span className="mono" style={{ fontSize: 10, letterSpacing: '.1em', color: '#5C6178', textTransform: 'uppercase', marginRight: 2 }}>Window</span>
@@ -3328,6 +3414,8 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <span style={{ fontWeight: 600 }}>{e.name}</span>
               <span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id}</span>
+              <ResignedBadge e={e} />
+              <F2fBadge e={e} active={missing} />
               {e.activePipRange && <span style={{ fontSize: 10.5, color: '#F59E0B' }}>{e.activePipRange}</span>}
             </div>
             <span style={{ color: '#A8AEC4', fontSize: 12.5 }}>{e.team}</span>
@@ -3340,58 +3428,21 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
         {!ranked.length && <div style={{ padding: '18px', fontSize: 12.5, color: '#6E7488' }}>No NJ matches this filter.</div>}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 22 }}>
-        <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 16, background: 'rgba(20,184,166,0.03)', overflow: 'hidden' }}>
-          <div style={{ padding: '14px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)' }} className="mono">
-            <span style={{ fontSize: 10.5, letterSpacing: '.14em', color: '#14B8A6', textTransform: 'uppercase' }}>Positive signals</span>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr .8fr .5fr .9fr', padding: '9px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.08em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-            <span>Signal</span><span>Applies to</span><span style={{ textAlign: 'right' }}>Weight</span><span style={{ textAlign: 'right' }}>Coverage</span>
-          </div>
-          {posSignals.map((s) => {
-            const cov = coverageFor(s);
-            return (
-              <div key={s.label} style={{ display: 'grid', gridTemplateColumns: '1fr .8fr .5fr .9fr', padding: '10px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.04)', opacity: !s.live ? 0.45 : !s.windowed && since != null ? 0.6 : 1 }}>
-                <span style={{ fontSize: 13, color: '#C7CBDA', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span>{s.label}{s.note && <span className="mono" style={{ display: 'block', fontSize: 10, color: '#6E7488', marginTop: 2 }}>{s.note}</span>}</span>
-                  {!s.live && <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase' }}>not tracked</span>}
-                  {s.live && !s.windowed && since != null && <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase' }}>not dated</span>}
-                </span>
-                <span style={{ fontSize: 11, color: '#6E7488' }}>{s.teams}</span>
-                <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12.5, color: '#14B8A6' }}>{s.w}</span>
-                <span style={{ textAlign: 'right', fontSize: 11, color: '#6E7488' }}>
-                  {s.live ? `fired ${cov.fired}/${cov.eligible}${cov.noData ? ` · ${cov.noData} no data` : ''}${cov.notWindowed ? ` · ${cov.notWindowed} not dated` : ''}` : '—'}
-                </span>
+      {weightsBlock}
+      {showWeights && (
+        <div onClick={() => setShowWeights(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 30, zIndex: 60 }}>
+          <div onClick={(ev) => ev.stopPropagation()} style={{ width: '100%', maxWidth: 1180, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+            <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>Worry Index weights</div>
+                <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>{filter ? `Signals that apply to ${filter}` : 'All signals'} · {windowLabel}</div>
               </div>
-            );
-          })}
-        </div>
-        <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 16, background: 'rgba(244,63,94,0.03)', overflow: 'hidden' }}>
-          <div style={{ padding: '14px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)' }} className="mono">
-            <span style={{ fontSize: 10.5, letterSpacing: '.14em', color: '#F43F5E', textTransform: 'uppercase' }}>Negative signals</span>
+              <div onClick={() => setShowWeights(false)} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
+            </div>
+            <div style={{ padding: 22 }}>{weightsBlock}</div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr .8fr .5fr .9fr', padding: '9px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.08em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-            <span>Signal</span><span>Applies to</span><span style={{ textAlign: 'right' }}>Weight</span><span style={{ textAlign: 'right' }}>Coverage</span>
-          </div>
-          {negSignals.map((s) => {
-            const cov = coverageFor(s);
-            return (
-              <div key={s.label} style={{ display: 'grid', gridTemplateColumns: '1fr .8fr .5fr .9fr', padding: '10px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.04)', opacity: !s.live ? 0.45 : !s.windowed && since != null ? 0.6 : 1 }}>
-                <span style={{ fontSize: 13, color: '#C7CBDA', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span>{s.label}{s.note && <span className="mono" style={{ display: 'block', fontSize: 10, color: '#6E7488', marginTop: 2 }}>{s.note}</span>}</span>
-                  {!s.live && <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase' }}>not tracked</span>}
-                  {s.live && !s.windowed && since != null && <span className="mono" style={{ fontSize: 8.5, letterSpacing: '.06em', color: '#6E7488', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '2px 6px', textTransform: 'uppercase' }}>not dated</span>}
-                </span>
-                <span style={{ fontSize: 11, color: '#6E7488' }}>{s.teams}</span>
-                <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12.5, color: '#F87171' }}>{s.w}</span>
-                <span style={{ textAlign: 'right', fontSize: 11, color: '#6E7488' }}>
-                  {s.live ? `fired ${cov.fired}/${cov.eligible}${cov.noData ? ` · ${cov.noData} no data` : ''}${cov.notWindowed ? ` · ${cov.notWindowed} not dated` : ''}` : '—'}
-                </span>
-              </div>
-            );
-          })}
         </div>
-      </div>
+      )}
     </div>
   );
 }

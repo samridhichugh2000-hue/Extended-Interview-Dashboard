@@ -1,5 +1,5 @@
 import DashboardClient from './DashboardClient';
-import { getEmployees, getWeeklyResponses, getGraphMeetings, slimEmployeesForClient } from '../lib/queries';
+import { getEmployees, getWeeklyResponses, getGraphMeetings, slimEmployeesForClient, attachExternalMeetingDates } from '../lib/queries';
 import { getNewJoiners } from '../lib/koenigApi';
 import { getIsoWeek } from '../lib/weekUtils';
 import { getFailedJobRuns, getFeedRuns } from '../lib/jobStatus';
@@ -43,5 +43,5 @@ export default async function Page() {
   const deptCounts = { Sales: 0, Trainer: 0, 'PT Team': 0, 'FM Team': 0, 'Recruitment Team': 0 };
   for (const nj of newJoiners) deptCounts[nj.section]++;
 
-  return <DashboardClient employees={slimEmployeesForClient(employees)} responses={responses} week={week} newJoiners={newJoiners} deptCounts={deptCounts} failedJobs={failedJobs} graphMeetings={graphMeetings} feedRuns={feedRuns} csmSeasonality={csmSeasonality} />;
+  return <DashboardClient employees={attachExternalMeetingDates(slimEmployeesForClient(employees), graphMeetings)} responses={responses} week={week} newJoiners={newJoiners} deptCounts={deptCounts} failedJobs={failedJobs} graphMeetings={graphMeetings} feedRuns={feedRuns} csmSeasonality={csmSeasonality} />;
 }

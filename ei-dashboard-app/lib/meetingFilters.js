@@ -29,9 +29,15 @@ const SALES_TRAINING_SOFT_RE = /\btrainings?\b|\bsessions?\b|\bworkshops?\b|\bex
 
 // Full rule for the Graph meetings views, sync and counts (Sales + ATMs: external-only). `clientEmails` is
 // the array stored on graph_meetings (empty = internal-only invite).
+// The "Koenig Sales Enablement" session is an internal enablement event run with an
+// outside organizer (PeopleCert) — its invite carries external addresses, but it is
+// not a client meeting, so it never counts as one.
+const NON_CLIENT_RE = /^\s*koenig\s+sales\s+enablement\b/i;
+
 export function isExcludedGraphMeeting(subject, team, clientEmails) {
   if (isExcludedMeeting(subject)) return true;
   const s = subject || '';
+  if (NON_CLIENT_RE.test(s)) return true;
   if (CANCELLED_RE.test(s)) return true;
   // Sales and Assistant Technical Managers (team 'Trainer') alike: only
   // meetings with someone outside @koenig-solutions.com are tracked —

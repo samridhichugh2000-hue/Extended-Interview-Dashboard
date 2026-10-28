@@ -52,8 +52,8 @@ function compactSignals(report) {
 export async function takeEiSnapshot() {
   const db = getDb();
   await ensureTable(db);
-  const { getEmployees } = await import('./queries.js');
-  const employees = (await getEmployees()).filter((e) => e.active !== false);
+  const { getEmployees, getGraphMeetings, attachExternalMeetingDates } = await import('./queries.js');
+  const employees = attachExternalMeetingDates((await getEmployees()).filter((e) => e.active !== false), await getGraphMeetings());
 
   const date = istDate();
   const createdAt = new Date().toISOString();
