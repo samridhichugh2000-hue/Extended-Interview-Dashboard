@@ -167,8 +167,7 @@ async function buildTranscript(user, me, conversationId, clockMessageId) {
 //      and a conversation they have since replied to has no open request.
 //   3. Each conversation whose open request is more than 7 days old is judged
 //      on its WHOLE thread (received + sent) by judgeEmailThread: unanswered /
-//      answered / not_actionable / needs_review. Only "unanswered" is counted;
-//      "needs_review" is listed separately and never counted. Nothing is stored
+//      answered / not_actionable. Only "unanswered" is counted. Nothing is stored
 //      except subject/sender/date/verdict — callers keep only the counts.
 export async function getUnrepliedThreads(email, { days = UNREPLIED_LOOKBACK_DAYS, graceHours = UNREPLIED_GRACE_HOURS, employee = null } = {}) {
   const me = email.toLowerCase();
@@ -272,7 +271,7 @@ export async function getUnrepliedThreads(email, { days = UNREPLIED_LOOKBACK_DAY
   // this conversation (a reply typed as a fresh email).
   const otherSentTo = (c) => sentItems.filter((s) => s.conv !== c.key && s.at > c.request.receivedDateTime && s.to.has(c.sender)).sort((a, b) => a.at.localeCompare(b.at)).slice(-6);
   const threadKey = (c) => `${c.latest.id}|${c.lastSent || ''}|${otherSentTo(c).length}`;
-  const unreadable = { verdict: 'needs_review', reason: 'Conversation could not be read — check manually', failed: true };
+  const unreadable = { verdict: 'not_actionable', reason: 'Conversation could not be read — retried on the next run', failed: true };
 
   async function judge(c) {
     const hit = cached.get(c.key);
@@ -326,7 +325,7 @@ export async function getUnrepliedThreads(email, { days = UNREPLIED_LOOKBACK_DAY
     eligibleMessages,
     judgeFailures: due.filter((c) => c.result?.failed).length,
     unreplied: items.filter((m) => m.category === 'unanswered'),
-    needsReview: items.filter((m) => m.category === 'needs_review'),
+    needsReview: [], // no longer a category — kept so callers don't change
     notNeeded: items.filter((m) => m.category === 'answered' || m.category === 'not_actionable'),
   };
 }

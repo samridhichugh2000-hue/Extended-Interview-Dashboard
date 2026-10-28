@@ -1325,6 +1325,17 @@ const nrMonthKey = (monthsAgo) => {
   const d = new Date(new Date().getFullYear(), new Date().getMonth() - monthsAgo, 1);
   return `${NR_MONTHS[d.getMonth()]}-${d.getFullYear()}`;
 };
+// Classes, ILO sessions and mock sessions are training, not external meetings — their outside attendees are learners.
+const TRAINING_TITLE = [
+  /^\s*(classroom|ilo|ilt)\s*:|for course:|mock id|qubits mock/i,
+  // batch titles: "CCNA,19-October-2026,10062938", '"CBRCOR", 10066674, 21-sept-2026'
+  /^\W*[A-Za-z0-9 .\-]{2,14}\W*,\s*(\d{6,}|\d{1,2}[-\s][A-Za-z0-9]+[-\s]\d{2,4})/,
+  // course-code titles ("PL-300T00: Design and Manage ...") and TBT sessions
+  /^\W*[A-Z]{1,4}-?\d{2,4}[A-Z]?\d*\s*:|_TBT_|\bTBT\b/,
+  // webinars, masterclasses, online / mock sessions
+  /webinar|masterclass|online session|mock session|youtube live/i,
+];
+const isTraining = (title) => TRAINING_TITLE.some((re) => re.test(title || ''));
 const fmtLakhs = (n) => '₹' + (n / 100000).toFixed(1) + 'L';
 // Trailing six calendar months (M1 oldest .. M6 current), same layout as the NR columns.
 const trueNrSix = (e) => {
@@ -2241,13 +2252,13 @@ function VideoModal({ emp, onClose }) {
                   <span style={{ flex: 'none', fontSize: 11, padding: '3px 9px', borderRadius: 999, color: m.cameraOn ? '#5EEAD4' : '#F87171', border: `1px solid ${m.cameraOn ? 'rgba(20,184,166,0.3)' : 'rgba(244,63,94,0.3)'}`, background: m.cameraOn ? 'rgba(20,184,166,0.12)' : 'rgba(244,63,94,0.1)' }}>{m.cameraOn ? 'Camera on' : 'Camera off'}</span>
                 </div>
                 <div className="mono" style={{ fontSize: 11, color: '#8A90A8' }}>
-                  {new Date(m.startedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} · {m.minutes} min · {m.external ? 'External' : 'Internal'}{m.organizer ? ` · organizer ${m.organizer}` : ''}
+                  {new Date(m.startedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} · {m.minutes} min · {isTraining(m.title) ? 'Training' : m.external ? 'External' : 'Internal'}{m.organizer ? ` · organizer ${m.organizer}` : ''}
                 </div>
                 {others.length > 0 && (
                   <div style={{ fontSize: 11.5, color: '#A8AEC4', lineHeight: 1.5 }}>
                     <span style={{ color: '#6E7488' }}>With: </span>
                     {internal.map((a) => a.name).join(', ')}{unnamed > 0 && <span style={{ color: '#6E7488' }}>{internal.length ? ' ' : ''}+{unnamed} not named by Microsoft</span>}
-                    {ext.length > 0 && <span style={{ color: '#F59E0B' }}>{internal.length ? ' · ' : ''}{ext.length} external ({ext.map((a) => a.name).join(', ')})</span>}
+                    {ext.length > 0 && <span style={{ color: '#F59E0B' }}>{internal.length ? ' · ' : ''}{ext.length} {isTraining(m.title) ? 'learner' : 'external'}{ext.length === 1 ? '' : isTraining(m.title) ? 's' : ''} ({ext.map((a) => a.name).join(', ')})</span>}
                   </div>
                 )}
               </div>
@@ -3399,20 +3410,19 @@ function UnrepliedEmailsPanel({ employees }) {
   const confirmed = rows.filter((e) => e.unrepliedListSaved);
   const total = confirmed.reduce((sum, e) => sum + e.unrepliedEmailCount, 0);
   const withAny = confirmed.filter((e) => e.unrepliedEmailCount > 0).length;
-  const reviewTotal = confirmed.reduce((sum, e) => sum + (e.unrepliedReviewCount || 0), 0);
   const pending = rows.length - confirmed.length;
   const lastSynced = (employees || []).map((e) => e.unrepliedSyncedAt).filter(Boolean).sort().pop();
-  const gridCols = '1.6fr .9fr .9fr .9fr 1fr 1.2fr';
+  const gridCols = '1.6fr .9fr .9fr 1fr 1.2fr';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ border: '1px solid rgba(99,102,241,0.25)', background: 'rgba(99,102,241,0.06)', borderRadius: 12, padding: '12px 16px', fontSize: 12.5, color: '#A8AEC4', lineHeight: 1.5 }}>
-        Counts come from each employee's Outlook via Microsoft Graph. A request counts as unanswered only when it was addressed to them directly (To, not Cc, and never a hunt group or shared mailbox unless it was forwarded or assigned to them), it needs their response or action, more than 7 calendar days have passed since it reached them (a reminder or follow-up never restarts the 7 days), and no meaningful response is found in the whole conversation or in what they sent. Each candidate thread is read in full, received and sent mail together, by AI. Advertising, newsletters, system mail, announcements, FYI mail and mail that was already answered are not counted. If who is responsible, or whether they already responded, cannot be confirmed (cold outreach, polls and portal actions answered outside email, unclear assignment) the thread is marked Needs review and is NOT counted. Each employee's list (subject, sender, date and a one-line reason — no email body) is saved at sync time and shown when you click "Load emails"; "Refresh live" re-reads the mailbox. Employees marked "check mailbox" have no saved list yet.
+        Counts come from each employee's Outlook via Microsoft Graph. A request counts as unanswered only when it was addressed to them directly (on the To line, not Cc — including mail from a group or shared mailbox when it specifically asks them to act or confirm), it needs their response or action, more than 7 calendar days have passed since it reached them (a reminder or follow-up never restarts the 7 days), and no meaningful response is found in the whole conversation or in what they sent. Each candidate thread is read in full, received and sent mail together, by AI. Advertising, newsletters, system mail, announcements, FYI mail and mail that was already answered are not counted. If who is responsible, or whether they already responded, cannot be confirmed (cold outreach, polls and portal actions answered outside email, unclear assignment) the thread is marked Needs review and is NOT counted. Each employee's list (subject, sender, date and a one-line reason — no email body) is saved at sync time and shown when you click "Load emails"; "Refresh live" re-reads the mailbox. Employees marked "check mailbox" have no saved list yet.
         {lastSynced ? ` Counts last refreshed ${fmtIst(lastSynced)}.` : ''}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
-        {[{ label: 'Unanswered > 7 days', value: total, color: '#F59E0B' }, { label: 'Employees with unanswered mail', value: withAny, color: '#A5A7FA' }, { label: 'Needs review (not counted)', value: reviewTotal, color: '#8A90A8' }, { label: pending ? `Employees confirmed (${pending} still to check)` : 'Employees covered', value: confirmed.length, color: '#5EEAD4' }].map((c) => (
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
+        {[{ label: 'Unanswered > 7 days', value: total, color: '#F59E0B' }, { label: 'Employees with unanswered mail', value: withAny, color: '#A5A7FA' }, { label: pending ? `Employees confirmed (${pending} still to check)` : 'Employees covered', value: confirmed.length, color: '#5EEAD4' }].map((c) => (
           <div key={c.label} style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.025)', borderRadius: 12, padding: '13px 14px' }}>
             <div className="disp" style={{ fontSize: 24, fontWeight: 600, color: c.color, letterSpacing: '-0.02em' }}>{c.value}</div>
             <div style={{ fontSize: 11, color: '#A8AEC4', marginTop: 3 }}>{c.label}</div>
@@ -3433,14 +3443,13 @@ function UnrepliedEmailsPanel({ employees }) {
 
       <div style={{ ...card, overflow: 'hidden' }}>
         <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <span>Employee</span><span>Team</span><span style={{ textAlign: 'right' }}>Unanswered</span><span style={{ textAlign: 'right' }}>Needs review</span><span style={{ textAlign: 'right' }}>Of threads</span><span style={{ textAlign: 'right' }}>Emails</span>
+          <span>Employee</span><span>Team</span><span style={{ textAlign: 'right' }}>Unanswered</span><span style={{ textAlign: 'right' }}>Of threads</span><span style={{ textAlign: 'right' }}>Emails</span>
         </div>
         {rows.map((e) => (
           <div key={e.id} className="hoverrow" style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '13px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
             <span style={{ fontWeight: 600 }}>{e.name}</span>
             <span style={{ fontSize: 12, color: '#6E7488' }}>{e.team}</span>
             <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 13, color: !e.unrepliedListSaved ? '#6E7488' : e.unrepliedEmailCount > 0 ? '#F59E0B' : '#6E7488' }}>{e.unrepliedListSaved ? e.unrepliedEmailCount : '—'}</span>
-            <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: '#8A90A8' }}>{e.unrepliedListSaved ? (e.unrepliedReviewCount ?? '—') : '—'}</span>
             <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: '#8A90A8' }}>{e.unrepliedListSaved ? (e.unrepliedEmailTotal ?? '—') : 'check mailbox'}</span>
             <span onClick={() => setDetail(e)} style={{ textAlign: 'right', fontSize: 12.5, color: '#A5A7FA', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>Load emails</span>
           </div>
@@ -3514,21 +3523,6 @@ function UnrepliedEmailsModal({ emp, onClose }) {
             </div>
           ))}
           {!state.loading && !state.error && !list.length && <div style={{ fontSize: 12.5, color: '#6E7488', paddingTop: 12 }}>Nothing awaiting a reply.</div>}
-          {(state.data?.needsReview || []).length > 0 && (
-            <div style={{ marginTop: 18 }}>
-              <div className="mono" style={{ fontSize: 10, letterSpacing: '.12em', color: '#F59E0B', textTransform: 'uppercase', marginBottom: 6 }}>
-                Needs review — responsibility or response could not be confirmed, not counted ({state.data.needsReview.length})
-              </div>
-              {state.data.needsReview.map((m) => (
-                <div key={m.id} style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr .6fr 1.7fr', gap: 10, padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 12 }}>
-                  <span style={{ color: '#C7CBDA', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.subject}>{m.webLink ? <a href={m.webLink} target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>{m.subject}</a> : m.subject}</span>
-                  <span style={{ color: '#8A90A8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.fromName || m.fromAddress}</span>
-                  <span className="mono" style={{ fontSize: 11, color: '#8A90A8' }}>{fmtAge(m.receivedDateTime)}</span>
-                  <span style={{ color: '#6E7488', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.categoryReason}>{m.categoryReason}</span>
-                </div>
-              ))}
-            </div>
-          )}
           {(state.data?.notNeeded || []).length > 0 && (
             <div style={{ marginTop: 18 }}>
               <div className="mono" style={{ fontSize: 10, letterSpacing: '.12em', color: '#5C6178', textTransform: 'uppercase', marginBottom: 6 }}>
