@@ -2977,8 +2977,8 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
   );
 }
 
-// A trainer's utilization for the last 6 completed months (newest first) with
-// the 3 and 6 month averages, plus this month so far for reference. Same
+// A trainer's utilization for the last 6 months including the current one
+// (newest first) with the 3 and 6 month averages, current month counted. Same
 // utilization figures as the rest of the dashboard (176 h/month capacity).
 const UTIL_MON = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 function UtilizationModal({ emp, onClose }) {
@@ -2988,10 +2988,9 @@ function UtilizationModal({ emp, onClose }) {
   const now = new Date();
   const cur = now.getFullYear() * 12 + now.getMonth();
   const label = (i) => `${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][i % 12]} ${Math.floor(i / 12)}`;
-  const six = Array.from({ length: 6 }, (_, k) => cur - 1 - k).map((i) => ({ i, d: byIdx.get(i) || null }));
+  const six = Array.from({ length: 6 }, (_, k) => cur - k).map((i) => ({ i, d: byIdx.get(i) || null }));
   const avgOf = (rows) => { const v = rows.filter((r) => r.d && Number.isFinite(Number(r.d.util))).map((r) => Number(r.d.util)); return v.length ? { avg: v.reduce((s, x) => s + x, 0) / v.length, n: v.length } : null; };
   const a3 = avgOf(six.slice(0, 3)), a6 = avgOf(six);
-  const thisMonth = byIdx.get(cur) || null;
   const pc = (v) => (v == null || !Number.isFinite(Number(v)) ? '—' : `${Math.round(Number(v))}%`);
   const hrs = (v) => (v == null || !Number.isFinite(Number(v)) ? '—' : `${Math.round(Number(v) * 10) / 10}h`);
   const col = (v) => (v == null ? '#6E7488' : Number(v) >= 50 ? '#5EEAD4' : '#F87171');
@@ -3002,7 +3001,7 @@ function UtilizationModal({ emp, onClose }) {
         <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — utilization</div>
-            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>Last 6 completed months</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>Last 6 months, latest first (this month included)</div>
           </div>
           <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
         </div>
@@ -3021,19 +3020,12 @@ function UtilizationModal({ emp, onClose }) {
           </div>
           {six.map(({ i, d }) => (
             <div key={i} style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
-              <span style={{ color: '#C7CBDA' }}>{label(i)}</span>
+              <span style={{ color: '#C7CBDA' }}>{label(i)}{i === cur && <span style={{ fontSize: 10.5, color: '#6E7488' }}> (so far)</span>}</span>
               <span className="mono" style={{ textAlign: 'right', color: col(d?.util) }}>{pc(d?.util)}</span>
               <span className="mono" style={{ textAlign: 'right', color: '#8A90A8' }}>{hrs(d?.hours)}</span>
             </div>
           ))}
-          {thisMonth && (
-            <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '10px 0', fontSize: 12.5, opacity: 0.75 }}>
-              <span style={{ color: '#A8AEC4' }}>{label(cur)} <span style={{ fontSize: 10.5, color: '#6E7488' }}>(so far)</span></span>
-              <span className="mono" style={{ textAlign: 'right', color: '#A8AEC4' }}>{pc(thisMonth.util)}</span>
-              <span className="mono" style={{ textAlign: 'right', color: '#8A90A8' }}>{hrs(thisMonth.hours)}</span>
-            </div>
-          )}
-          <div style={{ fontSize: 11.5, color: '#6E7488', lineHeight: 1.5, marginTop: 8 }}>Averages use the completed months only; a month with no figure is left out and the count says how many were used. Green is 50% or more.</div>
+          <div style={{ fontSize: 11.5, color: '#6E7488', lineHeight: 1.5, marginTop: 8 }}>Averages include the current month (still in progress); a month with no figure is left out and the count says how many were used. Green is 50% or more.</div>
         </div>
       </div>
     </div>
