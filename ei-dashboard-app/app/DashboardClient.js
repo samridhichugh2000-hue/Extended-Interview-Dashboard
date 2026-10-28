@@ -7,7 +7,7 @@ import {
   computeSignalReport, computeWorryScore, trendNoteFor, WORRY_WINDOWS, windowSince, lowActivityDays,
 } from '../lib/data';
 import { csmSeasonalImpact, consolidate } from '../lib/csmSeasonal';
-import { computeEventImpact, latestPipEvent, rnrAwardDate, ANALYSIS_METRICS, appraisalWindow, metricSeries, linearTrend, appraisalPosition } from '../lib/analysis';
+import { computeEventImpact, latestRealAppraisal, blankReason, latestPipEvent, rnrAwardDate, ANALYSIS_METRICS, appraisalWindow, metricSeries, linearTrend, appraisalPosition } from '../lib/analysis';
 import { JOB_LABELS } from '../lib/jobLabels';
 import { F2F_EVENTS } from '../lib/f2fAttendees';
 import { RNR_WINNERS } from '../lib/rnrWinners';
@@ -456,7 +456,7 @@ export default function DashboardClient({ employees, responses, week, newJoiners
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex' }}>
-      <Sidebar screen={screen} dept={dept} go={go} njCount={newJoiners.length} deptCounts={deptCounts} graphCallsCount={graphMeetings.length} analysisCount={employees.filter((e) => e.active && (e.team === 'Sales' || e.team === 'Trainer') && e.appraisalDetails?.length).length} paAlgoCount={employees.filter((e) => e.trainerPaAlgo?.status === 'fired' || e.salesPaAlgo?.status === 'fired').length} />
+      <Sidebar screen={screen} dept={dept} go={go} njCount={newJoiners.length} deptCounts={deptCounts} graphCallsCount={graphMeetings.length} analysisCount={employees.filter((e) => e.active && (e.team === 'Sales' || e.team === 'Trainer') && latestRealAppraisal(e)).length} paAlgoCount={employees.filter((e) => e.trainerPaAlgo?.status === 'fired' || e.salesPaAlgo?.status === 'fired').length} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <Topbar screen={screen} dept={dept} />
         <JobFailureBanner failedJobs={failedJobs} />
@@ -772,7 +772,7 @@ function AppraisalImpactView({ employees, setModal, mode = 'appraisal', index = 
     }
   }
   const eventFor = (e) => {
-    if (mode === 'appraisal') { const a = (e.appraisalDetails || [])[0]; return a?.appraisalDate ? { date: a.appraisalDate, label: '' } : null; }
+    if (mode === 'appraisal') { const a = latestRealAppraisal(e); return a?.appraisalDate ? { date: a.appraisalDate, label: '' } : null; }
     if (mode === 'rnr') { const r = rnrByEmp.get(e.id); return r?.date ? { date: r.date, label: r.label.join(' · ') } : null; }
     return latestPipEvent(e, mode === 'pa' ? 'PA' : 'PIP');
   };
@@ -934,7 +934,7 @@ function AppraisalImpactView({ employees, setModal, mode = 'appraisal', index = 
             </div>
             {useSeason ? (() => {
               const c = r.metrics.nr;
-              if (!c) return <span style={{ gridColumn: '3 / -1', textAlign: 'right', color: '#5C6178', fontSize: 12 }}>not enough NR history</span>;
+              if (!c) return <span style={{ gridColumn: '3 / -1', textAlign: 'right', color: '#8A90A8', fontSize: 11.5, lineHeight: 1.4 }}>{blankReason(e, r.eventDate, months, 'NR')}</span>;
               const sg = (n) => `${n > 0 ? '+' : ''}${fmtLakhs(n)}`;
               const o = overall(r, s);
               return <>
@@ -946,7 +946,7 @@ function AppraisalImpactView({ employees, setModal, mode = 'appraisal', index = 
               </>;
             })() : metrics.map((m) => {
               const c = r.metrics[m.key];
-              if (!c) return <span key={m.key} style={{ gridColumn: 'span 3', textAlign: 'right', color: '#5C6178', fontSize: 12 }}>—</span>;
+              if (!c) return <span key={m.key} style={{ gridColumn: 'span 3', textAlign: 'right', color: '#8A90A8', fontSize: 11, lineHeight: 1.35 }}>{blankReason(e, r.eventDate, months, m.key === 'neg' ? 'feedback' : m.label.split(' ')[0])}</span>;
               const better = m.good === 'up' ? c.delta > 0 : c.delta < 0;
               const worse = m.good === 'up' ? c.delta < 0 : c.delta > 0;
               const color = better ? '#5EEAD4' : worse ? '#F87171' : '#8A90A8';

@@ -116,8 +116,39 @@ export function computeEventImpact(e, eventDate, maxMonths) {
   return { eventDate, k: win.k, metrics };
 }
 
+// Koenig lists a new joiner's joining salary as their first "appraisal", dated on
+// the joining day. That is not an appraisal, so a record dated within a week of
+// the DOJ is skipped.
+const JOINING_RECORD_DAYS = 7;
+function dojDate(doj) {
+  const m = /^(\d{1,2})\s+([A-Za-z]{3})[A-Za-z]*\s+(\d{2,4})$/.exec(String(doj || '').trim());
+  if (!m) return null;
+  const mi = MON.indexOf(m[2].toLowerCase());
+  return mi < 0 ? null : new Date(Number(m[3]) < 100 ? 2000 + Number(m[3]) : Number(m[3]), mi, Number(m[1]));
+}
+// The employee's most recent real appraisal ({ appraisalDate, ... }) or null.
+export function latestRealAppraisal(e) {
+  const d = dojDate(e.doj);
+  return (e.appraisalDetails || []).find((a) => {
+    if (!a?.appraisalDate) return false;
+    if (!d) return true;
+    const at = new Date(`${a.appraisalDate}T00:00:00`);
+    return Number.isNaN(at.getTime()) || Math.abs(at - d) / 864e5 > JOINING_RECORD_DAYS;
+  }) || null;
+}
+
+// Why a before / after cell has no numbers, in words, for the table.
+export function blankReason(e, eventDate, months, what = 'NR') {
+  const win = appraisalWindow(eventDate, months);
+  if (!win) return 'Too recent — no completed month after it yet';
+  const doj = dojIdx(e.doj);
+  if (doj != null && win.before[0] < doj) return `Joined ${String(e.doj).trim()} — under ${win.k} months of ${what} before this date`;
+  if (what === 'NR' && win.before[0] < 2025 * 12 + 4) return 'The NR feed starts May 2025 — the months before this date are not available';
+  return `${what} missing for some of the ${win.k} months compared`;
+}
+
 export function computeAppraisalImpact(e, maxMonths) {
-  const latest = (e.appraisalDetails || [])[0];
+  const latest = latestRealAppraisal(e);
   if (!latest?.appraisalDate) return null;
   return computeEventImpact(e, latest.appraisalDate, maxMonths);
 }
