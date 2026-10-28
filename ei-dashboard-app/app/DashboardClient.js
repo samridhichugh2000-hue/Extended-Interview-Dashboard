@@ -2743,7 +2743,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
   const algoKey = isTrainer ? 'trainerPaAlgo' : 'salesPaAlgo';
   const tabKey = isTrainer ? 'tier' : 'region';
 
-  const pool = employees.filter((e) => e.team === baseTeam && inSection(e) && e[algoKey] && (includeInactive || e.active !== false));
+  const pool = employees.filter((e) => e.team === baseTeam && inSection(e) && e[algoKey] && !ML_IDS.has(e.id) && (includeInactive || e.active !== false));
   const firedCount = pool.filter((e) => e[algoKey].status === 'fired').length;
   const clearCount = pool.filter((e) => e[algoKey].status === 'clear').length;
   const noDataCount = pool.filter((e) => isPaAlgoMissing(e[algoKey])).length;
@@ -2827,11 +2827,18 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
     // manager's own NR plus their team's (direct reports, from the NR API's
     // Manager field). Individual CSM/CM targets stay own-NR only.
     const withTeam = targetType === 'ASM' && !!e.teamNrDetails;
+    // A month of the quarter that has not started yet has no actual NR, so what is
+    // already booked for it (Future NR) is used — the quarter total is the actual
+    // months plus those booked months.
+    const futureOf = (list, key) => (list || []).find((m) => m.month === key);
     const breakdown = monthKeys.map((key) => {
-      const own = (e.nrMonthlyDetails || []).find((m) => m.month === key)?.nr ?? 0;
-      const team = withTeam ? ((e.teamNrDetails || []).find((m) => m.month === key)?.nr ?? 0) : 0;
+      const ownActual = (e.nrMonthlyDetails || []).find((m) => m.month === key);
+      const ownFuture = ownActual ? null : futureOf(e.nrFutureDetails, key);
+      const own = ownActual ? (ownActual.nr ?? 0) : (ownFuture?.nr ?? 0);
+      const teamActual = withTeam ? futureOf(e.teamNrDetails, key) : null;
+      const team = teamActual?.nr ?? 0;
       const trueRow = (e.trueNrDetails || []).find((m) => m.month === key);
-      return { month: key, own, team, nr: own + team, trueNr: trueRow ? trueRow.trueNr : null };
+      return { month: key, own, team, nr: own + team, trueNr: trueRow ? trueRow.trueNr : null, isFuture: !ownActual && !!ownFuture };
     });
     // True NR mode: achieved from True NR (own only — a manager's team True NR isn't available), counting only the months Koenig has returned so far.
     if (mode === 'true') {
@@ -3065,7 +3072,7 @@ function QuarterTargetModal({ emp, target, onClose }) {
           </div>
           {target.breakdown.map((m) => (
             <div key={m.month} style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
-              <span style={{ color: '#C7CBDA' }}>{m.month.replace('-', ' ')}</span>
+              <span style={{ color: '#C7CBDA' }}>{m.month.replace('-', ' ')}{m.isFuture && <span style={{ fontSize: 10.5, color: '#A5A7FA' }}> (booked)</span>}</span>
               {target.withTeam && <span className="mono" style={{ textAlign: 'right', color: '#A8AEC4' }}>{lakhs(m.own)}</span>}
               {target.withTeam && <span className="mono" style={{ textAlign: 'right', color: '#A8AEC4' }}>{lakhs(m.team)}</span>}
               <span className="mono" style={{ textAlign: 'right', color: m.nr > 0 ? '#5EEAD4' : '#6E7488' }}>{lakhs(m.nr)}</span>
@@ -3085,8 +3092,8 @@ function QuarterTargetModal({ emp, target, onClose }) {
           <div style={{ fontSize: 11.5, color: '#6E7488', marginTop: 8, lineHeight: 1.55 }}>
             {target.isTrue && <><b>Showing True NR</b> (net of salary and marketing cost) — only the {target.monthsAvailable} of 3 quarter months Koenig has returned so far count. The PA Algo's band checks decide on NR before salary and marketing cost; only its two ROI rules use True NR.<br /></>}
             Achieved % = {target.nrLabel} ÷ {target.targetLabel} × 100 = <b style={{ color }}>{target.pct}</b>. {target.withTeam
-              ? <>Achieved is the manager's own NR plus the NR of their team ({target.teamSize} direct reports), summed across the three calendar months of {q.name} {q.year}; the target is the manager-level target Koenig holds for this quarter.</>
-              : <>Achieved is the employee's NR summed across the three calendar months of {q.name} {q.year} (months with no NR count as ₹0.0L); the target is the CSM target Koenig holds for this quarter.</>}
+              ? <>Achieved is the manager's own NR plus the NR of their team ({target.teamSize} direct reports), summed across the three calendar months of {q.name} {q.year}, counting NR already booked for months still to come; the target is the manager-level target Koenig holds for this quarter.</>
+              : <>Achieved is the employee's NR summed across the three calendar months of {q.name} {q.year}: actual NR for the months so far, plus the NR already booked (Future NR) for the months still to come, marked "booked" (a month with nothing counts as ₹0.0L). The target is the CSM target Koenig holds for this quarter.</>}
           </div>
         </div>
       </div>

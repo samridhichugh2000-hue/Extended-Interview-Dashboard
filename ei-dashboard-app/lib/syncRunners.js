@@ -305,7 +305,7 @@ export async function syncPms() {
 
   // Team NR — for managers. Every NR row carries its CCE's Manager, so a
   // manager's team is the rows whose Manager is that person (direct reports
-  // only). Stored as a monthly series (months up to the current one) for the
+  // only). Stored as a monthly series (every month the NR API returns, including those after the current one) for the
   // manager-level (ASM) quarter target, which is crore-scale and set against
   // the manager's own NR *plus* their team's. Names are matched exactly
   // (normalized, one employee per name); anyone who manages nobody gets null.
@@ -329,8 +329,7 @@ export async function syncPms() {
       const totals = new Map();
       for (const r of team) {
         for (const [month, raw] of Object.entries(r.monthlyRevenue)) {
-          if (monthIndex(month) > currentIdx) continue;
-          totals.set(month, (totals.get(month) || 0) + parseNR(raw));
+          totals.set(month, (totals.get(month) || 0) + parseNR(raw)); // includes months after the current one (NR already booked), used for the quarter total
         }
       }
       details = [...totals.entries()]
