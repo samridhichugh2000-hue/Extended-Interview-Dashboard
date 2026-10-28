@@ -47,7 +47,8 @@ const EXCLUDED_SENDERS = new Set([
 ].filter(Boolean));
 // System notices that carry no ask: OTP codes and the ILO / Classroom / Course
 // Advice / tech call assignment mails (same exclusions as the meetings view).
-const SYSTEM_SUBJECT_RE = /verification code|one[-\s]?time (pass)?code|\botp\b|^classroom:|\bRMS\b|employee identification|health declaration|action required/i;
+// Also test mail: "Ready to test" ticket notifications and test e-mails.
+const SYSTEM_SUBJECT_RE = /verification code|one[-\s]?time (pass)?code|\botp\b|^classroom:|\bRMS\b|employee identification|health declaration|action required|ready to test|\btest e-?mails?\b|^\s*\[test\]/i;
 // To+Cc this large is a broadcast, not a message to answer.
 const MASS_RECIPIENT_THRESHOLD = 10;
 
