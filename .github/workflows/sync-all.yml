@@ -1,9 +1,11 @@
 name: Sync all Koenig feeds
 
 on:
-  schedule:
-    # 10:00 IST daily (04:30 UTC) — every day, including weekends
-    - cron: '30 4 * * *'
+  # No schedule: the real daily sync is the local "EI Dashboard Full Sync" Windows task
+  # (scripts/run-sync-all.ps1), which has the full .env.local. This runner only has a subset
+  # of the secrets (no True NR / Employee NR / CSM roster / Targets / Graph / FM interviews),
+  # so every scheduled run failed and overwrote the dashboard's feed status with errors.
+  # Trigger it by hand if ever needed.
   workflow_dispatch: {}
 
 jobs:
