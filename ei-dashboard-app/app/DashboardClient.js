@@ -2788,7 +2788,8 @@ function PaPipProgressModal({ emp, p, onClose }) {
               {!p.rows.length && <div style={{ padding: 16, fontSize: 12.5, color: '#6E7488' }}>Nothing is tracked for this team.</div>}
             </div>
           )}
-          {p.monthly?.columns?.length > 0 && (
+          {/* Month-by-month is for Sales and Trainer only; PT, FM and Recruitment keep the summary table. */}
+          {['Sales', 'Trainer'].includes(emp.team) && p.monthly?.columns?.length > 0 && (
             <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, overflow: 'hidden' }}>
               <div style={{ padding: '12px 16px 4px' }}>
                 <div className="disp" style={{ fontSize: 14, fontWeight: 600 }}>Month by month</div>
