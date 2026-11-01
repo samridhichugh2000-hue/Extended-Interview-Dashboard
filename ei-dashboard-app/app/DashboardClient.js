@@ -117,7 +117,7 @@ function useEmployeeActions() {
       });
       const json = await res.json();
       window.alert(json.ok
-        ? (testMode ? `Test email sent to ${TEST_RECIPIENT} — ${emp.name}'s status was not changed.` : `${pipType} saved and alert email sent.`)
+        ? (testMode ? `Test email sent to ${TEST_RECIPIENT}${json.threaded ? ' as a reply in the earlier test thread' : ''} — ${emp.name}'s status was not changed.` : `${pipType} saved and alert email sent${json.threaded ? ' as a reply in the previous PA/PIP email thread' : ''}.`)
         : `Failed: ${json.error}`);
       if (json.ok) {
         setAlertTarget(null);
@@ -203,7 +203,7 @@ function AlertPreviewModal({ emp, pending, onClose, onSend }) {
   // audits" in the email, not "-15". Boolean-only signals (no count fn, e.g.
   // "Zero assignments since joining") fall back to Yes/No since there's no
   // number to show.
-  const displayVal = (s) => (s.isMetric ? 'Table' : s.status === 'fired' ? (s.count != null ? String(s.count) : 'Yes') : '0');
+  const displayVal = (s) => (s.isMetric ? 'Table' : s.isTarget ? s.text : s.status === 'fired' ? (s.count != null ? String(s.count) : 'Yes') : '0');
   // Reflects the employee's actual monthly figures rather than a scored
   // pass/fail signal — treated as just another checkbox row (pre-checked) so
   // HR can drop it from the email like any other parameter, but rendered as
@@ -211,27 +211,52 @@ function AlertPreviewModal({ emp, pending, onClose, onSend }) {
   // Sales sees NR (currency), Trainer sees Utilization; PT/other teams get
   // nothing here since neither metric applies to them.
   const monthHeads = METRIC_HEADS[emp.team];
+  // employees.doj is a display string like "19 May 25" / "07 Sept 26".
+  const joinMatch = /^\d{1,2}\s+([A-Za-z]{3})[A-Za-z]*\s+(\d{2,4})$/.exec(String(emp.doj || '').trim());
+  const joinMon = joinMatch ? ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'].indexOf(joinMatch[1].toLowerCase()) : -1;
+  const joinMonthIdx = joinMon >= 0 ? (Number(joinMatch[2]) < 100 ? 2000 + Number(joinMatch[2]) : Number(joinMatch[2])) * 12 + joinMon : null;
   const metric = (emp.team === 'Sales' || emp.team === 'Trainer') && monthHeads
     ? { label: emp.team === 'Sales' ? 'Month-wise NR' : 'Month-wise Utilization',
         isCurrency: emp.team === 'Sales',
         // M1..M6 are the trailing 6 calendar months ending with the current
         // one (see lastSixMonths in lib/syncRunners.js) — label with the real
         // month ("Apr 26") instead of "M1 NR" for the email.
+        // Months before the person joined are left out, and so is the joining
+        // month itself — the first month of tenure is excluded, same as the
+        // before/after analysis. A 4-month employee gets a 3-month table, not 6
+        // columns with blanks.
         months: monthHeads.map((h, i) => {
           const d = new Date(new Date().getFullYear(), new Date().getMonth() - (monthHeads.length - 1 - i), 1);
           const head = `${d.toLocaleString('en-US', { month: 'short' })} ${String(d.getFullYear()).slice(2)}`;
-          return { head, value: emp.v?.[i] ?? '—' };
-        }),
+          return { head, value: emp.v?.[i] ?? '—', idx: d.getFullYear() * 12 + d.getMonth() };
+        }).filter((m) => joinMonthIdx == null || m.idx > joinMonthIdx),
         isMetric: true }
     : null;
-  const items = metric ? [...all, metric] : all;
+  // CSM targets: achievement of the current and the previous calendar quarter,
+  // worked out exactly as on the PA Algo screen (quarterTargetFor). Offered as
+  // opt-in rows, like the month-wise table. A quarter with no target on file is
+  // left out.
+  const targetItems = emp.team === 'Sales' ? (() => {
+    const now = new Date();
+    const qNum = Math.floor(now.getMonth() / 3) + 1;
+    const cur = { name: `Q${qNum}`, year: now.getFullYear() };
+    const prev = qNum === 1 ? { name: 'Q4', year: cur.year - 1 } : { name: `Q${qNum - 1}`, year: cur.year };
+    return [[cur, 'current quarter'], [prev, 'previous quarter']].map(([q, which]) => {
+      const t = quarterTargetFor(emp, 'nr', q);
+      if (!t || t.unavailable || !t.targetLabel) return null;
+      return { label: `Target achievement — ${which} (${q.name} ${q.year})`, text: `${t.nrLabel} of ${t.targetLabel} target (${t.pct})`, isTarget: true };
+    }).filter(Boolean);
+  })() : [];
+  // No month left after the exclusions (joined this month) — no table to offer.
+  const metricShown = metric?.months.length ? metric : null;
+  const items = [...all, ...targetItems, ...(metricShown ? [metricShown] : [])];
   // Negative signals that actually fired are why this NJ is being alerted in
   // the first place — pre-checked, same as the month-wise metric.
   // Everything else is available to add for context, but off by default.
   const [selected, setSelected] = useState(() => {
-    const s = new Set(all.filter((x) => x.status === 'fired' && x.pts < 0).map((x) => x.label));
-    if (metric) s.add(metric.label);
-    return s;
+    // Only fired negative signals start ticked; the month-wise table and the
+    // CSM target rows are included only when HR ticks them.
+    return new Set(all.filter((x) => x.status === 'fired' && x.pts < 0).map((x) => x.label));
   });
   const toggle = (label) => setSelected((prev) => {
     const next = new Set(prev);
@@ -293,7 +318,7 @@ function AlertPreviewModal({ emp, pending, onClose, onSend }) {
                 <label key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 10, padding: '9px 12px' }}>
                   <input type="checkbox" checked={selected.has(s.label)} onChange={() => toggle(s.label)} style={{ width: 15, height: 15, flex: 'none' }} />
                   <span style={{ flex: 1, fontSize: 13, color: '#C7CBDA' }}>{s.label}</span>
-                  <span className="mono" style={{ fontSize: 12, fontWeight: 600, color: s.isMetric ? '#8A90A8' : s.status === 'fired' ? (s.pts < 0 ? '#F87171' : '#5EEAD4') : '#8A90A8' }}>{displayVal(s)}</span>
+                  <span className="mono" style={{ fontSize: 12, fontWeight: 600, color: s.isMetric || s.isTarget ? '#8A90A8' : s.status === 'fired' ? (s.pts < 0 ? '#F87171' : '#5EEAD4') : '#8A90A8' }}>{displayVal(s)}</span>
                 </label>
               ))}
               {!items.length && <div style={{ fontSize: 12.5, color: '#6E7488' }}>No tracked parameters for this team yet.</div>}
@@ -2807,6 +2832,51 @@ const PA_ALGO_MISSING_STATUSES = ['no-data', 'no-salary-data', 'no-country-data'
 // Under 3 months of tenure has no PA Algo criteria at all, so 'no-data' there is
 // nothing to evaluate yet, not a data gap — kept out of Missing data.
 const isPaAlgoMissing = (algo) => PA_ALGO_MISSING_STATUSES.includes(algo.status) && !/^No PA Algo criteria/.test(algo.rule || '');
+// Current quarter's CSM target (lib/syncRunners.js's syncTargetsData,
+// quarter_target_amount) against this quarter's synced NR — Koenig's own
+// achievement-percentage feed (quarter_target_pct, syncTargetAchievement)
+// has returned zero rows for every query tried, so the % here is computed
+// directly from NR rather than trusting that feed.
+function quarterTargetFor(e, mode, q) {
+  const qt = (e.quarterTargets || []).find((t) => t.name === q.name && t.year === q.year);
+  if (!qt) return null;
+  const targetAmount = qt.amount;
+  const targetType = qt.type;
+  const monthKeys = quarterMonthKeys(q);
+  // One row per quarter month (0 when the feed has nothing for it), so the
+  // breakdown popup always shows all three months.
+  // Manager-level (ASM) targets are crore-scale team targets: achieved is the
+  // manager's own NR plus their team's (direct reports, from the NR API's
+  // Manager field). Individual CSM/CM targets stay own-NR only.
+  const withTeam = targetType === 'ASM' && !!e.teamNrDetails;
+  // A month of the quarter that has not started yet has no actual NR, so what is
+  // already booked for it (Future NR) is used — the quarter total is the actual
+  // months plus those booked months.
+  const futureOf = (list, key) => (list || []).find((m) => m.month === key);
+  const breakdown = monthKeys.map((key) => {
+    const ownActual = (e.nrMonthlyDetails || []).find((m) => m.month === key);
+    const ownFuture = ownActual ? null : futureOf(e.nrFutureDetails, key);
+    const own = ownActual ? (ownActual.nr ?? 0) : (ownFuture?.nr ?? 0);
+    const teamActual = withTeam ? futureOf(e.teamNrDetails, key) : null;
+    const team = teamActual?.nr ?? 0;
+    const trueRow = (e.trueNrDetails || []).find((m) => m.month === key);
+    return { month: key, own, team, nr: own + team, trueNr: trueRow ? trueRow.trueNr : null, isFuture: !ownActual && !!ownFuture };
+  });
+  // True NR mode: achieved from True NR (own only — a manager's team True NR isn't available), counting only the months Koenig has returned so far.
+  if (mode === 'true') {
+    if (withTeam) return { unavailable: 'Team True NR not available' };
+    const trueMonths = breakdown.filter((m) => m.trueNr != null);
+    const trueTotal = trueMonths.reduce((sum, m) => sum + m.trueNr, 0);
+    const tp = targetAmount > 0 ? Math.round((trueTotal / targetAmount) * 1000) / 10 : null;
+    const lk = (n) => '₹' + (n / 100000).toFixed(1) + 'L';
+    return { pct: tp != null ? `${tp}%` : '—', achieved: tp != null && tp >= 100, nrLabel: lk(trueTotal), targetLabel: lk(targetAmount), q, breakdown, withTeam: false, teamSize: 0, isTrue: true, monthsAvailable: trueMonths.length };
+  }
+  const nr = breakdown.reduce((sum, m) => sum + m.nr, 0);
+  const pct = targetAmount > 0 ? Math.round((nr / targetAmount) * 1000) / 10 : null;
+  const lakhs = (n) => '₹' + (n / 100000).toFixed(1) + 'L';
+  return { pct: pct != null ? `${pct}%` : '—', achieved: pct != null && pct >= 100, nrLabel: lakhs(nr), targetLabel: lakhs(targetAmount), q, breakdown, withTeam, teamSize: e.teamNrDetails?.[0]?.members ?? 0 };
+}
+
 function PaAlgo({ employees, filter, setFilter, setModal }) {
   const [team, setTeam] = useState('Trainer');
   const [search, setSearch] = useState('');
@@ -2915,50 +2985,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
     const latest = [...details].reverse().find((m) => m.util != null);
     return latest ? { label: `${latest.util}% (${latest.month})`, isCurrent: false } : null;
   }
-  // Current quarter's CSM target (lib/syncRunners.js's syncTargetsData,
-  // quarter_target_amount) against this quarter's synced NR — Koenig's own
-  // achievement-percentage feed (quarter_target_pct, syncTargetAchievement)
-  // has returned zero rows for every query tried, so the % here is computed
-  // directly from NR rather than trusting that feed.
-  function quarterTargetLabel(e, mode, q) {
-    const qt = (e.quarterTargets || []).find((t) => t.name === q.name && t.year === q.year);
-    if (!qt) return null;
-    const targetAmount = qt.amount;
-    const targetType = qt.type;
-    const monthKeys = quarterMonthKeys(q);
-    // One row per quarter month (0 when the feed has nothing for it), so the
-    // breakdown popup always shows all three months.
-    // Manager-level (ASM) targets are crore-scale team targets: achieved is the
-    // manager's own NR plus their team's (direct reports, from the NR API's
-    // Manager field). Individual CSM/CM targets stay own-NR only.
-    const withTeam = targetType === 'ASM' && !!e.teamNrDetails;
-    // A month of the quarter that has not started yet has no actual NR, so what is
-    // already booked for it (Future NR) is used — the quarter total is the actual
-    // months plus those booked months.
-    const futureOf = (list, key) => (list || []).find((m) => m.month === key);
-    const breakdown = monthKeys.map((key) => {
-      const ownActual = (e.nrMonthlyDetails || []).find((m) => m.month === key);
-      const ownFuture = ownActual ? null : futureOf(e.nrFutureDetails, key);
-      const own = ownActual ? (ownActual.nr ?? 0) : (ownFuture?.nr ?? 0);
-      const teamActual = withTeam ? futureOf(e.teamNrDetails, key) : null;
-      const team = teamActual?.nr ?? 0;
-      const trueRow = (e.trueNrDetails || []).find((m) => m.month === key);
-      return { month: key, own, team, nr: own + team, trueNr: trueRow ? trueRow.trueNr : null, isFuture: !ownActual && !!ownFuture };
-    });
-    // True NR mode: achieved from True NR (own only — a manager's team True NR isn't available), counting only the months Koenig has returned so far.
-    if (mode === 'true') {
-      if (withTeam) return { unavailable: 'Team True NR not available' };
-      const trueMonths = breakdown.filter((m) => m.trueNr != null);
-      const trueTotal = trueMonths.reduce((sum, m) => sum + m.trueNr, 0);
-      const tp = targetAmount > 0 ? Math.round((trueTotal / targetAmount) * 1000) / 10 : null;
-      const lk = (n) => '₹' + (n / 100000).toFixed(1) + 'L';
-      return { pct: tp != null ? `${tp}%` : '—', achieved: tp != null && tp >= 100, nrLabel: lk(trueTotal), targetLabel: lk(targetAmount), q, breakdown, withTeam: false, teamSize: 0, isTrue: true, monthsAvailable: trueMonths.length };
-    }
-    const nr = breakdown.reduce((sum, m) => sum + m.nr, 0);
-    const pct = targetAmount > 0 ? Math.round((nr / targetAmount) * 1000) / 10 : null;
-    const lakhs = (n) => '₹' + (n / 100000).toFixed(1) + 'L';
-    return { pct: pct != null ? `${pct}%` : '—', achieved: pct != null && pct >= 100, nrLabel: lakhs(nr), targetLabel: lakhs(targetAmount), q, breakdown, withTeam, teamSize: e.teamNrDetails?.[0]?.members ?? 0 };
-  }
+  const quarterTargetLabel = quarterTargetFor;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>

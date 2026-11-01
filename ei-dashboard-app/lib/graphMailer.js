@@ -102,3 +102,75 @@ export async function sendMail({ to, cc, subject, html, attachments, from }) {
     throw new Error(`Graph sendMail failed: ${res.status} ${text}`);
   }
 }
+
+// Latest message in the sender's Sent Items whose subject contains one of
+// `subjectNeedles` and that went to `recipient` (so a same-named colleague's
+// thread is never picked up). Newest by sentDateTime, or null.
+export async function findLatestSentThread({ subjectNeedles, recipient, from }) {
+  const mailbox = from || SENDER_EMAIL;
+  const want = String(recipient || '').toLowerCase();
+  let best = null;
+  for (const needle of subjectNeedles) {
+    const filter = `contains(subject,'${needle.replace(/'/g, "''")}')`;
+    const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}/mailFolders/sentitems/messages?$filter=${encodeURIComponent(filter)}&$select=id,subject,sentDateTime,toRecipients,ccRecipients&$top=50`;
+    const res = await graphFetch(url);
+    if (!res.ok) throw new Error(`Graph sent-items search failed: ${res.status}`);
+    const json = await res.json();
+    for (const m of json.value || []) {
+      const addrs = [...(m.toRecipients || []), ...(m.ccRecipients || [])].map((r) => String(r.emailAddress?.address || '').toLowerCase());
+      if (want && !addrs.includes(want)) continue;
+      if (!best || m.sentDateTime > best.sentDateTime) best = m;
+    }
+  }
+  return best;
+}
+
+// Sends `html` as a reply inside the latest earlier thread found by
+// findLatestSentThread (so a re-issued or extended PA/PIP lands under the
+// previous one in everyone's inbox, quoted history included), or as a fresh
+// email when there is no earlier thread. A thread that can't be found or
+// replied to never blocks the send — it falls back to a fresh email and says
+// so in the result: { threaded: boolean, repliedTo?: subject }.
+export async function sendMailInThread({ to, cc, subject, html, subjectNeedles, recipient, from }) {
+  const mailbox = from || SENDER_EMAIL;
+  const base = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}`;
+  const asList = (v) => (v ? (Array.isArray(v) ? v : [v]) : []).map((address) => ({ emailAddress: { address } }));
+
+  let prior = null;
+  try {
+    prior = await findLatestSentThread({ subjectNeedles, recipient, from });
+  } catch (err) {
+    console.error('Thread lookup failed, sending as a new email:', err.message);
+  }
+
+  if (prior) {
+    let draftId = null;
+    try {
+      const created = await graphFetch(`${base}/messages/${encodeURIComponent(prior.id)}/createReply`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      if (!created.ok) throw new Error(`createReply ${created.status}`);
+      const draft = await created.json();
+      draftId = draft.id;
+      const quoted = draft.body?.content || '';
+      const patched = await graphFetch(`${base}/messages/${encodeURIComponent(draftId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subject: `RE: ${subject}`,
+          toRecipients: asList(to),
+          ccRecipients: asList(cc),
+          body: { contentType: 'HTML', content: `${html}<br/>${quoted}` },
+        }),
+      });
+      if (!patched.ok) throw new Error(`update draft ${patched.status}`);
+      const sent = await graphFetch(`${base}/messages/${encodeURIComponent(draftId)}/send`, { method: 'POST' });
+      if (!sent.ok) throw new Error(`send draft ${sent.status}`);
+      return { threaded: true, repliedTo: prior.subject, repliedToDate: prior.sentDateTime };
+    } catch (err) {
+      console.error('Threaded reply failed, sending as a new email:', err.message);
+      if (draftId) await graphFetch(`${base}/messages/${encodeURIComponent(draftId)}`, { method: 'DELETE' }).catch(() => {});
+    }
+  }
+
+  await sendMail({ to, cc, subject, html, from });
+  return { threaded: false };
+}

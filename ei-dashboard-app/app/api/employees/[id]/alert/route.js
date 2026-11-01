@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { sendMail } from '../../../../../lib/graphMailer';
+import { sendMailInThread } from '../../../../../lib/graphMailer';
 import { getDb } from '../../../../../lib/db';
 import { draftToHtml } from '../../../../../lib/emailDraft';
 
@@ -88,15 +88,22 @@ export async function POST(request, { params }) {
     return NextResponse.json({ ok: false, error: 'Select a deadline date before saving.' }, { status: 400 });
   }
   try {
-    await sendMail({
+    // A re-issued or extended PA/PIP goes out as a reply inside the employee's
+    // previous PA/PIP email thread (either type — a PA followed by a PIP stays
+    // in one thread); with no earlier one it is a fresh email. Test mode only
+    // ever threads onto earlier [TEST] emails to the test recipient.
+    const prefix = testMode ? '[TEST] ' : '';
+    const mail = await sendMailInThread({
       to: testMode ? TEST_RECIPIENT : email,
       cc: testMode ? [] : [HR_CC, managerEmail].filter(Boolean),
-      subject: (testMode ? '[TEST] ' : '') + pipSubject(pipType, name),
+      subject: prefix + pipSubject(pipType, name),
       html: alertEmailHtml({ draft }),
+      subjectNeedles: Object.keys(PIP_STATUS).map((t) => prefix + pipSubject(t, name)),
+      recipient: testMode ? TEST_RECIPIENT : email,
     });
 
     if (testMode) {
-      return NextResponse.json({ ok: true, test: true });
+      return NextResponse.json({ ok: true, test: true, threaded: mail.threaded });
     }
 
     const db = getDb();
@@ -111,7 +118,7 @@ export async function POST(request, { params }) {
     } catch (err) {
       console.error(`postPaPipToRms(${id}) failed:`, err.message);
     }
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, threaded: mail.threaded, repliedTo: mail.repliedTo || null });
   } catch (err) {
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }
