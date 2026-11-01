@@ -34,6 +34,7 @@
     "sync:salary": "node scripts/sync-salary.mjs",
     "sync:empdetails": "node scripts/sync-empdetails.mjs",
     "sync:commonindex": "node scripts/sync-commonindex.mjs",
+    "sync:csmindex": "node scripts/sync-csmindex.mjs",
     "sync:graph-meetings": "node scripts/sync-graph-meetings.mjs",
     "sync:graph-subscription": "node scripts/sync-graph-subscription.mjs",
     "sync:external-emails": "node scripts/sync-external-emails.mjs",

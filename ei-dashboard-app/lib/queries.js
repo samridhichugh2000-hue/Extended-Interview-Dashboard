@@ -169,6 +169,7 @@ export async function getEmployees() {
       rosterCount: e.roster_count,
       rosterDetails: e.roster_details ? JSON.parse(e.roster_details) : [],
       commonIndexPoints: e.common_index_points,
+      csmIndexDetails: e.csm_index_details ? JSON.parse(e.csm_index_details) : [],
       salary: e.salary,
       country: e.country,
       designation: e.designation,

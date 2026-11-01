@@ -91,6 +91,7 @@ export const ANALYSIS_METRICS = {
     { key: 'nr', label: 'NR / month', good: 'up', kind: 'money' },
     { key: 'trueNr', label: 'True NR / month', good: 'up', kind: 'money' },
     { key: 'sc', label: 'SCs raised / month', good: 'up', kind: 'rate' },
+    { key: 'csmIndex', label: 'CSM Index (avg)', good: 'up', kind: 'rate' },
   ],
   Trainer: [
     { key: 'util', label: 'Utilization (avg)', good: 'up', kind: 'percent' },
@@ -109,6 +110,7 @@ export function computeEventImpact(e, eventDate, maxMonths) {
     metrics.nr = change(monthlyAvg(e.nrMonthlyDetails, 'nr', win, doj));
     metrics.trueNr = change(monthlyAvg(e.trueNrDetails, 'trueNr', win, doj));
     metrics.sc = change(eventRate(e.scDetails, (x) => x.createdOn, FEED_START.sc, win, doj, true));
+    metrics.csmIndex = change(monthlyAvg(e.csmIndexDetails, 'score', win, doj));
   } else if (e.team === 'Trainer') {
     metrics.util = change(monthlyAvg(e.utilMonthlyDetails, 'util', win, doj));
     metrics.neg = change(eventRate(e.negFeedbackDetails, (x) => x.feedbackDate, FEED_START.negFeedback, win, doj, false));
@@ -144,6 +146,7 @@ export function blankReason(e, eventDate, months, what = 'NR') {
   const doj = dojIdx(e.doj);
   if (doj != null && win.before[0] < doj) return `Joined ${String(e.doj).trim()} — under ${win.k} months of ${what} before this date`;
   if (what === 'NR' && win.before[0] < 2025 * 12 + 4) return 'The NR feed starts May 2025 — the months before this date are not available';
+  if (what === 'CSM') return 'CSM Index history is saved monthly from Nov 2026 — not enough saved months yet';
   return `${what} missing for some of the ${win.k} months compared`;
 }
 
@@ -207,6 +210,7 @@ export function metricSeries(e, key, now = new Date()) {
   if (key === 'nr') fromMonthly(e.nrMonthlyDetails, 'nr');
   else if (key === 'trueNr') fromMonthly(e.trueNrDetails, 'trueNr');
   else if (key === 'util') fromMonthly(e.utilMonthlyDetails, 'util');
+  else if (key === 'csmIndex') fromMonthly(e.csmIndexDetails, 'score');
   else if (key === 'sc') fromEvents(e.scDetails, (x) => x.createdOn, FEED_START.sc);
   else if (key === 'neg') fromEvents(e.negFeedbackDetails, (x) => x.feedbackDate, FEED_START.negFeedback);
   return out.sort((a, b) => a.idx - b.idx);

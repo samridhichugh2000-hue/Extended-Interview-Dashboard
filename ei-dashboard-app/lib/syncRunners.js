@@ -1761,6 +1761,40 @@ export async function syncCommonIndex() {
   return { message: `Synced Common Index points for ${updated} employees (${apiErrors} API errors).` };
 }
 
+// Koenig's "Get CSM Index Score" only ever returns each person's current score
+// (no date/employee parameters — any extra input is ignored), so history is
+// built here: one {month, score} entry per employee per month in
+// employees.csm_index_details, overwritten on every run so the month ends on
+// its latest value. The before/after analysis reads this like the other
+// monthly series, and shows a comparison once enough saved months exist.
+export async function syncCsmIndex() {
+  const db = getDb();
+  const { getCsmIndexScores } = await import('./koenigCsmIndexApi.js');
+
+  const rows = await getCsmIndexScores();
+  if (!rows.length) throw new Error('Koenig CSM Index API returned zero rows — nothing saved.');
+
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', month: 'short', year: 'numeric' }).formatToParts(new Date());
+  const month = `${parts.find((p) => p.type === 'month').value}-${parts.find((p) => p.type === 'year').value}`;
+
+  const existing = await db.execute('SELECT id, csm_index_details FROM employees');
+  const details = new Map(existing.rows.map((r) => [r.id, r.csm_index_details ? JSON.parse(r.csm_index_details) : []]));
+
+  const statements = [];
+  let unmatched = 0;
+  for (const r of rows) {
+    const id = normalizeEmpId(r.EmpId);
+    const score = Number(r.IndexScore);
+    if (!details.has(id) || !Number.isFinite(score)) { unmatched++; continue; }
+    const next = details.get(id).filter((d) => d.month !== month);
+    next.push({ month, score });
+    statements.push({ sql: 'UPDATE employees SET csm_index_details = ? WHERE id = ?', args: [JSON.stringify(next), id] });
+  }
+  if (statements.length) await db.batch(statements, 'write');
+
+  return { message: `Saved ${month} CSM Index for ${statements.length} employees (${unmatched} of ${rows.length} API rows not matched to an employee).` };
+}
+
 export async function syncGraphSubscription() {
   const db = getDb();
   const { createCallRecordsSubscription, renewSubscription } = await import('./graphCallsApi.js');
@@ -2026,6 +2060,7 @@ export const SYNC_RUNNERS = {
   salary: syncSalary,
   empdetails: syncEmployeeDetails,
   commonindex: syncCommonIndex,
+  csmindex: syncCsmIndex,
   graphmeetings: syncGraphMeetings,
   graphrecordings: syncGraphRecordings,
   graphsubscription: syncGraphSubscription,

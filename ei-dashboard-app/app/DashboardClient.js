@@ -395,6 +395,34 @@ function NrModeToggle({ value, onChange }) {
   );
 }
 
+// Koenig's CSM Index score — latest saved value plus the monthly history kept
+// since Nov 2026 (the API itself only returns the current score).
+function CsmIndexCard({ emp }) {
+  const rows = [...(emp.csmIndexDetails || [])].reverse();
+  const latest = rows[0];
+  return (
+    <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, padding: 18, background: 'rgba(255,255,255,0.02)', marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: latest ? 12 : 6 }}>
+        <div className="disp" style={{ fontSize: 14, fontWeight: 600 }}>CSM Index</div>
+        <span className="mono" style={{ fontSize: 20, fontWeight: 600, color: !latest ? '#6E7488' : latest.score < 0 ? '#F87171' : '#5EEAD4' }}>{latest ? latest.score.toLocaleString('en-IN') : '—'}</span>
+      </div>
+      {latest ? (
+        <>
+          <div style={{ fontSize: 11.5, color: '#6E7488', marginBottom: 8 }}>Latest score, saved in {latest.month}. One entry is kept per month, so the history builds up from Nov 2026.</div>
+          {rows.map((r) => (
+            <div key={r.month} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 12.5 }}>
+              <span className="mono" style={{ color: '#8A90A8' }}>{r.month}</span>
+              <span className="mono" style={{ color: '#C7CBDA' }}>{r.score.toLocaleString('en-IN')}</span>
+            </div>
+          ))}
+        </>
+      ) : (
+        <div style={{ fontSize: 12.5, color: '#6E7488' }}>Not in Koenig's CSM Index feed.</div>
+      )}
+    </div>
+  );
+}
+
 function NrComparison({ emp }) {
   const nrByMonth = new Map((emp.nrMonthlyDetails || []).map((m) => [m.month, m.nr]));
   const trueByMonth = new Map((emp.trueNrDetails || []).map((m) => [m.month, m.trueNr]));
@@ -669,6 +697,34 @@ function AppraisalChart({ series, metric, appraisalDate, win, change, fmtVal }) 
   );
 }
 
+// Shown in the before/after modal until enough saved months exist on both sides
+// of the event: the current CSM Index score plus the history saved so far.
+function CsmIndexBuilding({ emp }) {
+  const rows = [...(emp.csmIndexDetails || [])].reverse();
+  const now = rows[0];
+  return (
+    <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, padding: 18, background: 'rgba(255,255,255,0.02)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+        <div className="disp" style={{ fontSize: 14, fontWeight: 600 }}>CSM Index</div>
+        <span className="mono" style={{ fontSize: 20, fontWeight: 600, color: !now ? '#6E7488' : now.score < 0 ? '#F87171' : '#5EEAD4' }}>{now ? now.score.toLocaleString('en-IN') : '—'}</span>
+      </div>
+      {now ? (
+        <>
+          <div style={{ fontSize: 12, color: '#8A90A8', lineHeight: 1.5, marginBottom: 8 }}>Current score (as of {now.month}). Koenig only gives the score as it stands today, so the monthly history is being built from Nov 2026. A before vs after comparison appears here once there are enough saved months on both sides of the date.</div>
+          {rows.map((r) => (
+            <div key={r.month} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 12.5 }}>
+              <span className="mono" style={{ color: '#8A90A8' }}>{r.month}</span>
+              <span className="mono" style={{ color: '#C7CBDA' }}>{r.score.toLocaleString('en-IN')}</span>
+            </div>
+          ))}
+        </>
+      ) : (
+        <div style={{ fontSize: 12.5, color: '#6E7488' }}>Not in Koenig's CSM Index feed.</div>
+      )}
+    </div>
+  );
+}
+
 function AnalysisModal({ emp, months, ev, mode, csm, onClose, onOpenEmployee }) {
   const word = IMPACT_MODES[mode].word;
   const impact = computeEventImpact(emp, ev.date, months);
@@ -702,8 +758,9 @@ function AnalysisModal({ emp, months, ev, mode, csm, onClose, onOpenEmployee }) 
                 : 'No last-year data to adjust for the season.'}
             </div>
           )}
-          {metrics.map((mt) => (
-            <AppraisalDataTable key={mt.key} series={metricSeries(emp, mt.key)} metric={mt} win={win} change={impact.metrics[mt.key]} fmtVal={fmtVal} />
+          {metrics.map((mt) => (mt.key === 'csmIndex' && !impact.metrics.csmIndex
+            ? <CsmIndexBuilding key={mt.key} emp={emp} />
+            : <AppraisalDataTable key={mt.key} series={metricSeries(emp, mt.key)} metric={mt} win={win} change={impact.metrics[mt.key]} fmtVal={fmtVal} />
           ))}
           <div style={{ fontSize: 11.5, color: '#6E7488', lineHeight: 1.5 }}>
             {mode === 'rnr'
@@ -752,7 +809,7 @@ function inAgeBand(eventDate, months) {
   const completed = now.getFullYear() * 12 + now.getMonth() - first;
   return completed >= months && completed < 12;
 }
-const CSM_METRICS = [{ key: 'nr', label: 'NR / month', good: 'up', kind: 'money' }];
+const CSM_METRICS = [{ key: 'nr', label: 'NR / month', good: 'up', kind: 'money' }, { key: 'csmIndex', label: 'CSM Index (avg)', good: 'up', kind: 'rate' }];
 const metricsFor = (team) => (team === 'Sales' ? CSM_METRICS : ANALYSIS_METRICS[team]);
 
 function AppraisalImpactView({ employees, setModal, mode = 'appraisal', index = {} }) {
@@ -958,6 +1015,12 @@ function AppraisalImpactView({ employees, setModal, mode = 'appraisal', index = 
               </>;
             })() : metrics.map((m) => {
               const c = r.metrics[m.key];
+              if (!c && m.key === 'csmIndex') {
+                const now = [...(e.csmIndexDetails || [])].pop();
+                return <span key={m.key} style={{ gridColumn: 'span 3', textAlign: 'right', fontSize: 11.5, lineHeight: 1.35 }}>
+                  {now ? <><span style={{ color: '#6E7488' }}>Now </span><span className="mono" style={{ fontSize: 12, fontWeight: 600, color: now.score < 0 ? '#F87171' : '#5EEAD4' }}>{now.score.toLocaleString('en-IN')}</span></> : <span style={{ color: '#5C6178' }}>—</span>}
+                </span>;
+              }
               if (!c) return <span key={m.key} style={{ gridColumn: 'span 3', textAlign: 'right', color: '#8A90A8', fontSize: 11, lineHeight: 1.35 }}>{blankReason(e, r.eventDate, months, m.key === 'neg' ? 'feedback' : m.label.split(' ')[0])}</span>;
               const better = m.good === 'up' ? c.delta > 0 : c.delta < 0;
               const worse = m.good === 'up' ? c.delta < 0 : c.delta > 0;
@@ -3182,8 +3245,26 @@ function PaAlgoEvidence({ evidence, emp }) {
     };
   };
   evidence = evidence.map(withTrue);
+  // CSM Index (Sales only) sits alongside the rule evidence — informational, not a PA Algo rule.
+  const csmRows = emp?.team === 'Sales' ? [...(emp.csmIndexDetails || [])].reverse() : null;
   return (
     <div style={{ padding: '2px 18px 16px 40px', background: 'rgba(255,255,255,0.015)', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {csmRows && (
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#C7CBDA', textTransform: 'uppercase', letterSpacing: '.04em' }}>CSM Index</div>
+          <div style={{ fontSize: 12, color: '#8A90A8', marginTop: 3 }}>
+            {csmRows.length
+              ? <>Latest score <b style={{ color: csmRows[0].score < 0 ? '#F87171' : '#5EEAD4' }}>{csmRows[0].score.toLocaleString('en-IN')}</b> (saved {csmRows[0].month}). Shown for reference — it is not one of the PA Algo's rules.</>
+              : "Not in Koenig's CSM Index feed."}
+          </div>
+          {csmRows.length > 1 && (
+            <table style={{ width: '100%', maxWidth: 560, borderCollapse: 'collapse', fontSize: 12, marginTop: 6 }}>
+              <thead><tr><th style={{ textAlign: 'left', padding: '3px 10px 3px 0', color: '#5C6178', fontWeight: 500 }}>Month</th><th style={{ textAlign: 'left', padding: '3px 10px 3px 0', color: '#5C6178', fontWeight: 500 }}>CSM Index</th></tr></thead>
+              <tbody>{csmRows.map((r) => <tr key={r.month}><td style={{ padding: '2px 10px 2px 0', color: '#A8AEC4' }}>{r.month}</td><td style={{ padding: '2px 10px 2px 0', color: '#A8AEC4' }}>{r.score.toLocaleString('en-IN')}</td></tr>)}</tbody>
+            </table>
+          )}
+        </div>
+      )}
       {evidence.map((ev, i) => (
         <div key={i}>
           <div style={{ fontSize: 11, fontWeight: 600, color: '#C7CBDA', textTransform: 'uppercase', letterSpacing: '.04em' }}>{ev.label}</div>
@@ -4541,6 +4622,7 @@ function EmployeeModal({ emp, onClose }) {
             </div>
           </div>
           {emp.team === 'Sales' && <NrComparison emp={emp} />}
+          {emp.team === 'Sales' && <CsmIndexCard emp={emp} />}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, padding: 18, background: 'rgba(255,255,255,0.02)' }}>
               <div className="disp" style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Weekly progress emails</div>

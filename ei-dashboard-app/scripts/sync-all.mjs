@@ -45,6 +45,7 @@ const SCRIPTS = [
   'sync-targetsdata.mjs',
   'sync-empdetails.mjs',
   'sync-commonindex.mjs',
+  'sync-csmindex.mjs',
   'sync-pipeline.mjs',
   'sync-graph-meetings.mjs',
   'sync-graph-subscription.mjs',
