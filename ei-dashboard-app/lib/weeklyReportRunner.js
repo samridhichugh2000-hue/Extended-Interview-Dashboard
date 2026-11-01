@@ -56,6 +56,8 @@ export function paPipEmailHtml({ name, q1, q2, q3, link }) {
 // leaning on that limit.
 const CHECKIN_MAIL_CONCURRENCY = 5;
 
+const INITIAL_EMAIL_NO_CC_MANAGERS = ['Rohit Aggarwal'];
+
 // Shared by sendWeeklyReports and sendPaPipWeeklyCheckIns — both insert one
 // weekly_responses row per eligible employee (skipping anyone already sent
 // this ISO week) and fire the initial check-in email off the same token/link
@@ -74,6 +76,15 @@ const CHECKIN_MAIL_CONCURRENCY = 5;
 // propagated out and failed the whole job.
 async function sendCheckIns({ db, week, employees, questionsByTeam, baseUrl, subjectFor, htmlFor, getManagerEmail, sendMail }) {
   const { mapWithConcurrency } = await import('./syncRunners.js');
+
+  // Managers who are not CC'd on the initial question email only. The
+  // response-confirmation email (app/api/weekly-response/[token]/route.js)
+  // still CCs every manager, these included.
+  const noInitialCc = new Set(INITIAL_EMAIL_NO_CC_MANAGERS.map((m) => getManagerEmail(m)).filter(Boolean));
+  const ccFor = (emp) => {
+    const mgrEmail = getManagerEmail(emp.manager);
+    return mgrEmail && noInitialCc.has(mgrEmail) ? undefined : mgrEmail;
+  };
 
   const already = await db.execute({ sql: 'SELECT employee_id FROM weekly_responses WHERE week = ?', args: [week] });
   const alreadySent = new Set(already.rows.map((r) => r.employee_id));
@@ -102,9 +113,9 @@ async function sendCheckIns({ db, week, employees, questionsByTeam, baseUrl, sub
       // committing regardless of whether the email actually went out.
       await sendMail({
         to: emp.email,
-        cc: getManagerEmail(emp.manager),
+        cc: ccFor(emp),
         subject: subjectFor(emp),
-        html: htmlFor({ name: emp.name, q1: q.q1, q2: q.q2, q3: q.q3, link }),
+        html: htmlFor({ name: emp.name, q1: q.q1, q2: q.q2, q3: q.q3, link, emp }),
       });
 
       await db.execute({
@@ -249,4 +260,57 @@ export async function sendPaPipWeeklyCheckIns() {
   });
 
   return { message: `Sent ${r.sent} of ${r.total} employees with an ongoing PA/PIP window for ${week} (${r.skippedSent} already sent, ${r.skippedNoEmail} no email on file${r.skippedNoQuestions ? `, ${r.skippedNoQuestions} no questions for team` : ''}, ${skippedLapsed} excluded — PA/PIP flagged active in Koenig but window already lapsed, ${skippedFullyBooked} Trainers skipped — 40+ SC hours scheduled this week${r.sendErrors ? `, ${r.sendErrors} send errors — will retry next run` : ''}).` };
+}
+
+// Employees added to the weekly check-in by id regardless of tenure or
+// PA/PIP status (HR request, effective Monday 2026-11-02): Rohit Aggarwal's
+// team plus a few from Vardaan Aggarwal's. Listed by employee id, resolved
+// against the employees table on 2026-11-01; HR supplied the ids for the
+// four names that didn't match by name (EMP3794, EMP3259, EMP3279, EMP1477).
+const EXTRA_CHECKIN_EMPLOYEE_IDS = [
+  'EMP4915', 'EMP3909', 'EMP3341', 'EMP3890', 'EMP3948', 'EMP3395', 'EMP3195', 'EMP1931', 'EMP2370',
+  'EMP4893', 'EMP4890', 'EMP3929', 'EMP3775', 'EMP3307', 'EMP3318', 'EMP2645', 'EMP2525', 'EMP2400',
+  'EMP2348', 'EMP2309', 'EMP1689', 'EMP1583', 'EMP1545', 'EMP1368', 'EMP1247', 'EMP1231', 'EMP844',
+  'EMP830', 'EMP1227', 'EMP3794', 'EMP3259', 'EMP3279', 'EMP1477',
+];
+const EXTRA_CHECKIN_MANAGERS = ['Raahil Aggarwal'];
+
+// Third population under the same Monday 'weeklyreport' feed: the named ids
+// above plus every active employee reporting to EXTRA_CHECKIN_MANAGERS. Runs
+// after sendWeeklyReports and sendPaPipWeeklyCheckIns, and sendCheckIns skips
+// anyone already holding a weekly_responses row for the week, so someone those
+// two already emailed is not emailed twice. Under-182-day tenure gets the NJ
+// wording, everyone else the PA/PIP-neutral wording.
+export async function sendExtraWeeklyCheckIns() {
+  const { getIsoWeek, isMondayIst } = await import('./weekUtils.js');
+  if (!isMondayIst()) {
+    return { message: 'Skipped — extra weekly check-in only sends on Monday (IST), not today.' };
+  }
+
+  const db = getDb();
+  const { NJ_QUESTIONS } = await import('./data.js');
+  const { sendMail } = await import('./graphMailer.js');
+  const { getManagerEmail } = await import('./managerDirectory.js');
+
+  const week = getIsoWeek(new Date());
+  const questionsByTeam = new Map(NJ_QUESTIONS.map((q) => [q.team, q]));
+  const baseUrl = process.env.APP_BASE_URL;
+
+  const idMarks = EXTRA_CHECKIN_EMPLOYEE_IDS.map(() => '?').join(',');
+  const mgrMarks = EXTRA_CHECKIN_MANAGERS.map(() => '?').join(',');
+  const rows = await db.execute({
+    sql: `SELECT id, name, email, team, manager, tenure_days, rc_fully_booked_week, rc_fully_booked_sc_hours FROM employees
+          WHERE active = 1 AND dor IS NULL AND (id IN (${idMarks}) OR LOWER(TRIM(manager)) IN (${mgrMarks}))`,
+    args: [...EXTRA_CHECKIN_EMPLOYEE_IDS, ...EXTRA_CHECKIN_MANAGERS.map((m) => m.toLowerCase())],
+  });
+  const { employees, skippedFullyBooked } = excludeFullyBookedTrainers(rows.rows, week);
+  const isNj = (emp) => emp.tenure_days < 182;
+
+  const r = await sendCheckIns({
+    db, week, employees, questionsByTeam, baseUrl, getManagerEmail, sendMail,
+    subjectFor: (emp) => (isNj(emp) ? `Weekly NJ Check-In - ${emp.name}` : `Weekly Progress Check-In - ${emp.name}`),
+    htmlFor: (args) => (isNj(args.emp) ? initialEmailHtml(args) : paPipEmailHtml(args)),
+  });
+
+  return { message: `Sent ${r.sent} of ${r.total} extra-list employees for ${week} (${r.skippedSent} already sent, ${r.skippedNoEmail} no email on file${r.skippedNoQuestions ? `, ${r.skippedNoQuestions} no questions for team` : ''}, ${skippedFullyBooked} Trainers skipped — 40+ SC hours scheduled this week${r.sendErrors ? `, ${r.sendErrors} send errors — will retry next run` : ''}).` };
 }

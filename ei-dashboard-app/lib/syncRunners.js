@@ -2039,7 +2039,7 @@ export const SYNC_RUNNERS = {
   // first makes eligibility always reflect current status regardless of when
   // the external cron fires.
   weeklyreport: async () => {
-    const { sendWeeklyReports, sendPaPipWeeklyCheckIns } = await import('./weeklyReportRunner.js');
+    const { sendWeeklyReports, sendPaPipWeeklyCheckIns, sendExtraWeeklyCheckIns } = await import('./weeklyReportRunner.js');
     // Caught rather than left to propagate — a Koenig API hiccup here
     // shouldn't cost everyone their check-in email for the day; falling
     // back to whatever status is already on file (this morning's send is
@@ -2052,7 +2052,8 @@ export const SYNC_RUNNERS = {
     }
     const nj = await sendWeeklyReports();
     const paPip = await sendPaPipWeeklyCheckIns();
-    return { message: `${pipMessage} | ${nj.message} | ${paPip.message}` };
+    const extra = await sendExtraWeeklyCheckIns();
+    return { message: `${pipMessage} | ${nj.message} | ${paPip.message} | ${extra.message}` };
   },
   weeklyresponsereport: async () => {
     const { sendWeeklyResponseReport } = await import('./weeklyResponseReportRunner.js');
