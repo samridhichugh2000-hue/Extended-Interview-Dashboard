@@ -423,13 +423,14 @@ function NrModeToggle({ value, onChange }) {
 
 // Koenig index scores (CSM / Trainer / ASM). The APIs only return the current
 // score, so the monthly history behind these is saved from Nov 2026.
-const INDEX_LABELS = { csmIndex: 'CSM Index', trainerIndex: 'Trainer Index', asmIndex: 'ASM Index', dmIndex: 'DM Index' };
-// Which indexes apply to an employee: their team's own index, plus ASM / DM wherever data exists.
+const INDEX_LABELS = { csmIndex: 'CSM Index', trainerIndex: 'Trainer Index', asmIndex: 'ASM Index', dmIndex: 'DM Index', commonIndex: 'Common Index' };
+// Which indexes apply to an employee: their team's own index, plus ASM / DM / Common wherever data exists.
 const indexKeysFor = (emp) => [
   ...(emp?.team === 'Sales' ? ['csmIndex'] : []),
   ...(emp?.team === 'Trainer' ? ['trainerIndex'] : []),
   ...(emp?.asmIndexDetails?.length ? ['asmIndex'] : []),
   ...(emp?.dmIndexDetails?.length ? ['dmIndex'] : []),
+  ...(emp?.commonIndexDetails?.length ? ['commonIndex'] : []),
 ];
 const indexRows = (emp, key) => [...(emp?.[INDEX_FIELDS[key]] || [])].reverse();
 const scoreColor = (n) => (n < 0 ? '#F87171' : '#5EEAD4');

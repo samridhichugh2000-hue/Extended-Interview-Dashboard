@@ -1731,11 +1731,15 @@ export async function syncEmployeeDetails() {
 // shared token is safe to reuse across concurrent calls — only fetching a
 // *new* token concurrently is the unsafe part, see getToken's comment in
 // koenigCommonIndexApi.js).
+// Like the other index feeds, the API only returns the current total, so this
+// month's value is also kept in common_index_details ({month, score} per month,
+// same shape and rules as saveIndexHistory below) in the same UPDATE.
 export async function syncCommonIndex() {
   const db = getDb();
   const { getCommonIndexPoints } = await import('./koenigCommonIndexApi.js');
 
-  const allEmployees = await db.execute("SELECT id FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team', 'FM Team', 'Recruitment Team') AND active = 1");
+  const allEmployees = await db.execute("SELECT id, common_index_details FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team', 'FM Team', 'Recruitment Team') AND active = 1");
+  const month = indexMonth();
 
   const statements = [];
   let updated = 0;
@@ -1745,9 +1749,11 @@ export async function syncCommonIndex() {
     try {
       const points = await getCommonIndexPoints(empCode);
       if (points == null) return;
+      const history = (emp.common_index_details ? JSON.parse(emp.common_index_details) : []).filter((d) => d.month !== month);
+      history.push({ month, score: Number(points) });
       statements.push({
-        sql: 'UPDATE employees SET common_index_points = ? WHERE id = ?',
-        args: [points, emp.id],
+        sql: 'UPDATE employees SET common_index_points = ?, common_index_details = ? WHERE id = ?',
+        args: [points, JSON.stringify(history), emp.id],
       });
       updated++;
     } catch (err) {
@@ -1758,7 +1764,13 @@ export async function syncCommonIndex() {
 
   if (statements.length) await db.batch(statements, 'write');
 
-  return { message: `Synced Common Index points for ${updated} employees (${apiErrors} API errors).` };
+  return { message: `Synced Common Index points for ${updated} employees, saved as ${month} (${apiErrors} API errors).` };
+}
+
+// Current month in IST as 'Nov-2026' — the key for every saved index history entry.
+function indexMonth() {
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', month: 'short', year: 'numeric' }).formatToParts(new Date());
+  return `${parts.find((p) => p.type === 'month').value}-${parts.find((p) => p.type === 'year').value}`;
 }
 
 // Koenig's "Get CSM / TI / ASM / DM Index Score" feeds only ever return each
@@ -1773,8 +1785,7 @@ async function saveIndexHistory(column, label, getScores) {
   const rows = await getScores();
   if (!rows.length) return { message: `Koenig ${label} API returned zero rows — nothing saved.` };
 
-  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', month: 'short', year: 'numeric' }).formatToParts(new Date());
-  const month = `${parts.find((p) => p.type === 'month').value}-${parts.find((p) => p.type === 'year').value}`;
+  const month = indexMonth();
 
   const existing = await db.execute(`SELECT id, ${column} AS details FROM employees`);
   const details = new Map(existing.rows.map((r) => [r.id, r.details ? JSON.parse(r.details) : []]));

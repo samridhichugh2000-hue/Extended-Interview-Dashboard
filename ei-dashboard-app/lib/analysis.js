@@ -104,9 +104,11 @@ export const ANALYSIS_METRICS = {
 // team's list — the screens add each only when someone in view has its data.
 export const ASM_INDEX_METRIC = { key: 'asmIndex', label: 'ASM Index (avg)', good: 'up', kind: 'rate' };
 export const DM_INDEX_METRIC = { key: 'dmIndex', label: 'DM Index (avg)', good: 'up', kind: 'rate' };
-export const EXTRA_INDEX_METRICS = [ASM_INDEX_METRIC, DM_INDEX_METRIC];
+// Common Index covers every team, so it is added the same way, wherever saved months exist.
+export const COMMON_INDEX_METRIC = { key: 'commonIndex', label: 'Common Index (avg)', good: 'up', kind: 'rate' };
+export const EXTRA_INDEX_METRICS = [ASM_INDEX_METRIC, DM_INDEX_METRIC, COMMON_INDEX_METRIC];
 // metric key -> the employee field holding its monthly {month, score} series
-export const INDEX_FIELDS = { csmIndex: 'csmIndexDetails', trainerIndex: 'trainerIndexDetails', asmIndex: 'asmIndexDetails', dmIndex: 'dmIndexDetails' };
+export const INDEX_FIELDS = { csmIndex: 'csmIndexDetails', trainerIndex: 'trainerIndexDetails', asmIndex: 'asmIndexDetails', dmIndex: 'dmIndexDetails', commonIndex: 'commonIndexDetails' };
 
 // The same before/after comparison around any dated event — an appraisal, an
 // RnR award, a PA or a PIP being issued (eventDate is 'YYYY-MM-DD').

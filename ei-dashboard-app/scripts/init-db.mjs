@@ -193,7 +193,7 @@ try {
   if (!String(err.message).includes('duplicate column')) throw err;
 }
 
-for (const col of ['csm_index_details', 'trainer_index_details', 'asm_index_details', 'dm_index_details']) {
+for (const col of ['csm_index_details', 'trainer_index_details', 'asm_index_details', 'dm_index_details', 'common_index_details']) {
   try {
     await db.execute(`ALTER TABLE employees ADD COLUMN ${col} TEXT`);
   } catch (err) {

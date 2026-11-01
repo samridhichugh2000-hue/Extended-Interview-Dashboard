@@ -80,6 +80,7 @@ CREATE TABLE IF NOT EXISTS employees (
   asm_index_details TEXT,         -- same shape as csm_index_details, from Koenig's 'Get ASM Index Score' (sales managers).
   dm_index_details TEXT,          -- same shape as csm_index_details, from Koenig's 'Get DM Index Score' (ATMs).
   common_index_points REAL,       -- Koenig "Common Index" TotalPoint (All teams). Shown plainly in every dept table — not a Worry Index signal.
+  common_index_details TEXT,      -- same shape as csm_index_details: this month's Common Index TotalPoint, kept per month from 2026-11 (the API has no history).
   country TEXT,                   -- from Koenig "Get Employee Details (PMS)" (Sales/CSMs and Trainers — see PA Algo). Used to scope PA Algo's salary-multiple criteria to India-based CSMs first. NULL = not yet synced.
   emp_city TEXT,                  -- same feed, same scope — informational only.
   emp_state TEXT,                 -- same feed, same scope — informational only.
