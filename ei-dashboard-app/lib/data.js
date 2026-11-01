@@ -95,6 +95,7 @@ export const NAV = [
   { label: 'PT Team', screen: 'dept', dept: 'PT Team', count: '9' },
   { label: 'FM Team', screen: 'dept', dept: 'FM Team', count: '0' },
   { label: 'Recruitment Team', screen: 'dept', dept: 'Recruitment Team', count: '0' },
+  { label: 'PA/PIP tracking', screen: 'papip', count: '0' },
   { label: 'PA Algo', screen: 'paalgo', count: '0' },
   { label: 'Worry Index', screen: 'worryindex', count: '42' },
   { label: 'Analysis', screen: 'analysis', count: '0' },
@@ -105,7 +106,7 @@ export const NAV = [
 export const TITLES = {
   overview: ['Overview', 'God view of every new joiner under Extended Interview'],
   dept: [null, 'Department view · status filters, revenue and feedback columns'],
-  papip: ['PA / PIP Detection', 'Every open case, grouped by department'],
+  papip: ['PA/PIP tracking', 'Active PAs and PIPs, and whether each person has improved or declined since it was issued — tick All records to see every case in this section'],
   paalgo: ['PA Algo', 'Proposed PA/PIP candidacy, not issued — Trainer (salary-tier and delivery-based) or Sales (Net Revenue-based).'],
   worryindex: ['Worry Index', 'How every signal is scored, and where every NJ lands · 2026-W30'],
   analysis: ['Analysis', 'What changed after each appraisal, RnR award, PA and PIP — Sales NR and SCs, Trainer utilization and negative feedback'],

@@ -7,13 +7,15 @@ import {
   computeSignalReport, computeWorryScore, trendNoteFor, WORRY_WINDOWS, windowSince, lowActivityDays, f2fSummary,
 } from '../lib/data';
 import { csmSeasonalImpact, consolidate } from '../lib/csmSeasonal';
-import { computeEventImpact, latestRealAppraisal, blankReason, latestPipEvent, rnrAwardDate, ANALYSIS_METRICS, EXTRA_INDEX_METRICS, INDEX_FIELDS, appraisalWindow, metricSeries, linearTrend, appraisalPosition } from '../lib/analysis';
+import { computeEventImpact, latestRealAppraisal, blankReason, latestPipEvent, displayDateToIso, rnrAwardDate, ANALYSIS_METRICS, EXTRA_INDEX_METRICS, INDEX_FIELDS, appraisalWindow, metricSeries, linearTrend, appraisalPosition } from '../lib/analysis';
 import { JOB_LABELS } from '../lib/jobLabels';
 import { F2F_EVENTS } from '../lib/f2fAttendees';
 import { RNR_WINNERS } from '../lib/rnrWinners';
 import { PAST_ML } from '../lib/pastMl';
 import { maternityNow } from '../lib/maternity';
 import { TRAINER_SALARY_TIERS, SALES_REGIONS, TARGET_QUARTERS, quarterMonthKeys, formatTenure } from '../lib/paAlgo';
+import { quarterTargetFor } from '../lib/quarterTarget';
+import { computePaPipProgress } from '../lib/paPipProgress';
 import { draftToHtml } from '../lib/emailDraft';
 import { VIDEO_MIN_MEETINGS_TO_SHOW } from '../lib/videoRules';
 
@@ -395,11 +397,11 @@ function AlertPreviewModal({ emp, pending, onClose, onSend }) {
   );
 }
 
-function IncludeInactiveToggle({ value, onChange }) {
+function IncludeInactiveToggle({ value, onChange, label = 'Include inactives' }) {
   return (
     <div onClick={() => onChange(!value)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, border: `1px solid ${value ? 'rgba(99,102,241,0.45)' : 'rgba(255,255,255,0.1)'}`, background: value ? 'rgba(99,102,241,0.14)' : 'rgba(255,255,255,0.03)', color: value ? '#FFFFFF' : '#9BA1B8', borderRadius: 10, padding: '10px 14px', fontSize: 13, flex: 'none' }}>
       <span style={{ width: 14, height: 14, borderRadius: 4, border: `1px solid ${value ? '#A5A7FA' : 'rgba(255,255,255,0.25)'}`, background: value ? '#6366F1' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#fff' }}>{value ? '✓' : ''}</span>
-      Include inactives
+      {label}
     </div>
   );
 }
@@ -534,7 +536,7 @@ export default function DashboardClient({ employees, responses, week, newJoiners
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex' }}>
-      <Sidebar screen={screen} dept={dept} go={go} njCount={newJoiners.length} deptCounts={deptCounts} graphCallsCount={graphMeetings.length} analysisCount={employees.filter((e) => e.active && (e.team === 'Sales' || e.team === 'Trainer') && latestRealAppraisal(e)).length} paAlgoCount={employees.filter((e) => e.trainerPaAlgo?.status === 'fired' || e.salesPaAlgo?.status === 'fired').length} />
+      <Sidebar screen={screen} dept={dept} go={go} njCount={newJoiners.length} deptCounts={deptCounts} graphCallsCount={graphMeetings.length} analysisCount={employees.filter((e) => e.active && (e.team === 'Sales' || e.team === 'Trainer') && latestRealAppraisal(e)).length} paAlgoCount={employees.filter((e) => e.trainerPaAlgo?.status === 'fired' || e.salesPaAlgo?.status === 'fired').length} paPipCount={employees.filter((e) => e.active && hasOngoingPaPip(e)).length} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <Topbar screen={screen} dept={dept} />
         <JobFailureBanner failedJobs={failedJobs} />
@@ -1541,7 +1543,7 @@ function JobFailureBanner({ failedJobs }) {
   );
 }
 
-function Sidebar({ screen, dept, go, njCount, deptCounts, graphCallsCount, paAlgoCount, analysisCount }) {
+function Sidebar({ screen, dept, go, njCount, deptCounts, graphCallsCount, paAlgoCount, analysisCount, paPipCount }) {
   return (
     <div style={{ width: 240, flex: 'none', background: 'linear-gradient(180deg,rgba(99,102,241,0.10),rgba(168,85,247,0.04))', borderRight: '1px solid rgba(255,255,255,0.07)', padding: '22px 14px', display: 'flex', flexDirection: 'column', gap: 26, position: 'sticky', top: 0, height: '100vh' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 8px' }}>
@@ -1552,7 +1554,7 @@ function Sidebar({ screen, dept, go, njCount, deptCounts, graphCallsCount, paAlg
         <div className="mono" style={{ fontSize: 9.5, letterSpacing: '.16em', color: '#5C6178', padding: '0 10px 8px' }}>MONITOR</div>
         {NAV.map((n) => {
           const active = screen === n.screen && (!n.dept || n.dept === dept);
-          const count = n.screen === 'overview' ? njCount : n.screen === 'graphcalls' ? graphCallsCount : n.screen === 'analysis' ? analysisCount : n.screen === 'paalgo' ? paAlgoCount : n.dept && deptCounts[n.dept] !== undefined ? deptCounts[n.dept] : n.count;
+          const count = n.screen === 'overview' ? njCount : n.screen === 'graphcalls' ? graphCallsCount : n.screen === 'analysis' ? analysisCount : n.screen === 'paalgo' ? paAlgoCount : n.screen === 'papip' ? paPipCount : n.dept && deptCounts[n.dept] !== undefined ? deptCounts[n.dept] : n.count;
           return (
             <div key={n.label} onClick={() => go(n.screen, n.dept)}
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 10px', borderRadius: 9, cursor: 'pointer', fontSize: 13.5, background: active ? 'rgba(99,102,241,0.22)' : 'transparent', color: active ? '#FFFFFF' : '#9BA1B8', fontWeight: active ? 600 : 400, borderLeft: `2px solid ${active ? '#6366F1' : 'transparent'}` }}>
@@ -2714,6 +2716,124 @@ function wasRecentPaPip(e) {
   });
 }
 
+// How the person has done since their PA / PIP was issued (lib/paPipProgress.js).
+const PROGRESS_STYLE = {
+  improved: { icon: '▲', bg: 'rgba(20,184,166,0.12)', color: '#5EEAD4', border: 'rgba(20,184,166,0.3)' },
+  declined: { icon: '▼', bg: 'rgba(244,63,94,0.12)', color: '#F87171', border: 'rgba(244,63,94,0.3)' },
+  mixed: { icon: '◆', bg: 'rgba(245,158,11,0.12)', color: '#F59E0B', border: 'rgba(245,158,11,0.3)' },
+  same: { icon: '=', bg: 'rgba(255,255,255,0.05)', color: '#A8AEC4', border: 'rgba(255,255,255,0.14)' },
+  early: { icon: '…', bg: 'rgba(255,255,255,0.04)', color: '#8A90A8', border: 'rgba(255,255,255,0.12)' },
+  nodata: { icon: '…', bg: 'rgba(255,255,255,0.04)', color: '#8A90A8', border: 'rgba(255,255,255,0.12)' },
+  na: { icon: '', bg: 'transparent', color: '#5C6178', border: 'transparent' },
+};
+function ProgressBadge({ p, onClick }) {
+  if (!p) return <span style={{ color: '#5C6178', fontSize: 12 }}>—</span>;
+  const st = PROGRESS_STYLE[p.verdict] || PROGRESS_STYLE.nodata;
+  if (p.verdict === 'na') return <span style={{ color: st.color, fontSize: 11.5 }}>—</span>;
+  return (
+    <span onClick={(ev) => { ev.stopPropagation(); onClick?.(); }} title="Click for the before vs after numbers" style={{ justifySelf: 'start', cursor: 'pointer', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: st.bg, color: st.color, border: `1px solid ${st.border}`, whiteSpace: 'nowrap' }}>
+      {st.icon} {p.label}
+    </span>
+  );
+}
+
+function PaPipProgressModal({ emp, p, onClose }) {
+  const st = PROGRESS_STYLE[p.verdict] || PROGRESS_STYLE.nodata;
+  const fmt = (kind, v) => v == null ? '—' : kind === 'money' ? fmtLakhs(v) : kind === 'percent' || kind === 'pct' ? `${Math.round(v * 10) / 10}%` : (Math.round(v * 10) / 10).toString();
+  const sign = (kind, d) => `${d > 0 ? '+' : d < 0 ? '−' : ''}${fmt(kind, Math.abs(d))}`;
+  const cols = 'minmax(0,1.5fr) minmax(0,.8fr) minmax(0,.8fr) minmax(0,1.1fr)';
+  const monthCols = `minmax(0,1.2fr) repeat(${p.monthly?.columns?.length || 1},minmax(0,1fr))`;
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
+      <div onClick={(ev) => ev.stopPropagation()} style={{ width: '100%', maxWidth: 820, maxHeight: '100%', overflow: 'auto', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 20, background: '#101422', boxShadow: '0 40px 90px -30px rgba(0,0,0,0.8)' }}>
+        <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — since the {p.type}</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>{p.type} issued {p.issuedLabel} · {p.daysSince} day{p.daysSince === 1 ? '' : 's'} ago{p.reviewBy ? ` · review by ${p.reviewBy}` : ''}</div>
+          </div>
+          <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15 }}>×</div>
+        </div>
+        <div style={{ padding: '16px 24px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ fontSize: 13, color: '#C7CBDA', lineHeight: 1.6, border: `1px solid ${st.border}`, borderRadius: 12, padding: '12px 16px', background: st.bg }}>
+            <b style={{ color: st.color }}>{st.icon} {p.label}</b>
+            {p.better != null && p.verdict !== 'early' && p.verdict !== 'nodata' && <> — {p.better} parameter{p.better === 1 ? '' : 's'} better, {p.worse} worse{p.rows.filter((r) => r.verdict === 'same').length ? `, ${p.rows.filter((r) => r.verdict === 'same').length} unchanged` : ''}.</>}
+            {p.verdict === 'early' && <> — the first comparisons appear a week after it was issued.</>}
+            {p.verdict === 'nodata' && <> — none of the parameters has enough history on both sides yet.</>}
+            {p.note && <> {p.note}</>}
+          </div>
+          <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, overflow: 'hidden' }}>
+            <div className="mono" style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, padding: '10px 16px', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+              <span>Parameter</span><span style={{ textAlign: 'right' }}>Before</span><span style={{ textAlign: 'right' }}>After</span><span style={{ textAlign: 'right' }}>Change</span>
+            </div>
+            {p.rows.map((r) => {
+              const c = r.verdict === 'better' ? '#5EEAD4' : r.verdict === 'worse' ? '#F87171' : '#8A90A8';
+              return (
+                <div key={r.key} style={{ padding: '11px 16px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, alignItems: 'baseline', fontSize: 13 }}>
+                    <span style={{ fontWeight: 600 }}>{r.label}</span>
+                    {r.delta != null ? <>
+                      <span className="mono" style={{ textAlign: 'right', fontSize: 12.5, color: '#C7CBDA' }}>{fmt(r.kind, r.before)}</span>
+                      <span className="mono" style={{ textAlign: 'right', fontSize: 12.5, color: '#C7CBDA' }}>{fmt(r.kind, r.after)}</span>
+                      <span className="mono" style={{ textAlign: 'right', fontSize: 12, fontWeight: 600, color: c }}>{r.delta === 0 ? 'No change' : `${r.delta > 0 ? '▲' : '▼'} ${sign(r.kind, r.delta)}${r.pct != null && r.kind !== 'pct' ? ` (${Math.abs(Math.round(r.pct))}%)` : ''}`}</span>
+                    </> : <>
+                      <span className="mono" style={{ gridColumn: 'span 3', textAlign: 'right', fontSize: 12.5, color: r.current != null ? '#C7CBDA' : '#5C6178' }}>{r.current != null ? `Now ${r.current.toLocaleString('en-IN')}` : '—'}</span>
+                    </>}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#6E7488', marginTop: 4, lineHeight: 1.4 }}>{r.delta != null ? r.window : r.note}</div>
+                </div>
+              );
+            })}
+            {!p.rows.length && <div style={{ padding: 16, fontSize: 12.5, color: '#6E7488' }}>Nothing is tracked for this team.</div>}
+          </div>
+          {p.monthly?.columns?.length > 0 && (
+            <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, overflow: 'hidden' }}>
+              <div style={{ padding: '12px 16px 4px' }}>
+                <div className="disp" style={{ fontSize: 14, fontWeight: 600 }}>Month by month</div>
+                <div style={{ fontSize: 11.5, color: '#6E7488', marginTop: 3 }}>Three months before the {p.type}, the month it was issued, and every month since. A dash means there is no data on file for that month.</div>
+              </div>
+              <div className="mono" style={{ display: 'grid', gridTemplateColumns: monthCols, gap: 10, padding: '10px 16px', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                <span>Month</span>{p.monthly.columns.map((c) => <span key={c.key} style={{ textAlign: 'right' }}>{c.label}</span>)}
+              </div>
+              {p.monthly.months.map((m) => {
+                const tagStyle = { before: { t: 'Before', c: '#F59E0B' }, issued: { t: `${p.type} issued`, c: '#F87171' }, after: { t: 'After', c: '#5EEAD4' }, current: { t: 'This month so far', c: '#A5A7FA' } }[m.tag];
+                return (
+                  <div key={m.idx} style={{ display: 'grid', gridTemplateColumns: monthCols, gap: 10, padding: '9px 16px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', background: m.tag === 'issued' ? 'rgba(244,63,94,0.06)' : 'transparent', fontSize: 12.5 }}>
+                    <span style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      <span className="mono" style={{ color: '#C7CBDA' }}>{m.label}</span>
+                      <span style={{ fontSize: 10, color: tagStyle.c }}>{tagStyle.t}</span>
+                    </span>
+                    {p.monthly.columns.map((c) => <span key={c.key} className="mono" style={{ textAlign: 'right', color: m.values[c.key] == null ? '#5C6178' : '#C7CBDA' }}>{fmt(c.kind, m.values[c.key])}</span>)}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div style={{ fontSize: 11.5, color: '#6E7488', lineHeight: 1.5 }}>Monthly figures (NR, True NR, utilization, indexes) compare full months either side of the issue month, so they appear once a month has completed. SCs, assignments, negative feedback and interviews compare the days since the {p.type} with the same number of days before it (the FM interviews feed only keeps 30 days and the recruiter feed 6 months, so older periods are blank). Common Index and the other index scores are saved monthly from Nov 2026, so they show only the current score until enough months build up. Target achievement compares the quarter the {p.type} was issued in with the current quarter so far. Green is a gain, red a dip (for negative feedback, more is a dip).</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// A PA/PIP is "running right now" only while today falls inside its own issued-on..review-by window.
+// Koenig leaves a case flagged active after its review date until someone formally closes it, so the
+// status alone (PA Issued / PIP Issued) also covers cases that have already lapsed. Same test the weekly
+// check-in uses (hasOngoingPipWindow in lib/weeklyReportRunner.js).
+function hasOngoingPaPip(e) {
+  const want = e.status === 'PIP Issued' ? 'PIP' : e.status === 'PA Issued' ? 'PA' : null;
+  if (!want) return false;
+  const t = new Date();
+  const today = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+  return (e.pipHistory || []).some((p) => {
+    if (p.type !== want) return false;
+    const from = displayDateToIso(p.issuedOn), to = displayDateToIso(p.reviewBy);
+    return !!from && !!to && from <= today && today <= to;
+  });
+}
+
+// ISO date of the employee's most recently issued PA or PIP ('' when none is on file).
+const latestIssueIso = (e) => (e.pipHistory || []).map((p) => displayDateToIso(p.issuedOn) || '').sort().pop() || '';
+
 function PaPip({ employees, filter, setFilter, setModal }) {
   const [search, setSearch] = useState('');
   const [includeInactive, setIncludeInactive] = useState(false);
@@ -2723,6 +2843,10 @@ function PaPip({ employees, filter, setFilter, setModal }) {
   // default.
   const [njOnly, setNjOnly] = useState(false);
   const [missing, setMissing] = useState([]);
+  const [progressFor, setProgressFor] = useState(null); // { e, p } — the employee whose since-PA/PIP numbers are open
+  // Off by default: only people whose PA/PIP is running right now, each with an improved/declined badge. On: every
+  // case this section tracks (including lapsed ones and ones closed in the last 6 months), without the badge column.
+  const [showAll, setShowAll] = useState(false);
   const toggleMissing = (key) => setMissing((m) => (m.includes(key) ? m.filter((k) => k !== key) : [...m, key]));
   // Real counts across every case that's either open now or was open at
   // some point in the last 6 months (was hardcoded mock numbers — 6/4/2
@@ -2731,21 +2855,33 @@ function PaPip({ employees, filter, setFilter, setModal }) {
   // Scoped to includeInactive/njOnly same as `rows` below, but not to
   // search/team/missing filters — these are meant to read as the full
   // tracked caseload regardless of what's currently typed in the search box.
-  const allCases = employees.filter((e) => (includeInactive || e.active !== false) && (!njOnly || isNewJoiner(e.tenure)) && wasRecentPaPip(e));
-  const paCount = allCases.filter((e) => e.status === 'PA Issued').length;
-  const pipCount = allCases.filter((e) => e.status === 'PIP Issued').length;
+  const everyCase = employees.filter((e) => (includeInactive || e.active !== false) && (!njOnly || isNewJoiner(e.tenure)) && wasRecentPaPip(e));
+  const ongoing = everyCase.filter(hasOngoingPaPip);
+  const paCount = ongoing.filter((e) => e.status === 'PA Issued').length;
+  const pipCount = ongoing.filter((e) => e.status === 'PIP Issued').length;
+  const allCases = showAll ? everyCase : ongoing;
+  const trackCols = showAll ? '1.4fr .7fr .8fr .8fr 1.9fr .7fr' : '1.4fr .7fr .8fr .8fr 1fr 1.7fr .7fr';
   const tabs = [['All Departments', null], ['Sales', 'Sales'], ['Trainer', 'Trainer'], ['PT Team', 'PT Team'], ['FM Team', 'FM Team'], ['Recruitment Team', 'Recruitment Team']].map(([label, val]) => ({
     label, val, active: filter === val || (!filter && !val),
     count: val ? allCases.filter((e) => e.team === val).length : allCases.length,
   }));
   const q = search.trim().toLowerCase();
   const missingDefs = missingFiltersFor(filter);
+  const scoreSince = windowSince(WORRY_WINDOWS.find((w) => w.key === '3month').days);
   const rows = allCases
     .filter((e) => !filter || e.team === filter)
     .filter((e) => !q || e.name.toLowerCase().includes(q) || String(e.id).toLowerCase().includes(q))
+    // The score is the Worry Index over the last 3 months — the same default window as the Worry Index
+    // screen and the Overview — not the all-time score the server attaches to every employee.
+    .map((e) => {
+      const signalReport = computeSignalReport(e, { since: scoreSince });
+      const signals = signalReport.filter((x) => x.status === 'fired');
+      return { ...e, signalReport, signals, score: computeWorryScore(signals) };
+    })
     .map(decorate)
     .filter((e) => !missing.length || missing.every((k) => missingDefs.find((d) => d.key === k)?.test(e)))
-    .sort((a, b) => a.score - b.score);
+    // All records lists the most recently issued PA/PIP first, then older ones; the default view keeps its score order.
+    .sort((a, b) => (showAll ? latestIssueIso(b).localeCompare(latestIssueIso(a)) : a.score - b.score));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -2769,18 +2905,20 @@ function PaPip({ employees, filter, setFilter, setModal }) {
         />
         <NjOnlyToggle value={njOnly} onChange={setNjOnly} />
         <IncludeInactiveToggle value={includeInactive} onChange={setIncludeInactive} />
+        <IncludeInactiveToggle value={showAll} onChange={setShowAll} label="All records" />
       </div>
       <MissingFilterChips defs={missingDefs} active={missing} onToggle={toggleMissing} />
       <div style={{ ...card, overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr .7fr .8fr .8fr 1.9fr .7fr', padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <span>Employee</span><span>Type</span><span>Issued</span><span>Review by</span><span>Worry parameters breached</span><span style={{ textAlign: 'right' }}>Score</span>
+        <div style={{ display: 'grid', gridTemplateColumns: trackCols, padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <span>Employee</span><span>Type</span><span>Issued</span><span>Review by</span>{!showAll && <span>Since issue</span>}<span>Worry parameters breached</span><span style={{ textAlign: 'right' }}>Score (3 mo)</span>
         </div>
         {rows.map((e) => (
-          <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: '1.4fr .7fr .8fr .8fr 1.9fr .7fr', padding: '14px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
+          <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: trackCols, padding: '14px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontWeight: 600 }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id} · {e.team}</span><ResignedBadge e={e} /><F2fBadge e={e} active={missing} /></div>
             <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` }}>{e.inactive ? 'Inactive' : e.short}</span>
             <span style={{ fontSize: 12, color: '#A8AEC4' }}>{e.issued}</span>
             <span style={{ fontSize: 12, color: '#A8AEC4' }}>{e.due}</span>
+            {!showAll && (() => { const p = computePaPipProgress(e); return <ProgressBadge p={p} onClick={() => setProgressFor({ e, p })} />; })()}
             <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
               {e.breaches.map((b) => <span key={b} style={{ fontSize: 10.5, color: '#F87171', background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.25)', borderRadius: 6, padding: '3px 7px' }}>{b}</span>)}
             </div>
@@ -2789,6 +2927,7 @@ function PaPip({ employees, filter, setFilter, setModal }) {
         ))}
         {!rows.length && <div style={{ padding: '18px', fontSize: 12.5, color: '#6E7488' }}>No PA/PIP cases match this filter.</div>}
       </div>
+      {progressFor && <PaPipProgressModal emp={progressFor.e} p={progressFor.p} onClose={() => setProgressFor(null)} />}
     </div>
   );
 }
@@ -2834,51 +2973,6 @@ const PA_ALGO_MISSING_STATUSES = ['no-data', 'no-salary-data', 'no-country-data'
 // Under 3 months of tenure has no PA Algo criteria at all, so 'no-data' there is
 // nothing to evaluate yet, not a data gap — kept out of Missing data.
 const isPaAlgoMissing = (algo) => PA_ALGO_MISSING_STATUSES.includes(algo.status) && !/^No PA Algo criteria/.test(algo.rule || '');
-// Current quarter's CSM target (lib/syncRunners.js's syncTargetsData,
-// quarter_target_amount) against this quarter's synced NR — Koenig's own
-// achievement-percentage feed (quarter_target_pct, syncTargetAchievement)
-// has returned zero rows for every query tried, so the % here is computed
-// directly from NR rather than trusting that feed.
-function quarterTargetFor(e, mode, q) {
-  const qt = (e.quarterTargets || []).find((t) => t.name === q.name && t.year === q.year);
-  if (!qt) return null;
-  const targetAmount = qt.amount;
-  const targetType = qt.type;
-  const monthKeys = quarterMonthKeys(q);
-  // One row per quarter month (0 when the feed has nothing for it), so the
-  // breakdown popup always shows all three months.
-  // Manager-level (ASM) targets are crore-scale team targets: achieved is the
-  // manager's own NR plus their team's (direct reports, from the NR API's
-  // Manager field). Individual CSM/CM targets stay own-NR only.
-  const withTeam = targetType === 'ASM' && !!e.teamNrDetails;
-  // A month of the quarter that has not started yet has no actual NR, so what is
-  // already booked for it (Future NR) is used — the quarter total is the actual
-  // months plus those booked months.
-  const futureOf = (list, key) => (list || []).find((m) => m.month === key);
-  const breakdown = monthKeys.map((key) => {
-    const ownActual = (e.nrMonthlyDetails || []).find((m) => m.month === key);
-    const ownFuture = ownActual ? null : futureOf(e.nrFutureDetails, key);
-    const own = ownActual ? (ownActual.nr ?? 0) : (ownFuture?.nr ?? 0);
-    const teamActual = withTeam ? futureOf(e.teamNrDetails, key) : null;
-    const team = teamActual?.nr ?? 0;
-    const trueRow = (e.trueNrDetails || []).find((m) => m.month === key);
-    return { month: key, own, team, nr: own + team, trueNr: trueRow ? trueRow.trueNr : null, isFuture: !ownActual && !!ownFuture };
-  });
-  // True NR mode: achieved from True NR (own only — a manager's team True NR isn't available), counting only the months Koenig has returned so far.
-  if (mode === 'true') {
-    if (withTeam) return { unavailable: 'Team True NR not available' };
-    const trueMonths = breakdown.filter((m) => m.trueNr != null);
-    const trueTotal = trueMonths.reduce((sum, m) => sum + m.trueNr, 0);
-    const tp = targetAmount > 0 ? Math.round((trueTotal / targetAmount) * 1000) / 10 : null;
-    const lk = (n) => '₹' + (n / 100000).toFixed(1) + 'L';
-    return { pct: tp != null ? `${tp}%` : '—', achieved: tp != null && tp >= 100, nrLabel: lk(trueTotal), targetLabel: lk(targetAmount), q, breakdown, withTeam: false, teamSize: 0, isTrue: true, monthsAvailable: trueMonths.length };
-  }
-  const nr = breakdown.reduce((sum, m) => sum + m.nr, 0);
-  const pct = targetAmount > 0 ? Math.round((nr / targetAmount) * 1000) / 10 : null;
-  const lakhs = (n) => '₹' + (n / 100000).toFixed(1) + 'L';
-  return { pct: pct != null ? `${pct}%` : '—', achieved: pct != null && pct >= 100, nrLabel: lakhs(nr), targetLabel: lakhs(targetAmount), q, breakdown, withTeam, teamSize: e.teamNrDetails?.[0]?.members ?? 0 };
-}
-
 function PaAlgo({ employees, filter, setFilter, setModal }) {
   const [team, setTeam] = useState('Trainer');
   const [search, setSearch] = useState('');

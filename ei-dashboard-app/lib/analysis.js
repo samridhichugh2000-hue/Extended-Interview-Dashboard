@@ -38,7 +38,7 @@ function dojIdx(doj) {
 }
 
 // Earliest month each feed has history for (the feeds only reach back so far).
-const FEED_START = { sc: 2024 * 12 + 10, negFeedback: 2023 * 12 + 7 };
+export const FEED_START = { sc: 2024 * 12 + 10, negFeedback: 2023 * 12 + 7 };
 
 export function appraisalWindow(appraisalDate, maxMonths, now = new Date()) {
   const a = new Date(`${appraisalDate}T00:00:00`);
@@ -135,7 +135,7 @@ export function computeEventImpact(e, eventDate, maxMonths) {
 // the joining day. That is not an appraisal, so a record dated within a week of
 // the DOJ is skipped.
 const JOINING_RECORD_DAYS = 7;
-function dojDate(doj) {
+export function dojDate(doj) {
   const m = /^(\d{1,2})\s+([A-Za-z]{3})[A-Za-z]*\s+(\d{2,4})$/.exec(String(doj || '').trim());
   if (!m) return null;
   const mi = MON.indexOf(m[2].toLowerCase());

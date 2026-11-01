@@ -58,8 +58,15 @@ export async function getEmployees() {
   // "was this employee in PA/PIP at any point recently" once their case has
   // since closed and employees.status moved on to In Progress/Confirmed.
   const pipHistoryByEmp = new Map();
+  // pipByEmp feeds the single Issued / Review by / breaches shown per person: the
+  // active case, and the most recently issued one if several are active (or none
+  // is) — not whichever row the scan happened to end on, which showed e.g. a
+  // closed 2023 PIP beside a PA issued last month.
+  const issuedTs = (r) => { const t = new Date(r.issued_on).getTime(); return Number.isNaN(t) ? 0 : t; };
+  const displayRank = (a, b) => (Number(!!b.is_active) - Number(!!a.is_active)) || (issuedTs(b) - issuedTs(a));
   for (const row of pipRes.rows) {
-    pipByEmp.set(row.employee_id, row);
+    const shown = pipByEmp.get(row.employee_id);
+    if (!shown || displayRank(row, shown) < 0) pipByEmp.set(row.employee_id, row);
     if (!pipHistoryByEmp.has(row.employee_id)) pipHistoryByEmp.set(row.employee_id, []);
     pipHistoryByEmp.get(row.employee_id).push({ type: row.type, issuedOn: row.issued_on, reviewBy: row.review_by, isActive: !!row.is_active });
   }
