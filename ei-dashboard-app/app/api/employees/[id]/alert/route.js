@@ -13,8 +13,9 @@ const PIP_SUBJECT_LABEL = { PA: 'Performance Alert', PIP: 'Performance Improveme
 function pipSubject(pipType, name) {
   return `${PIP_SUBJECT_LABEL[pipType]} - ${name}`;
 }
-// Must match TEST_RECIPIENT in app/DashboardClient.js.
-const TEST_RECIPIENT = 'samridhi.chugh@koenig-solutions.com';
+// Must match TEST_RECIPIENTS in app/DashboardClient.js. The first address is also the
+// one earlier [TEST] threads are looked up by.
+const TEST_RECIPIENTS = ['samridhi.chugh@koenig-solutions.com', 'Rashi.oberoi@koenig-solutions.com'];
 
 // `draft` is the ENTIRE email body HR edited directly in AlertPreviewModal's
 // textarea (greeting through sign-off) — plain text (auto-generated from
@@ -70,7 +71,7 @@ async function postPaPipToRms(payload) {
 //
 // testMode (AlertPreviewModal's "Test mode" checkbox) lets HR verify the
 // actual send — real subject/body, real Graph delivery — before ever
-// issuing for real: redirects to/cc entirely to TEST_RECIPIENT (no
+// issuing for real: redirects to/cc entirely to TEST_RECIPIENTS (no
 // employee, no HR, no manager touched) and skips both the employees.status
 // update and the RMS post, so nothing about the target employee's real
 // record changes.
@@ -94,12 +95,12 @@ export async function POST(request, { params }) {
     // ever threads onto earlier [TEST] emails to the test recipient.
     const prefix = testMode ? '[TEST] ' : '';
     const mail = await sendMailInThread({
-      to: testMode ? TEST_RECIPIENT : email,
+      to: testMode ? TEST_RECIPIENTS : email,
       cc: testMode ? [] : [HR_CC, managerEmail].filter(Boolean),
       subject: prefix + pipSubject(pipType, name),
       html: alertEmailHtml({ draft }),
       subjectNeedles: Object.keys(PIP_STATUS).map((t) => prefix + pipSubject(t, name)),
-      recipient: testMode ? TEST_RECIPIENT : email,
+      recipient: testMode ? TEST_RECIPIENTS[0] : email,
     });
 
     if (testMode) {

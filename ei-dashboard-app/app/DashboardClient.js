@@ -117,7 +117,7 @@ function useEmployeeActions() {
       });
       const json = await res.json();
       window.alert(json.ok
-        ? (testMode ? `Test email sent to ${TEST_RECIPIENT}${json.threaded ? ' as a reply in the earlier test thread' : ''} — ${emp.name}'s status was not changed.` : `${pipType} saved and alert email sent${json.threaded ? ' as a reply in the previous PA/PIP email thread' : ''}.`)
+        ? (testMode ? `Test email sent to ${TEST_RECIPIENTS_LABEL}${json.threaded ? ' as a reply in the earlier test thread' : ''} — ${emp.name}'s status was not changed.` : `${pipType} saved and alert email sent${json.threaded ? ' as a reply in the previous PA/PIP email thread' : ''}.`)
         : `Failed: ${json.error}`);
       if (json.ok) {
         setAlertTarget(null);
@@ -148,8 +148,9 @@ const PIP_TYPES = {
   PIP: { code: 'PIP', label: 'Performance Improvement Plan (PIP)' },
 };
 // Fixed test-mode recipient — see AlertPreviewModal's testMode. Must match
-// TEST_RECIPIENT in app/api/employees/[id]/alert/route.js.
-const TEST_RECIPIENT = 'samridhi.chugh@koenig-solutions.com';
+// TEST_RECIPIENTS in app/api/employees/[id]/alert/route.js.
+const TEST_RECIPIENTS = ['samridhi.chugh@koenig-solutions.com', 'Rashi.oberoi@koenig-solutions.com'];
+const TEST_RECIPIENTS_LABEL = TEST_RECIPIENTS.join(' and ');
 
 // Plain-text starting draft for the editable body (AlertPreviewModal) — the
 // ENTIRE email, greeting through sign-off, not just the concerns section.
@@ -292,7 +293,7 @@ function AlertPreviewModal({ emp, pending, onClose, onSend }) {
   const ccLine = ['HR@koenig-solutions.com', emp.managerEmail].filter(Boolean).join(', ');
   // Lets HR safely verify the actual send (subject/body/formatting, real
   // Graph delivery) before ever issuing for real — redirects the whole
-  // email to TEST_RECIPIENT only (no HR/manager CC) and the route skips
+  // email to TEST_RECIPIENTS only (no HR/manager CC) and the route skips
   // updating employees.status entirely, so no real record is touched.
   const [testMode, setTestMode] = useState(false);
 
@@ -304,7 +305,7 @@ function AlertPreviewModal({ emp, pending, onClose, onSend }) {
             <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — alert preview</div>
             <div style={{ fontSize: 12, color: testMode ? '#F59E0B' : '#6E7488', marginTop: 3 }}>
               {testMode
-                ? `TEST MODE — to ${TEST_RECIPIENT} only. No HR/manager CC, no status change, nothing sent to ${emp.name}.`
+                ? `TEST MODE — to ${TEST_RECIPIENTS_LABEL} only. No HR/manager CC, no status change, nothing sent to ${emp.name}.`
                 : <>Worry Index {emp.scoreStr} · {emp.bandLabel} · to {emp.email}, Cc {ccLine}{!emp.managerEmail && ' (no manager email resolved — see lib/managerDirectory.js)'}</>}
             </div>
           </div>
@@ -376,7 +377,7 @@ function AlertPreviewModal({ emp, pending, onClose, onSend }) {
           </div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', border: `1px solid ${testMode ? 'rgba(245,158,11,0.45)' : 'rgba(255,255,255,0.09)'}`, background: testMode ? 'rgba(245,158,11,0.1)' : 'rgba(255,255,255,0.02)', borderRadius: 10, padding: '9px 12px' }}>
             <input type="checkbox" checked={testMode} onChange={(ev) => setTestMode(ev.target.checked)} style={{ width: 15, height: 15, flex: 'none' }} />
-            <span style={{ fontSize: 12.5, color: testMode ? '#F59E0B' : '#9BA1B8' }}>Test mode — send only to {TEST_RECIPIENT}, don't touch this employee's status</span>
+            <span style={{ fontSize: 12.5, color: testMode ? '#F59E0B' : '#9BA1B8' }}>Test mode — send only to {TEST_RECIPIENTS_LABEL}, don't touch this employee's status</span>
           </label>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <span onClick={onClose} className="hoverbtn" style={{ border: '1px solid rgba(255,255,255,0.12)', color: '#C7CBDA', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>Cancel</span>
@@ -385,7 +386,7 @@ function AlertPreviewModal({ emp, pending, onClose, onSend }) {
               className="hoverbtn"
               style={{ border: `1px solid ${testMode ? 'rgba(245,158,11,0.5)' : 'rgba(244,63,94,0.45)'}`, color: testMode ? '#F59E0B' : '#F87171', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: (pending || !canSave) ? 'default' : 'pointer', opacity: (pending || !canSave) ? 0.5 : 1 }}
             >
-              {pending ? 'Sending…' : testMode ? `Send test to ${TEST_RECIPIENT}` : 'Save'}
+              {pending ? 'Sending…' : testMode ? `Send test to ${TEST_RECIPIENTS_LABEL}` : 'Save'}
             </span>
           </div>
         </div>
