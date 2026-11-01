@@ -7,7 +7,7 @@ import {
   computeSignalReport, computeWorryScore, trendNoteFor, WORRY_WINDOWS, windowSince, lowActivityDays, f2fSummary,
 } from '../lib/data';
 import { csmSeasonalImpact, consolidate } from '../lib/csmSeasonal';
-import { computeEventImpact, latestRealAppraisal, blankReason, latestPipEvent, rnrAwardDate, ANALYSIS_METRICS, appraisalWindow, metricSeries, linearTrend, appraisalPosition } from '../lib/analysis';
+import { computeEventImpact, latestRealAppraisal, blankReason, latestPipEvent, rnrAwardDate, ANALYSIS_METRICS, EXTRA_INDEX_METRICS, INDEX_FIELDS, appraisalWindow, metricSeries, linearTrend, appraisalPosition } from '../lib/analysis';
 import { JOB_LABELS } from '../lib/jobLabels';
 import { F2F_EVENTS } from '../lib/f2fAttendees';
 import { RNR_WINNERS } from '../lib/rnrWinners';
@@ -395,16 +395,28 @@ function NrModeToggle({ value, onChange }) {
   );
 }
 
-// Koenig's CSM Index score — latest saved value plus the monthly history kept
-// since Nov 2026 (the API itself only returns the current score).
-function CsmIndexCard({ emp }) {
-  const rows = [...(emp.csmIndexDetails || [])].reverse();
+// Koenig index scores (CSM / Trainer / ASM). The APIs only return the current
+// score, so the monthly history behind these is saved from Nov 2026.
+const INDEX_LABELS = { csmIndex: 'CSM Index', trainerIndex: 'Trainer Index', asmIndex: 'ASM Index', dmIndex: 'DM Index' };
+// Which indexes apply to an employee: their team's own index, plus ASM / DM wherever data exists.
+const indexKeysFor = (emp) => [
+  ...(emp?.team === 'Sales' ? ['csmIndex'] : []),
+  ...(emp?.team === 'Trainer' ? ['trainerIndex'] : []),
+  ...(emp?.asmIndexDetails?.length ? ['asmIndex'] : []),
+  ...(emp?.dmIndexDetails?.length ? ['dmIndex'] : []),
+];
+const indexRows = (emp, key) => [...(emp?.[INDEX_FIELDS[key]] || [])].reverse();
+const scoreColor = (n) => (n < 0 ? '#F87171' : '#5EEAD4');
+
+function IndexCard({ emp, indexKey }) {
+  const rows = indexRows(emp, indexKey);
   const latest = rows[0];
+  const label = INDEX_LABELS[indexKey];
   return (
     <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, padding: 18, background: 'rgba(255,255,255,0.02)', marginBottom: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: latest ? 12 : 6 }}>
-        <div className="disp" style={{ fontSize: 14, fontWeight: 600 }}>CSM Index</div>
-        <span className="mono" style={{ fontSize: 20, fontWeight: 600, color: !latest ? '#6E7488' : latest.score < 0 ? '#F87171' : '#5EEAD4' }}>{latest ? latest.score.toLocaleString('en-IN') : '—'}</span>
+        <div className="disp" style={{ fontSize: 14, fontWeight: 600 }}>{label}</div>
+        <span className="mono" style={{ fontSize: 20, fontWeight: 600, color: !latest ? '#6E7488' : scoreColor(latest.score) }}>{latest ? latest.score.toLocaleString('en-IN') : '—'}</span>
       </div>
       {latest ? (
         <>
@@ -417,7 +429,7 @@ function CsmIndexCard({ emp }) {
           ))}
         </>
       ) : (
-        <div style={{ fontSize: 12.5, color: '#6E7488' }}>Not in Koenig's CSM Index feed.</div>
+        <div style={{ fontSize: 12.5, color: '#6E7488' }}>Not in Koenig's {label} feed yet.</div>
       )}
     </div>
   );
@@ -698,15 +710,16 @@ function AppraisalChart({ series, metric, appraisalDate, win, change, fmtVal }) 
 }
 
 // Shown in the before/after modal until enough saved months exist on both sides
-// of the event: the current CSM Index score plus the history saved so far.
-function CsmIndexBuilding({ emp }) {
-  const rows = [...(emp.csmIndexDetails || [])].reverse();
+// of the event: the current index score plus the history saved so far.
+function IndexBuilding({ emp, indexKey }) {
+  const rows = indexRows(emp, indexKey);
   const now = rows[0];
+  const label = INDEX_LABELS[indexKey];
   return (
     <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, padding: 18, background: 'rgba(255,255,255,0.02)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
-        <div className="disp" style={{ fontSize: 14, fontWeight: 600 }}>CSM Index</div>
-        <span className="mono" style={{ fontSize: 20, fontWeight: 600, color: !now ? '#6E7488' : now.score < 0 ? '#F87171' : '#5EEAD4' }}>{now ? now.score.toLocaleString('en-IN') : '—'}</span>
+        <div className="disp" style={{ fontSize: 14, fontWeight: 600 }}>{label}</div>
+        <span className="mono" style={{ fontSize: 20, fontWeight: 600, color: !now ? '#6E7488' : scoreColor(now.score) }}>{now ? now.score.toLocaleString('en-IN') : '—'}</span>
       </div>
       {now ? (
         <>
@@ -719,7 +732,7 @@ function CsmIndexBuilding({ emp }) {
           ))}
         </>
       ) : (
-        <div style={{ fontSize: 12.5, color: '#6E7488' }}>Not in Koenig's CSM Index feed.</div>
+        <div style={{ fontSize: 12.5, color: '#6E7488' }}>Not in Koenig's {label} feed yet.</div>
       )}
     </div>
   );
@@ -729,7 +742,7 @@ function AnalysisModal({ emp, months, ev, mode, csm, onClose, onOpenEmployee }) 
   const word = IMPACT_MODES[mode].word;
   const impact = computeEventImpact(emp, ev.date, months);
   const win = appraisalWindow(impact.eventDate, months);
-  const metrics = csm ? CSM_METRICS : ANALYSIS_METRICS[emp.team];
+  const metrics = [...(csm ? CSM_METRICS : ANALYSIS_METRICS[emp.team]), ...EXTRA_INDEX_METRICS.filter((x) => emp[INDEX_FIELDS[x.key]]?.length)];
   const seasonal = csm ? csmSeasonalImpact(emp, ev.date, months, csm) : null;
   const fmtVal = (kind, v) => kind === 'money' ? fmtLakhs(v) : kind === 'percent' ? `${Math.round(v)}%` : kind === 'rate' ? (Math.round(v * 10) / 10).toString() : (Math.round(v * 10) / 10).toString();
   const [y, m, d] = impact.eventDate.split('-');
@@ -758,8 +771,8 @@ function AnalysisModal({ emp, months, ev, mode, csm, onClose, onOpenEmployee }) 
                 : 'No last-year data to adjust for the season.'}
             </div>
           )}
-          {metrics.map((mt) => (mt.key === 'csmIndex' && !impact.metrics.csmIndex
-            ? <CsmIndexBuilding key={mt.key} emp={emp} />
+          {metrics.map((mt) => (INDEX_FIELDS[mt.key] && !impact.metrics[mt.key]
+            ? <IndexBuilding key={mt.key} emp={emp} indexKey={mt.key} />
             : <AppraisalDataTable key={mt.key} series={metricSeries(emp, mt.key)} metric={mt} win={win} change={impact.metrics[mt.key]} fmtVal={fmtVal} />
           ))}
           <div style={{ fontSize: 11.5, color: '#6E7488', lineHeight: 1.5 }}>
@@ -820,7 +833,7 @@ function AppraisalImpactView({ employees, setModal, mode = 'appraisal', index = 
   const [detail, setDetail] = useState(null);
   const quarters = [...new Set(RNR_WINNERS.map((w) => `${w.quarter} ${w.year}`))].sort();
   const [quarter, setQuarter] = useState(quarters[quarters.length - 1]);
-  const metrics = metricsFor(team);
+  const metrics = [...metricsFor(team), ...EXTRA_INDEX_METRICS.filter((x) => employees.some((e) => e.team === team && e[INDEX_FIELDS[x.key]]?.length))];
   const isCsmView = team === 'Sales';
   // Season adjustment applies to appraisal and RnR only; PA / PIP are the plain before vs after.
   const useSeason = isCsmView && (mode === 'appraisal' || mode === 'rnr');
@@ -1015,10 +1028,10 @@ function AppraisalImpactView({ employees, setModal, mode = 'appraisal', index = 
               </>;
             })() : metrics.map((m) => {
               const c = r.metrics[m.key];
-              if (!c && m.key === 'csmIndex') {
-                const now = [...(e.csmIndexDetails || [])].pop();
+              if (!c && INDEX_FIELDS[m.key]) {
+                const now = [...(e[INDEX_FIELDS[m.key]] || [])].pop();
                 return <span key={m.key} style={{ gridColumn: 'span 3', textAlign: 'right', fontSize: 11.5, lineHeight: 1.35 }}>
-                  {now ? <><span style={{ color: '#6E7488' }}>Now </span><span className="mono" style={{ fontSize: 12, fontWeight: 600, color: now.score < 0 ? '#F87171' : '#5EEAD4' }}>{now.score.toLocaleString('en-IN')}</span></> : <span style={{ color: '#5C6178' }}>—</span>}
+                  {now ? <><span style={{ color: '#6E7488' }}>Now </span><span className="mono" style={{ fontSize: 12, fontWeight: 600, color: scoreColor(now.score) }}>{now.score.toLocaleString('en-IN')}</span></> : <span style={{ color: '#5C6178' }}>—</span>}
                 </span>;
               }
               if (!c) return <span key={m.key} style={{ gridColumn: 'span 3', textAlign: 'right', color: '#8A90A8', fontSize: 11, lineHeight: 1.35 }}>{blankReason(e, r.eventDate, months, m.key === 'neg' ? 'feedback' : m.label.split(' ')[0])}</span>;
@@ -3245,26 +3258,30 @@ function PaAlgoEvidence({ evidence, emp }) {
     };
   };
   evidence = evidence.map(withTrue);
-  // CSM Index (Sales only) sits alongside the rule evidence — informational, not a PA Algo rule.
-  const csmRows = emp?.team === 'Sales' ? [...(emp.csmIndexDetails || [])].reverse() : null;
+  // Index scores sit alongside the rule evidence — informational, not PA Algo rules.
+  const idxKeys = indexKeysFor(emp);
   return (
     <div style={{ padding: '2px 18px 16px 40px', background: 'rgba(255,255,255,0.015)', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {csmRows && (
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#C7CBDA', textTransform: 'uppercase', letterSpacing: '.04em' }}>CSM Index</div>
-          <div style={{ fontSize: 12, color: '#8A90A8', marginTop: 3 }}>
-            {csmRows.length
-              ? <>Latest score <b style={{ color: csmRows[0].score < 0 ? '#F87171' : '#5EEAD4' }}>{csmRows[0].score.toLocaleString('en-IN')}</b> (saved {csmRows[0].month}). Shown for reference — it is not one of the PA Algo's rules.</>
-              : "Not in Koenig's CSM Index feed."}
+      {idxKeys.map((k) => {
+        const rows = indexRows(emp, k);
+        const label = INDEX_LABELS[k];
+        return (
+          <div key={k}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#C7CBDA', textTransform: 'uppercase', letterSpacing: '.04em' }}>{label}</div>
+            <div style={{ fontSize: 12, color: '#8A90A8', marginTop: 3 }}>
+              {rows.length
+                ? <>Latest score <b style={{ color: scoreColor(rows[0].score) }}>{rows[0].score.toLocaleString('en-IN')}</b> (saved {rows[0].month}). Shown for reference — it is not one of the PA Algo's rules.</>
+                : `Not in Koenig's ${label} feed yet.`}
+            </div>
+            {rows.length > 1 && (
+              <table style={{ width: '100%', maxWidth: 560, borderCollapse: 'collapse', fontSize: 12, marginTop: 6 }}>
+                <thead><tr><th style={{ textAlign: 'left', padding: '3px 10px 3px 0', color: '#5C6178', fontWeight: 500 }}>Month</th><th style={{ textAlign: 'left', padding: '3px 10px 3px 0', color: '#5C6178', fontWeight: 500 }}>{label}</th></tr></thead>
+                <tbody>{rows.map((r) => <tr key={r.month}><td style={{ padding: '2px 10px 2px 0', color: '#A8AEC4' }}>{r.month}</td><td style={{ padding: '2px 10px 2px 0', color: '#A8AEC4' }}>{r.score.toLocaleString('en-IN')}</td></tr>)}</tbody>
+              </table>
+            )}
           </div>
-          {csmRows.length > 1 && (
-            <table style={{ width: '100%', maxWidth: 560, borderCollapse: 'collapse', fontSize: 12, marginTop: 6 }}>
-              <thead><tr><th style={{ textAlign: 'left', padding: '3px 10px 3px 0', color: '#5C6178', fontWeight: 500 }}>Month</th><th style={{ textAlign: 'left', padding: '3px 10px 3px 0', color: '#5C6178', fontWeight: 500 }}>CSM Index</th></tr></thead>
-              <tbody>{csmRows.map((r) => <tr key={r.month}><td style={{ padding: '2px 10px 2px 0', color: '#A8AEC4' }}>{r.month}</td><td style={{ padding: '2px 10px 2px 0', color: '#A8AEC4' }}>{r.score.toLocaleString('en-IN')}</td></tr>)}</tbody>
-            </table>
-          )}
-        </div>
-      )}
+        );
+      })}
       {evidence.map((ev, i) => (
         <div key={i}>
           <div style={{ fontSize: 11, fontWeight: 600, color: '#C7CBDA', textTransform: 'uppercase', letterSpacing: '.04em' }}>{ev.label}</div>
@@ -4622,7 +4639,7 @@ function EmployeeModal({ emp, onClose }) {
             </div>
           </div>
           {emp.team === 'Sales' && <NrComparison emp={emp} />}
-          {emp.team === 'Sales' && <CsmIndexCard emp={emp} />}
+          {indexKeysFor(emp).map((k) => <IndexCard key={k} emp={emp} indexKey={k} />)}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, padding: 18, background: 'rgba(255,255,255,0.02)' }}>
               <div className="disp" style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Weekly progress emails</div>

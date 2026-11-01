@@ -1761,24 +1761,23 @@ export async function syncCommonIndex() {
   return { message: `Synced Common Index points for ${updated} employees (${apiErrors} API errors).` };
 }
 
-// Koenig's "Get CSM Index Score" only ever returns each person's current score
-// (no date/employee parameters — any extra input is ignored), so history is
-// built here: one {month, score} entry per employee per month in
-// employees.csm_index_details, overwritten on every run so the month ends on
+// Koenig's "Get CSM / TI / ASM / DM Index Score" feeds only ever return each
+// person's current score (no date/employee parameters — any extra input is
+// ignored), so history is built here: one {month, score} entry per employee per
+// month in employees.<column>, overwritten on every run so the month ends on
 // its latest value. The before/after analysis reads this like the other
 // monthly series, and shows a comparison once enough saved months exist.
-export async function syncCsmIndex() {
+// `column` only ever comes from the four constants below, never user input.
+async function saveIndexHistory(column, label, getScores) {
   const db = getDb();
-  const { getCsmIndexScores } = await import('./koenigCsmIndexApi.js');
-
-  const rows = await getCsmIndexScores();
-  if (!rows.length) throw new Error('Koenig CSM Index API returned zero rows — nothing saved.');
+  const rows = await getScores();
+  if (!rows.length) return { message: `Koenig ${label} API returned zero rows — nothing saved.` };
 
   const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', month: 'short', year: 'numeric' }).formatToParts(new Date());
   const month = `${parts.find((p) => p.type === 'month').value}-${parts.find((p) => p.type === 'year').value}`;
 
-  const existing = await db.execute('SELECT id, csm_index_details FROM employees');
-  const details = new Map(existing.rows.map((r) => [r.id, r.csm_index_details ? JSON.parse(r.csm_index_details) : []]));
+  const existing = await db.execute(`SELECT id, ${column} AS details FROM employees`);
+  const details = new Map(existing.rows.map((r) => [r.id, r.details ? JSON.parse(r.details) : []]));
 
   const statements = [];
   let unmatched = 0;
@@ -1788,11 +1787,31 @@ export async function syncCsmIndex() {
     if (!details.has(id) || !Number.isFinite(score)) { unmatched++; continue; }
     const next = details.get(id).filter((d) => d.month !== month);
     next.push({ month, score });
-    statements.push({ sql: 'UPDATE employees SET csm_index_details = ? WHERE id = ?', args: [JSON.stringify(next), id] });
+    statements.push({ sql: `UPDATE employees SET ${column} = ? WHERE id = ?`, args: [JSON.stringify(next), id] });
   }
   if (statements.length) await db.batch(statements, 'write');
 
-  return { message: `Saved ${month} CSM Index for ${statements.length} employees (${unmatched} of ${rows.length} API rows not matched to an employee).` };
+  return { message: `Saved ${month} ${label} for ${statements.length} employees (${unmatched} of ${rows.length} API rows not matched to an employee).` };
+}
+
+export async function syncCsmIndex() {
+  const { getCsmIndexScores } = await import('./koenigCsmIndexApi.js');
+  return saveIndexHistory('csm_index_details', 'CSM Index', getCsmIndexScores);
+}
+
+export async function syncTrainerIndex() {
+  const { getTrainerIndexScores } = await import('./koenigTrainerIndexApi.js');
+  return saveIndexHistory('trainer_index_details', 'Trainer Index', getTrainerIndexScores);
+}
+
+export async function syncDmIndex() {
+  const { getDmIndexScores } = await import('./koenigDmIndexApi.js');
+  return saveIndexHistory('dm_index_details', 'DM Index', getDmIndexScores);
+}
+
+export async function syncAsmIndex() {
+  const { getAsmIndexScores } = await import('./koenigAsmIndexApi.js');
+  return saveIndexHistory('asm_index_details', 'ASM Index', getAsmIndexScores);
 }
 
 export async function syncGraphSubscription() {
@@ -2061,6 +2080,9 @@ export const SYNC_RUNNERS = {
   empdetails: syncEmployeeDetails,
   commonindex: syncCommonIndex,
   csmindex: syncCsmIndex,
+  trainerindex: syncTrainerIndex,
+  asmindex: syncAsmIndex,
+  dmindex: syncDmIndex,
   graphmeetings: syncGraphMeetings,
   graphrecordings: syncGraphRecordings,
   graphsubscription: syncGraphSubscription,

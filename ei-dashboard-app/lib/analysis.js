@@ -96,8 +96,17 @@ export const ANALYSIS_METRICS = {
   Trainer: [
     { key: 'util', label: 'Utilization (avg)', good: 'up', kind: 'percent' },
     { key: 'neg', label: 'Negative feedback', good: 'down', kind: 'count' },
+    { key: 'trainerIndex', label: 'Trainer Index (avg)', good: 'up', kind: 'rate' },
   ],
 };
+
+// ASM Index (sales managers) and DM Index (ATMs) are not fixed columns of any
+// team's list — the screens add each only when someone in view has its data.
+export const ASM_INDEX_METRIC = { key: 'asmIndex', label: 'ASM Index (avg)', good: 'up', kind: 'rate' };
+export const DM_INDEX_METRIC = { key: 'dmIndex', label: 'DM Index (avg)', good: 'up', kind: 'rate' };
+export const EXTRA_INDEX_METRICS = [ASM_INDEX_METRIC, DM_INDEX_METRIC];
+// metric key -> the employee field holding its monthly {month, score} series
+export const INDEX_FIELDS = { csmIndex: 'csmIndexDetails', trainerIndex: 'trainerIndexDetails', asmIndex: 'asmIndexDetails', dmIndex: 'dmIndexDetails' };
 
 // The same before/after comparison around any dated event — an appraisal, an
 // RnR award, a PA or a PIP being issued (eventDate is 'YYYY-MM-DD').
@@ -110,10 +119,12 @@ export function computeEventImpact(e, eventDate, maxMonths) {
     metrics.nr = change(monthlyAvg(e.nrMonthlyDetails, 'nr', win, doj));
     metrics.trueNr = change(monthlyAvg(e.trueNrDetails, 'trueNr', win, doj));
     metrics.sc = change(eventRate(e.scDetails, (x) => x.createdOn, FEED_START.sc, win, doj, true));
-    metrics.csmIndex = change(monthlyAvg(e.csmIndexDetails, 'score', win, doj));
   } else if (e.team === 'Trainer') {
     metrics.util = change(monthlyAvg(e.utilMonthlyDetails, 'util', win, doj));
     metrics.neg = change(eventRate(e.negFeedbackDetails, (x) => x.feedbackDate, FEED_START.negFeedback, win, doj, false));
+  }
+  for (const [key, field] of Object.entries(INDEX_FIELDS)) {
+    if (e[field]?.length || (key === 'csmIndex' && e.team === 'Sales') || (key === 'trainerIndex' && e.team === 'Trainer')) metrics[key] = change(monthlyAvg(e[field], 'score', win, doj));
   }
   return { eventDate, k: win.k, metrics };
 }
@@ -146,7 +157,7 @@ export function blankReason(e, eventDate, months, what = 'NR') {
   const doj = dojIdx(e.doj);
   if (doj != null && win.before[0] < doj) return `Joined ${String(e.doj).trim()} — under ${win.k} months of ${what} before this date`;
   if (what === 'NR' && win.before[0] < 2025 * 12 + 4) return 'The NR feed starts May 2025 — the months before this date are not available';
-  if (what === 'CSM') return 'CSM Index history is saved monthly from Nov 2026 — not enough saved months yet';
+  if (['CSM', 'Trainer', 'ASM', 'DM'].includes(what)) return `${what} Index history is saved monthly from Nov 2026 — not enough saved months yet`;
   return `${what} missing for some of the ${win.k} months compared`;
 }
 
@@ -210,7 +221,7 @@ export function metricSeries(e, key, now = new Date()) {
   if (key === 'nr') fromMonthly(e.nrMonthlyDetails, 'nr');
   else if (key === 'trueNr') fromMonthly(e.trueNrDetails, 'trueNr');
   else if (key === 'util') fromMonthly(e.utilMonthlyDetails, 'util');
-  else if (key === 'csmIndex') fromMonthly(e.csmIndexDetails, 'score');
+  else if (INDEX_FIELDS[key]) fromMonthly(e[INDEX_FIELDS[key]], 'score');
   else if (key === 'sc') fromEvents(e.scDetails, (x) => x.createdOn, FEED_START.sc);
   else if (key === 'neg') fromEvents(e.negFeedbackDetails, (x) => x.feedbackDate, FEED_START.negFeedback);
   return out.sort((a, b) => a.idx - b.idx);

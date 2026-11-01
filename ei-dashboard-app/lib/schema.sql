@@ -76,6 +76,9 @@ CREATE TABLE IF NOT EXISTS employees (
   net_payable_month TEXT,         -- 'YYYY-MM' the payroll snapshot below is for (Sales/CSMs and Trainers only — see PA Algo). Not a Worry Index signal, not exposed directly on the dashboard — PA Algo's salary-multiple criteria only.
   net_payable_details TEXT,       -- JSON: raw Koenig "Net Payable Details" row for that month (Leave_BF, Leave_Granted, Payable_Days, PayScale, PF, TDS, Salary, ...)
   csm_index_details TEXT,         -- JSON array of {month:'Nov-2026', score}, one entry per month — the latest 'Get CSM Index Score' value seen in that month. The API returns only a current snapshot, so this history builds up from 2026-11 onwards (feeds the CSM Index column in the PA/PIP before-vs-after analysis).
+  trainer_index_details TEXT,     -- same shape as csm_index_details, from Koenig's 'Get TI Index Score' (Trainers).
+  asm_index_details TEXT,         -- same shape as csm_index_details, from Koenig's 'Get ASM Index Score' (sales managers).
+  dm_index_details TEXT,          -- same shape as csm_index_details, from Koenig's 'Get DM Index Score' (ATMs).
   common_index_points REAL,       -- Koenig "Common Index" TotalPoint (All teams). Shown plainly in every dept table — not a Worry Index signal.
   country TEXT,                   -- from Koenig "Get Employee Details (PMS)" (Sales/CSMs and Trainers — see PA Algo). Used to scope PA Algo's salary-multiple criteria to India-based CSMs first. NULL = not yet synced.
   emp_city TEXT,                  -- same feed, same scope — informational only.
