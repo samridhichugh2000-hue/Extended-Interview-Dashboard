@@ -2761,30 +2761,33 @@ function PaPipProgressModal({ emp, p, onClose }) {
             {p.verdict === 'nodata' && <> — none of the parameters has enough history on both sides yet.</>}
             {p.note && <> {p.note}</>}
           </div>
-          <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, overflow: 'hidden' }}>
-            <div className="mono" style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, padding: '10px 16px', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-              <span>Parameter</span><span style={{ textAlign: 'right' }}>Before</span><span style={{ textAlign: 'right' }}>After</span><span style={{ textAlign: 'right' }}>Change</span>
-            </div>
-            {p.rows.map((r) => {
-              const c = r.verdict === 'better' ? '#5EEAD4' : r.verdict === 'worse' ? '#F87171' : '#8A90A8';
-              return (
-                <div key={r.key} style={{ padding: '11px 16px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, alignItems: 'baseline', fontSize: 13 }}>
-                    <span style={{ fontWeight: 600 }}>{r.label}</span>
-                    {r.delta != null ? <>
-                      <span className="mono" style={{ textAlign: 'right', fontSize: 12.5, color: '#C7CBDA' }}>{fmt(r.kind, r.before)}</span>
-                      <span className="mono" style={{ textAlign: 'right', fontSize: 12.5, color: '#C7CBDA' }}>{fmt(r.kind, r.after)}</span>
-                      <span className="mono" style={{ textAlign: 'right', fontSize: 12, fontWeight: 600, color: c }}>{r.delta === 0 ? 'No change' : `${r.delta > 0 ? '▲' : '▼'} ${sign(r.kind, r.delta)}${r.pct != null && r.kind !== 'pct' ? ` (${Math.abs(Math.round(r.pct))}%)` : ''}`}</span>
-                    </> : <>
-                      <span className="mono" style={{ gridColumn: 'span 3', textAlign: 'right', fontSize: 12.5, color: r.current != null ? '#C7CBDA' : '#5C6178' }}>{r.current != null ? `Now ${r.current.toLocaleString('en-IN')}` : '—'}</span>
-                    </>}
+          {/* Sales and Trainer see only the month-by-month grid below; the other teams keep this summary. */}
+          {!['Sales', 'Trainer'].includes(emp.team) && (
+            <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, overflow: 'hidden' }}>
+              <div className="mono" style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, padding: '10px 16px', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                <span>Parameter</span><span style={{ textAlign: 'right' }}>Before</span><span style={{ textAlign: 'right' }}>After</span><span style={{ textAlign: 'right' }}>Change</span>
+              </div>
+              {p.rows.map((r) => {
+                const c = r.verdict === 'better' ? '#5EEAD4' : r.verdict === 'worse' ? '#F87171' : '#8A90A8';
+                return (
+                  <div key={r.key} style={{ padding: '11px 16px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, alignItems: 'baseline', fontSize: 13 }}>
+                      <span style={{ fontWeight: 600 }}>{r.label}</span>
+                      {r.delta != null ? <>
+                        <span className="mono" style={{ textAlign: 'right', fontSize: 12.5, color: '#C7CBDA' }}>{fmt(r.kind, r.before)}</span>
+                        <span className="mono" style={{ textAlign: 'right', fontSize: 12.5, color: '#C7CBDA' }}>{fmt(r.kind, r.after)}</span>
+                        <span className="mono" style={{ textAlign: 'right', fontSize: 12, fontWeight: 600, color: c }}>{r.delta === 0 ? 'No change' : `${r.delta > 0 ? '▲' : '▼'} ${sign(r.kind, r.delta)}${r.pct != null && r.kind !== 'pct' ? ` (${Math.abs(Math.round(r.pct))}%)` : ''}`}</span>
+                      </> : <>
+                        <span className="mono" style={{ gridColumn: 'span 3', textAlign: 'right', fontSize: 12.5, color: r.current != null ? '#C7CBDA' : '#5C6178' }}>{r.current != null ? `Now ${r.current.toLocaleString('en-IN')}` : '—'}</span>
+                      </>}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#6E7488', marginTop: 4, lineHeight: 1.4 }}>{r.delta != null ? r.window : r.note}</div>
                   </div>
-                  <div style={{ fontSize: 11, color: '#6E7488', marginTop: 4, lineHeight: 1.4 }}>{r.delta != null ? r.window : r.note}</div>
-                </div>
-              );
-            })}
-            {!p.rows.length && <div style={{ padding: 16, fontSize: 12.5, color: '#6E7488' }}>Nothing is tracked for this team.</div>}
-          </div>
+                );
+              })}
+              {!p.rows.length && <div style={{ padding: 16, fontSize: 12.5, color: '#6E7488' }}>Nothing is tracked for this team.</div>}
+            </div>
+          )}
           {p.monthly?.columns?.length > 0 && (
             <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, overflow: 'hidden' }}>
               <div style={{ padding: '12px 16px 4px' }}>
