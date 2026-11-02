@@ -121,6 +121,20 @@ const AMBIGUOUS_FIRST_NAME_ALIASES = {
   abhishek: 'abhishek.soni@koenig-solutions.com', // vs. Abhishek Vidiyala — confirmed via HR
   nidhi: 'nidhi.kumra@koenig-solutions.com', // vs. Nidhi Karthik Nayak — confirmed via manager-feedback cross-check
   sandeep: 'sandeep.singh@koenig-solutions.com', // vs. Sandeep Joshi — confirmed via manager-feedback cross-check
+  // The names below came through Koenig's feeds as a first name or a variant spelling and resolved to
+  // nobody, so their reports got no manager CC. Each maps to the one matching active employee
+  // (checked against employees.name / email on 2026-11-02). "Jessica" is left out on purpose: it fits
+  // both Jessica Saluja and Neha Shah (jessica@), which needs a human call.
+  manish: 'manish.kumar@koenig-solutions.com', // the Trainer Manish — Manish Kumar, EMP844 (his 13 reports are Trainers)
+  simone: 'simone@koenig-solutions.com', // Shipra Jaiswal, Sales
+  sunil: 'Sunilkumar.kushwaha@koenig-solutions.com', // Sunil Kushwaha, PT Team
+  aloysious: 'aloysious.ambrose@koenig-solutions.com', // Aloysious Ambrose, Trainer
+  prem: 'premnidhi.sharma@koenig-solutions.com', // Prem Sharma, Trainer
+  'vinithson iniyan jeremiah': 'Vinithson.Jeremiah@koenig-solutions.com', // Vinithson Jeremiah, Trainer
+  'faraz hameed': 'Faraz.Hameed@koenig-solutions.com', // Faraz Hameed, Sales
+  'imran ali m.r': 'Imran.Ali@koenig-solutions.com', // Imran Ali Mr, Trainer
+  'anish k': 'Anish.Samy@koenig-solutions.com', // Anish Samy, Trainer
+  'archita singh singh': 'Archita.Singh@koenig-solutions.com', // Archita Singh, Trainer
 };
 
 // Two managers can share a full name. The report's team tells them apart, and the

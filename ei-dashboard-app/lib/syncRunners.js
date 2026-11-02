@@ -134,6 +134,18 @@ export async function syncPip() {
   const existing = await db.execute('SELECT id FROM employees');
   const knownIds = new Set(existing.rows.map((r) => r.id));
 
+  // PA/PIPs issued from this dashboard are stored with a NULL source_id (Koenig only learns of them once the
+  // RMS post is wired up). They are kept across this sync, not wiped with Koenig's rows, so an employee who
+  // already has history in Koenig does not lose a just-issued PA/PIP or have their status reset; one that
+  // Koenig later lists (same type, same issue date) is dropped so it is not shown twice.
+  const localRows = (await db.execute('SELECT id, employee_id, type, issued_on, comment, is_active FROM pip_status WHERE source_id IS NULL')).rows;
+  const localByEmployee = new Map();
+  for (const l of localRows) {
+    if (!localByEmployee.has(l.employee_id)) localByEmployee.set(l.employee_id, []);
+    localByEmployee.get(l.employee_id).push(l);
+  }
+  const dayKey = (s) => { const d = new Date(s); return Number.isNaN(d.getTime()) ? String(s) : d.toISOString().slice(0, 10); };
+
   const byEmployee = new Map();
   for (const r of rows) {
     const employeeId = 'EMP' + r.empCode;
@@ -154,7 +166,13 @@ export async function syncPip() {
     incidents.sort((a, b) => new Date(b.createdOn) - new Date(a.createdOn));
     const current = incidents.find((i) => i.isActive) || null;
 
-    statements.push({ sql: 'DELETE FROM pip_status WHERE employee_id = ?', args: [employeeId] });
+    statements.push({ sql: 'DELETE FROM pip_status WHERE employee_id = ? AND source_id IS NOT NULL', args: [employeeId] });
+    const keptLocal = [];
+    for (const l of localByEmployee.get(employeeId) || []) {
+      const listedByKoenig = incidents.some((i) => i.type === l.type && dayKey(i.fromDate) === dayKey(l.issued_on));
+      if (listedByKoenig) statements.push({ sql: 'DELETE FROM pip_status WHERE id = ?', args: [l.id] });
+      else keptLocal.push(l);
+    }
     for (const i of incidents) {
       statements.push({
         sql: `INSERT INTO pip_status (employee_id, type, issued_on, review_by, breaches, comment, is_active, source_id)
@@ -163,10 +181,13 @@ export async function syncPip() {
       });
     }
 
-    const status = current ? (current.type === 'PIP' ? 'PIP Issued' : 'PA Issued') : 'In Progress';
+    // A dashboard-issued case that is still open counts as current when Koenig has no open one.
+    const localCurrent = current ? null : keptLocal.filter((l) => l.is_active).pop() || null;
+    const effective = current ? { type: current.type, comment: current.comment } : localCurrent ? { type: localCurrent.type, comment: localCurrent.comment } : null;
+    const status = effective ? (effective.type === 'PIP' ? 'PIP Issued' : 'PA Issued') : 'In Progress';
     statements.push({
       sql: 'UPDATE employees SET status = ?, hr_note = ? WHERE id = ?',
-      args: [status, current ? current.comment : null, employeeId],
+      args: [status, effective ? effective.comment : null, employeeId],
     });
     updated++;
   }
@@ -2123,6 +2144,8 @@ export const SYNC_RUNNERS = {
     const extra = await sendExtraWeeklyCheckIns();
     return { message: `${pipMessage} | ${nj.message} | ${paPip.message} | ${extra.message}` };
   },
+  // Friday: the Weekly Goals Report (commitments vs. updates, ratings, and who has not submitted) to HR@.
+  weeklygoalsreport: async () => (await import('./weeklyGoalsReportRunner.js')).sendWeeklyGoalsReport(),
   weeklyresponsereport: async () => {
     const { sendWeeklyResponseReport } = await import('./weeklyResponseReportRunner.js');
     return sendWeeklyResponseReport();

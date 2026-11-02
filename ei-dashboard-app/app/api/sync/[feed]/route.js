@@ -16,7 +16,7 @@ export const maxDuration = 300; // Vercel Pro ceiling; most feeds finish well un
 // Trainer fails open into getting a check-in, which is easy to miss without
 // this banner. The other 10 data-sync feeds aren't tracked — they're not
 // what "did the report send" is asking about.
-const TRACKED_JOBS = new Set(['weeklyreport', 'weeklyresponsereport', 'trainerrc', 'rcfullybooked']);
+const TRACKED_JOBS = new Set(['weeklyreport', 'weeklyresponsereport', 'weeklygoalsreport', 'trainerrc', 'rcfullybooked']);
 
 // Each feed is meant to complete comfortably under Vercel Hobby's 60s
 // function limit on its own — that's why this is one route per feed instead

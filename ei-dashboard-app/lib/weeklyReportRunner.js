@@ -75,6 +75,7 @@ const INITIAL_EMAIL_NO_CC_MANAGERS = ['Rohit Aggarwal'];
 // queued behind it in the batch, unlike before when a single throw here
 // propagated out and failed the whole job.
 async function sendCheckIns({ db, week, employees, questionsByTeam, baseUrl, subjectFor, htmlFor, getManagerEmail, sendMail }) {
+  const { questionsForEmployee } = await import('./data.js');
   const { mapWithConcurrency } = await import('./syncRunners.js');
 
   // Managers who are not CC'd on the initial question email only. The
@@ -96,7 +97,7 @@ async function sendCheckIns({ db, week, employees, questionsByTeam, baseUrl, sub
   for (const emp of employees) {
     if (alreadySent.has(emp.id)) { skippedSent++; continue; }
     if (!emp.email) { skippedNoEmail++; continue; }
-    const q = questionsByTeam.get(emp.team);
+    const q = questionsForEmployee(emp, questionsByTeam);
     if (!q) { skippedNoQuestions++; continue; }
     toSend.push({ emp, q });
   }
@@ -177,7 +178,7 @@ export async function sendWeeklyReports() {
   const questionsByTeam = new Map(NJ_QUESTIONS.map((q) => [q.team, q]));
   const baseUrl = process.env.APP_BASE_URL;
 
-  const employees = await db.execute("SELECT id, name, email, team, manager, rc_fully_booked_week, rc_fully_booked_sc_hours FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team', 'FM Team', 'Recruitment Team') AND active = 1 AND dor IS NULL AND tenure_days < 182");
+  const employees = await db.execute("SELECT id, name, email, team, designation, manager, rc_fully_booked_week, rc_fully_booked_sc_hours FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team', 'FM Team', 'Recruitment Team') AND active = 1 AND dor IS NULL AND tenure_days < 182");
   const { employees: eligible, skippedFullyBooked } = excludeFullyBookedTrainers(employees.rows, week);
 
   const r = await sendCheckIns({
@@ -230,7 +231,7 @@ export async function sendPaPipWeeklyCheckIns() {
   const today = new Date();
 
   const candidates = await db.execute(
-    "SELECT id, name, email, team, manager, status, rc_fully_booked_week, rc_fully_booked_sc_hours FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team', 'FM Team', 'Recruitment Team') AND active = 1 AND dor IS NULL AND tenure_days >= 182 AND status IN ('PA Issued', 'PIP Issued')"
+    "SELECT id, name, email, team, designation, manager, status, rc_fully_booked_week, rc_fully_booked_sc_hours FROM employees WHERE team IN ('Sales', 'Trainer', 'PT Team', 'FM Team', 'Recruitment Team') AND active = 1 AND dor IS NULL AND tenure_days >= 182 AND status IN ('PA Issued', 'PIP Issued')"
   );
 
   const ids = candidates.rows.map((e) => e.id);
@@ -267,13 +268,13 @@ export async function sendPaPipWeeklyCheckIns() {
 // team plus a few from Vardaan Aggarwal's. Listed by employee id, resolved
 // against the employees table on 2026-11-01; HR supplied the ids for the
 // four names that didn't match by name (EMP3794, EMP3259, EMP3279, EMP1477).
-const EXTRA_CHECKIN_EMPLOYEE_IDS = [
+export const EXTRA_CHECKIN_EMPLOYEE_IDS = [
   'EMP4915', 'EMP3909', 'EMP3341', 'EMP3890', 'EMP3948', 'EMP3395', 'EMP3195', 'EMP1931', 'EMP2370',
   'EMP4893', 'EMP4890', 'EMP3929', 'EMP3775', 'EMP3307', 'EMP3318', 'EMP2645', 'EMP2525', 'EMP2400',
   'EMP2348', 'EMP2309', 'EMP1689', 'EMP1583', 'EMP1545', 'EMP1368', 'EMP1247', 'EMP1231', 'EMP844',
   'EMP830', 'EMP1227', 'EMP3794', 'EMP3259', 'EMP3279', 'EMP1477',
 ];
-const EXTRA_CHECKIN_MANAGERS = ['Raahil Aggarwal'];
+export const EXTRA_CHECKIN_MANAGERS = ['Raahil Aggarwal'];
 
 // Third population under the same Monday 'weeklyreport' feed: the named ids
 // above plus every active employee reporting to EXTRA_CHECKIN_MANAGERS. Runs
@@ -299,7 +300,7 @@ export async function sendExtraWeeklyCheckIns() {
   const idMarks = EXTRA_CHECKIN_EMPLOYEE_IDS.map(() => '?').join(',');
   const mgrMarks = EXTRA_CHECKIN_MANAGERS.map(() => '?').join(',');
   const rows = await db.execute({
-    sql: `SELECT id, name, email, team, manager, tenure_days, rc_fully_booked_week, rc_fully_booked_sc_hours FROM employees
+    sql: `SELECT id, name, email, team, designation, manager, tenure_days, rc_fully_booked_week, rc_fully_booked_sc_hours FROM employees
           WHERE active = 1 AND dor IS NULL AND (id IN (${idMarks}) OR LOWER(TRIM(manager)) IN (${mgrMarks}))`,
     args: [...EXTRA_CHECKIN_EMPLOYEE_IDS, ...EXTRA_CHECKIN_MANAGERS.map((m) => m.toLowerCase())],
   });

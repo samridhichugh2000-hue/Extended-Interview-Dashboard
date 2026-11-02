@@ -338,7 +338,7 @@ export async function getWeeklyResponses(week) {
 export async function getResponseByToken(token) {
   const db = getDb();
   const res = await db.execute({
-    sql: `SELECT wr.*, e.name, e.team FROM weekly_responses wr
+    sql: `SELECT wr.*, e.name, e.team, e.designation FROM weekly_responses wr
           JOIN employees e ON e.id = wr.employee_id
           WHERE wr.token = ?`,
     args: [token],
@@ -348,6 +348,7 @@ export async function getResponseByToken(token) {
   return {
     name: r.name,
     team: r.team,
+    designation: r.designation,
     week: r.week,
     state: r.state,
     q1: r.q1, a1: r.a1, q2: r.q2, a2: r.a2, q3: r.q3 || null, a3: r.a3 || null, attachmentName: r.attachment_name || null,

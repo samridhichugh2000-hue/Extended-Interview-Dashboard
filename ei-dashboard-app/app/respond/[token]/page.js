@@ -1,5 +1,5 @@
 import { getResponseByToken } from '../../../lib/queries';
-import { NJ_QUESTIONS } from '../../../lib/data';
+import { NJ_QUESTIONS, MANAGER_QUESTIONS, managerRoleFor } from '../../../lib/data';
 import ResponseForm from './ResponseForm';
 
 export const dynamic = 'force-dynamic';
@@ -61,11 +61,13 @@ export default async function RespondPage({ params }) {
     );
   }
 
+  const role = managerRoleFor(r);
+  const hints = (role && MANAGER_QUESTIONS[role]) || NJ_QUESTIONS.find((q) => q.team === r.team);
   return (
     <div style={{ padding: '0 20px' }}>
       <div style={card}>
         <div className="disp" style={{ fontSize: 20, fontWeight: 600 }}>Hi {r.name} — quick check-in</div>
-        <ResponseForm token={token} q1={r.q1} q2={r.q2} q3={r.q3} hint1={NJ_QUESTIONS.find((q) => q.team === r.team)?.hint1} hint2={NJ_QUESTIONS.find((q) => q.team === r.team)?.hint2} />
+        <ResponseForm token={token} q1={r.q1} q2={r.q2} q3={r.q3} hint1={hints?.hint1} hint2={hints?.hint2} />
       </div>
     </div>
   );

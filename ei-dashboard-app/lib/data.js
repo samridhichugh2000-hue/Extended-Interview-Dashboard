@@ -779,6 +779,40 @@ export const NJ_QUESTIONS = [
     q1: 'What did you accomplish last week?', hint1: 'Briefly share your key accomplishments, wins, or progress.',
     q2: 'Which work will you spend time on this week?', hint2: 'Share the key activities you will focus on this week.' },
 ];
+// Managers get their own check-in questions instead of their team's NJ set:
+// ASMs (Assistant Sales Managers), DMs (the Assistant Technical Managers on the
+// Trainer team) and PT Team managers. Matched on the Koenig designation.
+const MANAGER_HINTS = {
+  hint1: 'Briefly share your key achievements, initiatives, or challenges from last week.',
+  hint2: 'Share the priorities you will focus on next week.',
+};
+export const MANAGER_QUESTIONS = {
+  asm: { ...MANAGER_HINTS,
+    q1: 'What were your key achievements, initiatives, or challenges of last week?',
+    q2: 'What are your key priorities for next week?',
+    q3: 'Are you maintaining any experiment sheet? If Yes, kindly attach.' },
+  dm: { ...MANAGER_HINTS,
+    q1: 'What were your key achievements, initiatives, or challenges of last week?',
+    q2: 'What are your key priorities for next week?',
+    q3: 'Are you maintaining any experiment sheet? If Yes, kindly attach.' },
+  ptm: { ...MANAGER_HINTS,
+    hint1: 'Share your key achievements and challenges from last week, and the actions you took to improve processes, efficiency, or outcomes.',
+    q1: 'What were your key achievements and challenges of last week, and what actions did you take to improve processes, efficiency, or overall outcomes?',
+    q2: 'What are your key priorities for next week?',
+    q3: 'Are you maintaining any experiment sheet? If yes, kindly attach.' },
+};
+export function managerRoleFor(emp) {
+  const d = String(emp?.designation || '').trim().toLowerCase();
+  if (emp?.team === 'Sales' && d === 'assistant sales manager') return 'asm';
+  if (emp?.team === 'Trainer' && d === 'assistant technical manager') return 'dm';
+  if (emp?.team === 'PT Team' && d.includes('manager')) return 'ptm';
+  return null;
+}
+// The question set an employee is sent: their manager-role set, else their team's.
+export function questionsForEmployee(emp, questionsByTeam) {
+  const role = managerRoleFor(emp);
+  return (role && MANAGER_QUESTIONS[role]) || questionsByTeam.get(emp.team) || null;
+}
 export const STACK = [
   { k: 'Framework', v: 'Next.js 16.2.2 · App Router' },
   { k: 'Database', v: 'Turso (LibSQL)' },

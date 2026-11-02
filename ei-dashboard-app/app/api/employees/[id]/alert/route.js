@@ -17,6 +17,19 @@ const PIP_SUBJECT_LABEL = { PA: 'Performance Alert', PIP: 'Performance Improveme
 function pipSubject(pipType, name) {
   return `${PIP_SUBJECT_LABEL[pipType]} - ${name}`;
 }
+
+// pip_status holds issued_on / review_by as display strings like "2 Nov 2026" — the same shape Koenig's
+// feed is stored in, which is what the PA/PIP tracking screen, the weekly check-in and the PA/PIP
+// progress badges all read.
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function displayDate(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
+  return m ? `${Number(m[3])} ${MONTHS[Number(m[2]) - 1]} ${m[1]}` : null;
+}
+function todayIstDisplay() {
+  const t = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+  return `${t.getUTCDate()} ${MONTHS[t.getUTCMonth()]} ${t.getUTCFullYear()}`;
+}
 // Must match TEST_RECIPIENTS in app/DashboardClient.js. The first address is also the
 // one earlier [TEST] threads are looked up by.
 const TEST_RECIPIENTS = ['samridhi.chugh@koenig-solutions.com', 'Rashi.oberoi@koenig-solutions.com'];
@@ -113,8 +126,20 @@ export async function POST(request, { params }) {
     }
 
     const db = getDb();
-    const res = await db.execute({ sql: 'UPDATE employees SET status = ? WHERE id = ?', args: [PIP_STATUS[pipType], id] });
-    if (res.rowsAffected === 0) {
+    // Status plus the PA/PIP record itself (issued today, review by the chosen deadline), in one batch, so the
+    // case shows up in PA/PIP tracking straight away. source_id stays NULL: that marks it as issued here, which
+    // keeps syncPip from wiping it before Koenig has the record (see syncPip in lib/syncRunners.js). Any earlier
+    // dashboard-issued case for this person is closed so only the new one counts as running.
+    const [, , upd] = await db.batch([
+      { sql: 'UPDATE pip_status SET is_active = 0 WHERE employee_id = ? AND source_id IS NULL AND is_active = 1', args: [id] },
+      {
+        sql: `INSERT INTO pip_status (employee_id, type, issued_on, review_by, breaches, comment, is_active, source_id)
+              SELECT ?, ?, ?, ?, ?, ?, 1, NULL WHERE EXISTS (SELECT 1 FROM employees WHERE id = ?)`,
+        args: [id, pipType, todayIstDisplay(), displayDate(deadline), JSON.stringify((signals || []).map((s) => s.label).filter(Boolean)), String(draft || ''), id],
+      },
+      { sql: 'UPDATE employees SET status = ? WHERE id = ?', args: [PIP_STATUS[pipType], id] },
+    ], 'write');
+    if (upd.rowsAffected === 0) {
       return NextResponse.json({ ok: false, error: `Email sent, but no employee found with id ${id} to update status.` }, { status: 404 });
     }
     // Best-effort — see postPaPipToRms's own comment. Never let this fail
