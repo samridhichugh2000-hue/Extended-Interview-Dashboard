@@ -96,7 +96,9 @@ const MANAGER_EMAILS = {
   'Sunil Kumar Kushwaha': 'Sunilkumar.kushwaha@koenig-solutions.com',
   'Karan Lakhina': 'karan.lakhina@koenig-solutions.com',
   'Vipin Nautiyal': 'Vipin.Nautiyal@koenig-solutions.com',
-  'Nancy': 'nancy@koenig-solutions.com',
+  // Koenig's feed gives Mayar Baiuomy's manager as just "Nancy"; HR confirmed that is Rimpy Srivastava.
+  // (nancy@ is Jessica Saluja's mailbox, who was being CC'd by mistake.)
+  'Nancy': 'rimpy.srivastava@koenig-solutions.com',
   'Kuldeep Singh': 'Kuldeep.Singh@koenig-solutions.com',
   'Mohsin Afzal Bhat': 'Mohsin.Afzal@koenig-solutions.com',
   'Ritik Chadha': 'ritik.chadha@koenig-solutions.com',

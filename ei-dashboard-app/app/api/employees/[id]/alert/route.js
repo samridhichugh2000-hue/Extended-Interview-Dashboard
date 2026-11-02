@@ -6,6 +6,10 @@ import { draftToHtml } from '../../../../../lib/emailDraft';
 export const dynamic = 'force-dynamic';
 
 const HR_CC = 'HR@koenig-solutions.com';
+// PA/PIP emails show HR@ as the sender. Graph can't open HR@ as a mailbox ("user is invalid"), so they go
+// out of the app's mailbox (GRAPH_SENDER_EMAIL) with HR@ as the From address, which that mailbox is
+// allowed to Send As — checked 2026-11-02: delivered with From and Sender = HR@koenig-solutions.com.
+const HR_FROM = 'HR@koenig-solutions.com';
 const PIP_STATUS = { PA: 'PA Issued', PIP: 'PIP Issued' };
 // Employee name is appended at call time (pipSubject below) — must match
 // pipSubject/PIP_SUBJECT_LABEL in app/DashboardClient.js.
@@ -101,6 +105,7 @@ export async function POST(request, { params }) {
       html: alertEmailHtml({ draft }),
       subjectNeedles: Object.keys(PIP_STATUS).map((t) => prefix + pipSubject(t, name)),
       recipient: testMode ? TEST_RECIPIENTS[0] : email,
+      sendAs: HR_FROM,
     });
 
     if (testMode) {

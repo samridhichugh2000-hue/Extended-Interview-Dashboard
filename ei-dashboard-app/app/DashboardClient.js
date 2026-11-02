@@ -307,8 +307,8 @@ function AlertPreviewModal({ emp, pending, onClose, onSend }) {
             <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — alert preview</div>
             <div style={{ fontSize: 12, color: testMode ? '#F59E0B' : '#6E7488', marginTop: 3 }}>
               {testMode
-                ? `TEST MODE — to ${TEST_RECIPIENTS_LABEL} only. No HR/manager CC, no status change, nothing sent to ${emp.name}.`
-                : <>Worry Index {emp.scoreStr} · {emp.bandLabel} · to {emp.email}, Cc {ccLine}{!emp.managerEmail && ' (no manager email resolved — see lib/managerDirectory.js)'}</>}
+                ? `TEST MODE — from HR@koenig-solutions.com to ${TEST_RECIPIENTS_LABEL} only. No HR/manager CC, no status change, nothing sent to ${emp.name}.`
+                : <>Worry Index {emp.scoreStr} · {emp.bandLabel} · from HR@koenig-solutions.com · to {emp.email}, Cc {ccLine}{!emp.managerEmail && ' (no manager email resolved — see lib/managerDirectory.js)'}</>}
             </div>
           </div>
           <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>

@@ -71,7 +71,9 @@ export async function getSentExternalSummary(email, fromIso, toIso) {
 // `to`/`cc` may be a single address or an array. `attachments`, if given, is
 // [{ name, contentType, content }] with `content` already base64-encoded —
 // Graph's fileAttachment shape wants base64 in contentBytes directly.
-export async function sendMail({ to, cc, subject, html, attachments, from }) {
+// `sendAs` is the address shown in From when it differs from the mailbox the mail goes out of (e.g.
+// HR@koenig-solutions.com, which Graph can't open as a mailbox, sent through a mailbox that has Send As on it).
+export async function sendMail({ to, cc, subject, html, attachments, from, sendAs }) {
   const mailbox = from || SENDER_EMAIL;
   const toList = (Array.isArray(to) ? to : [to]).map((address) => ({ emailAddress: { address } }));
   const ccList = cc ? (Array.isArray(cc) ? cc : [cc]).map((address) => ({ emailAddress: { address } })) : [];
@@ -88,6 +90,7 @@ export async function sendMail({ to, cc, subject, html, attachments, from }) {
     body: JSON.stringify({
       message: {
         subject,
+        ...(sendAs ? { from: { emailAddress: { address: sendAs } } } : {}),
         body: { contentType: 'HTML', content: html },
         toRecipients: toList,
         ccRecipients: ccList,
@@ -131,7 +134,7 @@ export async function findLatestSentThread({ subjectNeedles, recipient, from }) 
 // email when there is no earlier thread. A thread that can't be found or
 // replied to never blocks the send — it falls back to a fresh email and says
 // so in the result: { threaded: boolean, repliedTo?: subject }.
-export async function sendMailInThread({ to, cc, subject, html, subjectNeedles, recipient, from }) {
+export async function sendMailInThread({ to, cc, subject, html, subjectNeedles, recipient, from, sendAs }) {
   const mailbox = from || SENDER_EMAIL;
   const base = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}`;
   const asList = (v) => (v ? (Array.isArray(v) ? v : [v]) : []).map((address) => ({ emailAddress: { address } }));
@@ -156,6 +159,7 @@ export async function sendMailInThread({ to, cc, subject, html, subjectNeedles, 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           subject: `RE: ${subject}`,
+          ...(sendAs ? { from: { emailAddress: { address: sendAs } } } : {}),
           toRecipients: asList(to),
           ccRecipients: asList(cc),
           body: { contentType: 'HTML', content: `${html}<br/>${quoted}` },
@@ -171,6 +175,6 @@ export async function sendMailInThread({ to, cc, subject, html, subjectNeedles, 
     }
   }
 
-  await sendMail({ to, cc, subject, html, from });
+  await sendMail({ to, cc, subject, html, from, sendAs });
   return { threaded: false };
 }
