@@ -79,6 +79,9 @@ const MANAGER_EMAILS = {
   'Rahul Babarao Khadase': 'Rahul.Khadase@koenig-solutions.com',
   'Krishna Ramlolarakh Dwivedi': 'Krishna.Dwivedi@koenig-solutions.com',
   'Praveen Kumar': 'praveen.kumar@koenig-solutions.com',
+  // PT Team manager — shown as "Praveen Chaudhary" for some reports and just "Praveen" for others (see
+  // TEAM_SPECIFIC_MANAGER_EMAILS); his mailbox is praveen.chaudhary@, not praveen.kumar@ (the Trainer Praveen Kumar).
+  'Praveen Chaudhary': 'praveen.chaudhary@koenig-solutions.com',
   'Neha Shah': 'jessica@koenig-solutions.com',
   'Priyanka Goyal': 'Stella.Watson@koenig-solutions.com',
   'Damini Sabharwal': 'Damini.Sabharwal@koenig-solutions.com',
@@ -126,6 +129,9 @@ const AMBIGUOUS_FIRST_NAME_ALIASES = {
 // directory holds the PT one, which was being CC'd on the Trainers' check-ins.
 const TEAM_SPECIFIC_MANAGER_EMAILS = {
   'vaibhav gupta': { Trainer: 'Vaibhav.Gupta@koenig-solutions.com' },
+  // Bare "Praveen" (first name only, from Koenig's New Joiners feed): the PT Team's reports are Praveen
+  // Chaudhary's, the Trainers' are Praveen Kumar's.
+  praveen: { 'PT Team': 'praveen.chaudhary@koenig-solutions.com', Trainer: 'praveen.kumar@koenig-solutions.com' },
 };
 
 const emailByNormalizedName = new Map(
