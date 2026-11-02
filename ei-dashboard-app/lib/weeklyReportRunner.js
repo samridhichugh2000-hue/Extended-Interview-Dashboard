@@ -82,7 +82,7 @@ async function sendCheckIns({ db, week, employees, questionsByTeam, baseUrl, sub
   // still CCs every manager, these included.
   const noInitialCc = new Set(INITIAL_EMAIL_NO_CC_MANAGERS.map((m) => getManagerEmail(m)).filter(Boolean));
   const ccFor = (emp) => {
-    const mgrEmail = getManagerEmail(emp.manager);
+    const mgrEmail = getManagerEmail(emp.manager, emp.team);
     return mgrEmail && noInitialCc.has(mgrEmail) ? undefined : mgrEmail;
   };
 

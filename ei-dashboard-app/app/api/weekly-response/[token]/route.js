@@ -52,7 +52,7 @@ async function handlePost(request, { params }) {
 
   const db = getDb();
   const existing = await db.execute({
-    sql: `SELECT wr.*, e.name, e.email, e.manager FROM weekly_responses wr
+    sql: `SELECT wr.*, e.name, e.email, e.manager, e.team FROM weekly_responses wr
           JOIN employees e ON e.id = wr.employee_id
           WHERE wr.token = ?`,
     args: [token],
@@ -106,7 +106,7 @@ async function handlePost(request, { params }) {
       const { getManagerEmail } = await import('../../../../lib/managerDirectory');
       await sendMail({
         to: row.email,
-        cc: getManagerEmail(row.manager),
+        cc: getManagerEmail(row.manager, row.team),
         subject: `Your response has been recorded — ${row.week}`,
         html: confirmationEmailHtml({ name: row.name, week: row.week, q1: row.q1, a1, q2: row.q2, a2, q3: row.q3, a3, attachmentName: attachment?.name }),
         ...(attachment ? { attachments: [attachment] } : {}),

@@ -76,7 +76,7 @@ export async function sendWeeklyResponseReport() {
       name: emp.name,
       team: emp.team,
       manager: emp.manager,
-      managerEmail: getManagerEmail(emp.manager) || '—',
+      managerEmail: getManagerEmail(emp.manager, emp.team) || '—',
       status,
       sentAt: r?.sent_at || '—',
       receivedAt: r?.received_at || '—',

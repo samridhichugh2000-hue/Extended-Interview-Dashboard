@@ -100,7 +100,7 @@ export async function getEmployees() {
       email: e.email,
       team: e.team,
       manager: e.manager,
-      managerEmail: getManagerEmail(e.manager),
+      managerEmail: getManagerEmail(e.manager, e.team),
       doj: e.doj,
       tenure: e.tenure_days,
       status: e.status,

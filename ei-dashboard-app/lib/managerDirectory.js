@@ -118,6 +118,14 @@ const AMBIGUOUS_FIRST_NAME_ALIASES = {
   sandeep: 'sandeep.singh@koenig-solutions.com', // vs. Sandeep Joshi — confirmed via manager-feedback cross-check
 };
 
+// Two managers can share a full name. The report's team tells them apart, and the
+// plain directory entry above stays for everyone else. "Vaibhav Gupta" is both a
+// PT Team manager (vaibhav.gupta1@) and a Trainer manager (Vaibhav.Gupta@) — the
+// directory holds the PT one, which was being CC'd on the Trainers' check-ins.
+const TEAM_SPECIFIC_MANAGER_EMAILS = {
+  'vaibhav gupta': { Trainer: 'Vaibhav.Gupta@koenig-solutions.com' },
+};
+
 const emailByNormalizedName = new Map(
   Object.entries(MANAGER_EMAILS).map(([name, email]) => [normalize(name), email])
 );
@@ -133,9 +141,14 @@ function normalize(name) {
   return (name || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-export function getManagerEmail(managerName) {
+// `team` is the team of the person who reports to this manager; it only matters for the
+// shared names in TEAM_SPECIFIC_MANAGER_EMAILS.
+export function getManagerEmail(managerName, team) {
   const key = normalize(managerName);
   if (!key) return null;
+
+  const byTeam = TEAM_SPECIFIC_MANAGER_EMAILS[key]?.[team];
+  if (byTeam) return byTeam;
 
   const exact = emailByNormalizedName.get(key);
   if (exact) return exact;
