@@ -368,6 +368,7 @@ export async function syncPms() {
 export async function syncAudit() {
   const db = getDb();
   const { getEnquiryAudits, isNegativeRating } = await import('./koenigEnquiryAuditApi.js');
+  const { getNegativeEnquiryAudits } = await import('./koenigIncidentApi.js');
 
   function normalize(name) {
     return String(name || '')
@@ -383,34 +384,52 @@ export async function syncAudit() {
     return csmTokens.has(empTokens[0]) && csmTokens.has(empTokens[empTokens.length - 1]);
   }
 
+  // Two sources, added together. The Enquiry Audit Report feed has no employee code, so it is matched by name; the
+  // HR "Get Incident Data By EmpID" API carries the audits raised by hand (reportee feedback, unreplied-email
+  // reviews), matched by employee code. The same audit can be in both, so one that agrees on day and wording is
+  // counted once.
   const audits = await getEnquiryAudits('2020-01-01', '2030-01-01');
-  const salesEmployees = await db.execute("SELECT id, name FROM employees WHERE team = 'Sales'");
+  const employees = await db.execute("SELECT id, name, neg_audits, audit_remarks FROM employees WHERE team IN ('Sales', 'PT Team') AND active = 1 AND dor IS NULL");
 
-  // Every employee is checked against the full, successfully-fetched audit
-  // feed, so a name match of zero is a confirmed zero negative audits, not
-  // an unknown — write it rather than leaving neg_audits null forever (null
-  // would otherwise show as "no data traced" in the Worry Index instead of
-  // a real, counted 0).
-  let updated = 0;
-  let confirmedZero = 0;
-  for (const emp of salesEmployees.rows) {
-    const matches = audits.filter((a) => namesMatch(emp.name, a.csmName));
-    const negatives = matches.filter((a) => isNegativeRating(a.rating));
-    const remarks = negatives.map((a) => ({
-      createdOn: a.createdOn,
-      rating: a.rating,
-      remark: a.remark,
-      enquiryId: a.enquiryId,
-      clientEmail: a.clientEmail,
-    }));
-    await db.execute({
-      sql: 'UPDATE employees SET neg_audits = ?, audit_remarks = ? WHERE id = ?',
-      args: [negatives.length, JSON.stringify(remarks), emp.id],
-    });
-    if (matches.length) updated++; else confirmedZero++;
+  const dayOf = (d) => { const t = new Date(d); return Number.isNaN(t.getTime()) ? String(d) : t.toISOString().slice(0, 10); };
+  const sig = (a) => `${dayOf(a.createdOn)}|${String(a.remark || '').replace(/\s+/g, ' ').trim().slice(0, 60).toLowerCase()}`;
+
+  const failed = new Set();
+  const incidentById = new Map();
+  await mapWithConcurrency(employees.rows, 8, async (emp) => {
+    try {
+      incidentById.set(emp.id, await getNegativeEnquiryAudits(emp.id.replace('EMP', '')));
+    } catch (err) {
+      console.error(`Incident audits failed for ${emp.id}:`, err.message);
+      failed.add(emp.id);
+    }
+  });
+
+  // A name match of zero in a fully fetched feed is a confirmed zero, not an unknown — it is written rather than
+  // left null (null shows as "no data traced" in the Worry Index). An employee whose incident call failed keeps
+  // what they had rather than being overwritten with half the picture. Unchanged rows are not rewritten.
+  const statements = [];
+  let withAudits = 0;
+  let fromIncidents = 0;
+  for (const emp of employees.rows) {
+    if (failed.has(emp.id)) continue;
+    const fromFeed = audits
+      .filter((a) => namesMatch(emp.name, a.csmName) && isNegativeRating(a.rating))
+      .map((a) => ({ createdOn: a.createdOn, rating: a.rating, remark: a.remark, enquiryId: a.enquiryId, clientEmail: a.clientEmail }));
+    const seen = new Set(fromFeed.map(sig));
+    const extra = (incidentById.get(emp.id) || [])
+      .filter((a) => !seen.has(sig(a)))
+      .map(({ source, ...rest }) => rest);
+    const remarks = [...fromFeed, ...extra].sort((x, y) => new Date(y.createdOn) - new Date(x.createdOn));
+    fromIncidents += extra.length;
+    if (remarks.length) withAudits++;
+    const json = JSON.stringify(remarks);
+    if (emp.neg_audits === remarks.length && emp.audit_remarks === json) continue;
+    statements.push({ sql: 'UPDATE employees SET neg_audits = ?, audit_remarks = ? WHERE id = ?', args: [remarks.length, json, emp.id] });
   }
+  if (statements.length) await db.batch(statements, 'write');
 
-  return { message: `Synced audit data for ${updated} Sales employees with matched records (${confirmedZero} confirmed zero — no name match in the feed).` };
+  return { message: `Synced negative audits for ${employees.rows.length - failed.size} Sales/PT employees (${withAudits} with audits, ${fromIncidents} added from HR incidents, ${statements.length} rows changed, ${failed.size} kept previous data after API errors).` };
 }
 
 export async function syncSc() {
