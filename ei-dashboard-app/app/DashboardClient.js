@@ -3387,8 +3387,9 @@ function PaAlgoEvidence({ evidence, emp }) {
   };
   evidence = (evidence || []).map(withTrue);
   // SCs raised — informational for Sales, shown regardless of whether any rule fired.
-  const scTotal = emp?.scRaised ?? 0;
-  const scRecent = (emp?.scDetails || []).filter((s) => s.createdOn && Date.now() - new Date(s.createdOn).getTime() <= 30 * 86400000).length;
+  const scDates = (emp?.scDetails || []).map((s) => s.createdOn).filter(Boolean).sort();
+  const scRecent = scDates.filter((d) => Date.now() - new Date(d).getTime() <= 30 * 86400000).length;
+  const scLast = scDates.length ? scDates[scDates.length - 1].slice(0, 10) : null;
   // Index scores sit alongside the rule evidence — informational, not PA Algo rules.
   const idxKeys = indexKeysFor(emp);
   return (
@@ -3397,8 +3398,7 @@ function PaAlgoEvidence({ evidence, emp }) {
         <div>
           <div style={{ fontSize: 11, fontWeight: 600, color: '#C7CBDA', textTransform: 'uppercase', letterSpacing: '.04em' }}>SCs Raised</div>
           <div style={{ fontSize: 12, color: '#8A90A8', marginTop: 3 }}>
-            <b style={{ color: scTotal > 0 ? '#5EEAD4' : '#C7CBDA' }}>{scTotal}</b> service {scTotal === 1 ? 'contract' : 'contracts'} raised in total
-            {(emp?.scDetails || []).length > 0 && <> · {scRecent} in the last 30 days</>}. Shown for reference — it is not one of the PA Algo's rules.
+            <b style={{ color: scRecent > 0 ? '#5EEAD4' : '#C7CBDA' }}>{scRecent}</b> service {scRecent === 1 ? 'contract' : 'contracts'} raised in the last 30 days · Last SC raised: <b style={{ color: '#C7CBDA' }}>{scLast || 'none on file'}</b>. Shown for reference — it is not one of the PA Algo's rules.
           </div>
         </div>
       )}
