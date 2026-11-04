@@ -3144,7 +3144,8 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
             ? { label: '<3 months tenure', bg: 'rgba(255,255,255,0.05)', color: '#A8AEC4', border: 'rgba(255,255,255,0.14)' }
             : PA_ALGO_STATUS_STYLE[algo.status] || PA_ALGO_STATUS_STYLE['no-data'];
           const sugg = isTrainer && algo.negFeedbackSuggestion ? NEG_FEEDBACK_SUGGESTION_STYLE[algo.negFeedbackSuggestion] : null;
-          const hasEvidence = algo.evidence?.length > 0;
+          // Sales rows always open: the SCs Raised block is shown whether or not a rule fired.
+          const hasEvidence = algo.evidence?.length > 0 || !isTrainer;
           const isExpanded = expandedId === e.id;
           const util = isTrainer ? thisMonthUtil(e) : null;
           const targets = !isTrainer ? TARGET_QUARTERS.map((q) => ({ q, t: quarterTargetLabel(e, nrMode, q) })) : [];
@@ -3384,11 +3385,23 @@ function PaAlgoEvidence({ evidence, emp }) {
       rows: ev.rows.map((r) => [...r, trueByMonth.has(r[0]) ? '₹' + trueByMonth.get(r[0]).toLocaleString('en-IN') : '—']),
     };
   };
-  evidence = evidence.map(withTrue);
+  evidence = (evidence || []).map(withTrue);
+  // SCs raised — informational for Sales, shown regardless of whether any rule fired.
+  const scTotal = emp?.scRaised ?? 0;
+  const scRecent = (emp?.scDetails || []).filter((s) => s.createdOn && Date.now() - new Date(s.createdOn).getTime() <= 30 * 86400000).length;
   // Index scores sit alongside the rule evidence — informational, not PA Algo rules.
   const idxKeys = indexKeysFor(emp);
   return (
     <div style={{ padding: '2px 18px 16px 40px', background: 'rgba(255,255,255,0.015)', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {emp?.team === 'Sales' && (
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#C7CBDA', textTransform: 'uppercase', letterSpacing: '.04em' }}>SCs Raised</div>
+          <div style={{ fontSize: 12, color: '#8A90A8', marginTop: 3 }}>
+            <b style={{ color: scTotal > 0 ? '#5EEAD4' : '#C7CBDA' }}>{scTotal}</b> service {scTotal === 1 ? 'contract' : 'contracts'} raised in total
+            {(emp?.scDetails || []).length > 0 && <> · {scRecent} in the last 30 days</>}. Shown for reference — it is not one of the PA Algo's rules.
+          </div>
+        </div>
+      )}
       {idxKeys.map((k) => {
         const rows = indexRows(emp, k);
         const label = INDEX_LABELS[k];
