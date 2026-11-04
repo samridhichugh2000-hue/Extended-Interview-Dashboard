@@ -336,6 +336,9 @@ function countDatedRecordsBy(details, dateFields, since, until, filter) {
 // Whole weeks the employee has been here inside the window — the window's
 // length, but never counting time before they joined (tenure is in days).
 // Powers the windowed versions of the "per week" pace signals.
+// First Graph (Teams) meeting on record — the External meetings signal has no
+// data before this date.
+const EXTERNAL_MEETINGS_TRACKED_FROM = new Date('2026-09-09T00:00:00+05:30');
 function weeksInWindow(e, since, until) {
   const end = until || new Date();
   const joined = new Date(Date.now() - (e.tenure ?? 0) * 86400000);
@@ -581,13 +584,19 @@ export const SIGNAL_DEFS = [
   // from Tech calls above (externalMeetingsCount, sourced from Graph API
   // Calls' client_emails, not Koenig's tech-call feed), and a heavier
   // per-week penalty since a client meeting is a higher bar than a call.
+  // Weeks are counted only from EXTERNAL_MEETINGS_TRACKED_FROM (first Graph
+  // meeting on record): before that there is no meeting data, so those weeks
+  // must not be scored as "no external meeting".
   { label: 'External meetings < 1 per week', teams: 'Sales', pts: -5, live: true,
     hasData: (e) => e.externalMeetingsCount != null,
-    fires: (e) => { const wks = Math.floor((e.tenure ?? 0) / 7); return wks > 0 && (e.externalMeetingsCount ?? 0) < wks; },
-    count: (e) => Math.floor((e.tenure ?? 0) / 7) - (e.externalMeetingsCount ?? 0),
+    fires: (e) => { const wks = weeksInWindow(e, EXTERNAL_MEETINGS_TRACKED_FROM, null); return wks > 0 && (e.externalMeetingsCount ?? 0) < wks; },
+    count: (e) => Math.max(0, weeksInWindow(e, EXTERNAL_MEETINGS_TRACKED_FROM, null) - (e.externalMeetingsCount ?? 0)),
     // Per-meeting start dates (externalMeetingDates, attached from the Graph meetings list by lib/queries.js's attachExternalMeetingDates) —
     // same meetings the Graph API Calls screen lists, counted by date inside the window.
-    countInWindow: (e, since, until) => Math.max(0, weeksInWindow(e, since, until) - countDatedRecords(e.externalMeetingDates || [], 'd', since, untilOrNow(until))) },
+    countInWindow: (e, since, until) => {
+      const from = !since || since < EXTERNAL_MEETINGS_TRACKED_FROM ? EXTERNAL_MEETINGS_TRACKED_FROM : since;
+      return Math.max(0, weeksInWindow(e, from, until) - countDatedRecords(e.externalMeetingDates || [], 'd', from, untilOrNow(until)));
+    } },
   // negative, not yet tracked
   // Cumulative across every week this NJ has been tracked, not just the
   // current one — 2 missed weeks scores 2 × -2, same convention as other
