@@ -426,7 +426,7 @@ function avgThresholdCheck(threshold, months) {
 // returns null if not applicable/not fired, or { reason, evidence } if it
 // fires.
 
-// (ii) Zero SC (Service Contract) raised in the trailing 30 days. Needs a
+// (ii) Zero SC (Student Card) raised in the trailing 30 days. Needs a
 // full 30-day window to mean anything — exempts anyone under 30 days
 // tenure, who would otherwise trivially fire this on day one.
 const ZERO_SC_MIN_TENURE_DAYS = 30;

@@ -35,7 +35,7 @@ async function getToken({ forceRefresh = false } = {}) {
   return tokenPromise;
 }
 
-// List CSM SC List — every SC (service contract) raised, with the raising
+// List CSM SC List — every SC (student card) raised, with the raising
 // CSM's employee code directly on the row (no name-fuzzy-matching needed,
 // unlike the enquiry audit feed).
 export async function getScList(startDate, endDate) {

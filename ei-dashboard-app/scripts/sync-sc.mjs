@@ -1,4 +1,4 @@
-// Syncs SCs (service contracts) raised from the Koenig "List CSM SC List"
+// Syncs SCs (student cards) raised from the Koenig "List CSM SC List"
 // API into employees.sc_raised / sc_details, Sales team only. Unlike the
 // enquiry audit feed, this one carries the employee code directly, so
 // matching is a plain id lookup, no fuzzy name matching required.

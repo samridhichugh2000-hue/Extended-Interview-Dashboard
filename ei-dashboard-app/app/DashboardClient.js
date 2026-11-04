@@ -2045,7 +2045,7 @@ function ScListModalBody({ emp, onClose }) {
         <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <div className="disp" style={{ fontSize: 17, fontWeight: 600 }}>{emp.name} — SCs raised</div>
-            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>{emp.scRaised} service {emp.scRaised === 1 ? 'contract' : 'contracts'} raised</div>
+            <div style={{ fontSize: 12, color: '#6E7488', marginTop: 3 }}>{emp.scRaised} {emp.scRaised === 1 ? 'student card' : 'student cards'} raised</div>
           </div>
           <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
         </div>
@@ -3398,7 +3398,7 @@ function PaAlgoEvidence({ evidence, emp }) {
         <div>
           <div style={{ fontSize: 11, fontWeight: 600, color: '#C7CBDA', textTransform: 'uppercase', letterSpacing: '.04em' }}>SCs Raised</div>
           <div style={{ fontSize: 12, color: '#8A90A8', marginTop: 3 }}>
-            <b style={{ color: scRecent > 0 ? '#5EEAD4' : '#C7CBDA' }}>{scRecent}</b> service {scRecent === 1 ? 'contract' : 'contracts'} raised in the last 30 days · Last SC raised: <b style={{ color: '#C7CBDA' }}>{scLast || 'none on file'}</b>. Shown for reference — it is not one of the PA Algo's rules.
+            <b style={{ color: scRecent > 0 ? '#5EEAD4' : '#C7CBDA' }}>{scRecent}</b> {scRecent === 1 ? 'student card' : 'student cards'} raised in the last 30 days · Last SC raised: <b style={{ color: '#C7CBDA' }}>{scLast || 'none on file'}</b>. Shown for reference — it is not one of the PA Algo's rules.
           </div>
         </div>
       )}
