@@ -119,7 +119,7 @@ function useEmployeeActions() {
       });
       const json = await res.json();
       window.alert(json.ok
-        ? (testMode ? `Test email sent to ${TEST_RECIPIENTS_LABEL}${json.threaded ? ' as a reply in the earlier test thread' : ''} — ${emp.name}'s status was not changed.` : `${pipType} saved and alert email sent${json.threaded ? ' as a reply in the previous PA/PIP email thread' : ''}.`)
+        ? (testMode ? `Test email sent to ${TEST_RECIPIENTS_LABEL}${json.threaded ? ' as a reply in the earlier test thread' : ''} — ${emp.name}'s status was not changed.` : `${pipType} saved and alert email sent${json.threaded ? ' as a reply in the previous PA/PIP email thread' : ''}. ${json.rms?.ok === false ? `⚠ RMS was NOT updated (${json.rms.error}) — please add it in RMS manually.` : 'Also posted to RMS.'}`)
         : `Failed: ${json.error}`);
       if (json.ok) {
         setAlertTarget(null);

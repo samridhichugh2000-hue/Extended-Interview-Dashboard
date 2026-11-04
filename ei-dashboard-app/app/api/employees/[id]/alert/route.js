@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { sendMailInThread } from '../../../../../lib/graphMailer';
 import { getDb } from '../../../../../lib/db';
 import { draftToHtml } from '../../../../../lib/emailDraft';
+import { buildInsertPipRequest, insertPipRecord } from '../../../../../lib/koenigPipInsertApi';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,6 +31,9 @@ function todayIstDisplay() {
   const t = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
   return `${t.getUTCDate()} ${MONTHS[t.getUTCMonth()]} ${t.getUTCFullYear()}`;
 }
+function todayIstIso() {
+  return new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
 // Must match TEST_RECIPIENTS in app/DashboardClient.js. The first address is also the
 // one earlier [TEST] threads are looked up by.
 const TEST_RECIPIENTS = ['samridhi.chugh@koenig-solutions.com', 'Rashi.oberoi@koenig-solutions.com'];
@@ -55,8 +59,15 @@ function alertEmailHtml({ draft }) {
 // same AlertPreviewModal), so wiring it here covers both entry points at
 // once. Deliberately best-effort/non-fatal — a future RMS outage or bug
 // here should never block the email + local status update from succeeding.
-async function postPaPipToRms(payload) {
-  console.log('RMS posting not yet wired up (no API provided) — would have posted:', JSON.stringify(payload));
+async function postPaPipToRms({ employeeId, pipType, deadline, draft }) {
+  const request = buildInsertPipRequest({
+    employeeId,
+    pipType,
+    issuedOn: todayIstIso(),
+    deadline,
+    comment: draft,
+  });
+  return insertPipRecord(request);
 }
 
 // Fired from the "Alert" action on the Dept table row, the EmployeeModal's
@@ -144,12 +155,15 @@ export async function POST(request, { params }) {
     }
     // Best-effort — see postPaPipToRms's own comment. Never let this fail
     // the request; the email's already sent and status already updated.
+    // The outcome is reported back so HR knows if RMS still needs the record.
+    let rms = { ok: true };
     try {
       await postPaPipToRms({ employeeId: id, name, pipType, deadline, signals, metric, draft });
     } catch (err) {
       console.error(`postPaPipToRms(${id}) failed:`, err.message);
+      rms = { ok: false, error: err.message };
     }
-    return NextResponse.json({ ok: true, threaded: mail.threaded, repliedTo: mail.repliedTo || null });
+    return NextResponse.json({ ok: true, threaded: mail.threaded, repliedTo: mail.repliedTo || null, rms });
   } catch (err) {
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }
