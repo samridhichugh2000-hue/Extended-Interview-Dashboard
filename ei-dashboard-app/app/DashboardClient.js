@@ -160,10 +160,71 @@ const TEST_RECIPIENTS_LABEL = TEST_RECIPIENTS.join(' and ');
 // the user starts editing by hand. Deliberately plain text, not HTML: HR
 // edits this directly in a textarea, so no markup to fight with; the route
 // converts it to HTML (escape + newline -> <br/>) only at send time.
+// Turns one checked parameter into a full sentence for the email, so the
+// employee reads what actually happened ("No SCs were raised in the last 30
+// days") rather than a label with a bare Yes/No or number next to it.
+// `s` is a signalReport row (or one of the extra rows built in
+// AlertPreviewModal); `emp` supplies the raw figures where the row only
+// carries a shortfall.
+function signalSentence(s, emp) {
+  const pl = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const n = s.count;
+  const fired = s.status === 'fired';
+  switch (s.label) {
+    case 'SCs raised in last 30 days': {
+      const c = s.scRecent;
+      return c === 0 ? 'No student cards (SCs) were raised in the last 30 days.' : `Only ${pl(c, 'student card (SC) was', 'student cards (SCs) were')} raised in the last 30 days.`;
+    }
+    case 'Zero assignments since joining, including future':
+      return fired ? 'You have no assignments on record since joining, including any scheduled for the coming weeks.' : 'You have assignments on record, including upcoming ones.';
+    case 'Manager feedback below satisfactory (last feedback)': {
+      // detail is "<rating> · <date>" (see SIGNAL_DEFS)
+      const [rating, date] = String(s.detail || '').split(' · ');
+      const when = date && date !== 'undated' ? ` dated ${date}` : '';
+      if (fired) return `Your last manager feedback${when} was rated below satisfactory.`;
+      return rating ? `Your last manager feedback${when} was rated: ${rating}.` : 'No rated manager feedback is on record.';
+    }
+    case 'Negative enquiry audit':
+      return fired ? `${pl(n, 'negative enquiry audit has', 'negative enquiry audits have')} been recorded against you.` : 'No negative enquiry audits have been recorded.';
+    case 'Negative feedback on delivery':
+      return fired ? `${pl(n, 'negative feedback was', 'negative feedbacks were')} received on your training delivery.` : 'No negative feedback has been received on your delivery.';
+    case 'Failure in exam':
+      return fired ? `You have ${pl(n, 'exam failure', 'exam failures')} on record.` : 'You have no exam failures on record.';
+    case 'Passed exam':
+      return fired ? `You have passed ${pl(n, 'exam', 'exams')}.` : 'You have not passed any exam yet.';
+    case 'Tech calls < 1 per week': {
+      const wks = Math.floor((emp?.tenure ?? 0) / 7);
+      const done = emp?.techCallsCount ?? 0;
+      return fired ? `Only ${pl(done, 'tech call was', 'tech calls were')} made in ${pl(wks, 'week', 'weeks')} since joining, against the expected pace of at least 1 per week.` : `Tech calls are on the expected pace of 1 per week (${done} made).`;
+    }
+    case 'External meetings < 1 per week':
+      return fired ? `External client meetings are behind the expected pace of 1 per week, short by ${pl(n, 'week', 'weeks')}.` : 'External client meetings are on the expected pace of 1 per week.';
+    case 'Skills count < weeks since joining': {
+      const wks = Math.floor((emp?.tenure ?? 0) / 7);
+      const done = emp?.skillsCount ?? 0;
+      return fired ? `Only ${pl(done, 'skill is', 'skills are')} on record against ${pl(wks, 'week', 'weeks')} since joining; the expected pace is 1 skill per week.` : `Your skills count is on the expected pace of 1 per week (${done}).`;
+    }
+    case 'Weekly progress email not received':
+      return fired ? `Your weekly progress email was not received for ${pl(n, 'week', 'weeks')}.` : 'Your weekly progress emails have been received on time.';
+    case 'Weekly response quality (AI rating)':
+      return fired ? (s.pts < 0 ? 'The quality of your weekly progress responses has been rated low.' : 'Your weekly progress responses have been rated well.') : 'Your weekly responses have been rated average.';
+    case 'Low RMS activity (under 5 clicks a day)':
+      return fired ? `Your RMS activity has been low${s.detail ? ` (${s.detail})` : ''}: several working days had under 5 clicks.` : 'Your RMS activity has been adequate.';
+    case 'No emails sent (low email activity)':
+      return fired ? `Your email activity has been low${s.detail ? ` (${s.detail})` : ''}: several working days had no email sent.` : 'Your email activity has been adequate.';
+    default:
+      break;
+  }
+  if (s.isTarget) return `${s.label}: ${s.text}.`;
+  if (fired && n != null) return `${s.label}: ${n}.`;
+  if (fired) return `${s.label}.`;
+  return `${s.label}: none on record.`;
+}
+
 function autoDraftText(name, chosenSignals, chosenMetric, deadlineStr) {
   const lines = [`Hi ${name},`, '', 'This is to formally bring to your attention certain performance related concerns that require immediate attention.', '', 'The following concerns have been noted:'];
   if (chosenSignals.length) {
-    for (const s of chosenSignals) lines.push(`- ${s.label}: ${s.value}`);
+    for (const s of chosenSignals) lines.push(`- ${s.sentence || `${s.label}: ${s.value}`}`);
   } else {
     lines.push('None selected.');
   }
@@ -252,14 +313,24 @@ function AlertPreviewModal({ emp, pending, onClose, onSend }) {
   })() : [];
   // No month left after the exclusions (joined this month) — no table to offer.
   const metricShown = metric?.months.length ? metric : null;
-  const items = [...all, ...targetItems, ...(metricShown ? [metricShown] : [])];
+  // Sales: SCs (student cards) raised in the last 30 days, from the dated
+  // scDetails records. Informational row, same as the target rows; pre-ticked
+  // only when it is zero, i.e. the "low SCs" case HR is alerting about.
+  const scItems = emp.team === 'Sales' ? (() => {
+    const n = (emp.scDetails || []).filter((s) => Date.now() - new Date(s.createdOn).getTime() <= 30 * 86400000).length;
+    return [{ label: 'SCs raised in last 30 days', text: String(n), isTarget: true, scRecent: n }];
+  })() : [];
+  const items = [...all, ...scItems, ...targetItems, ...(metricShown ? [metricShown] : [])];
   // Negative signals that actually fired are why this NJ is being alerted in
   // the first place — pre-checked, same as the month-wise metric.
   // Everything else is available to add for context, but off by default.
   const [selected, setSelected] = useState(() => {
     // Only fired negative signals start ticked; the month-wise table and the
     // CSM target rows are included only when HR ticks them.
-    return new Set(all.filter((x) => x.status === 'fired' && x.pts < 0).map((x) => x.label));
+    return new Set([
+      ...all.filter((x) => x.status === 'fired' && x.pts < 0).map((x) => x.label),
+      ...scItems.filter((x) => x.scRecent === 0).map((x) => x.label),
+    ]);
   });
   const toggle = (label) => setSelected((prev) => {
     const next = new Set(prev);
@@ -267,7 +338,7 @@ function AlertPreviewModal({ emp, pending, onClose, onSend }) {
     return next;
   });
   const chosenItems = items.filter((s) => selected.has(s.label));
-  const chosenSignals = chosenItems.filter((s) => !s.isMetric).map((s) => ({ label: s.label, value: displayVal(s) }));
+  const chosenSignals = chosenItems.filter((s) => !s.isMetric).map((s) => ({ label: s.label, value: displayVal(s), sentence: signalSentence(s, emp) }));
   const chosenMetric = chosenItems.find((s) => s.isMetric) || null;
 
   // Issuing a PA or PIP is what actually triggers this alert — HR picks one,

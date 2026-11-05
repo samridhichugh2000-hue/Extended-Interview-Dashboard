@@ -38,24 +38,35 @@ async function getToken({ forceRefresh = false } = {}) {
   return tokenPromise;
 }
 
-// Builds the Insert PiP Records request. Id/Eid stay empty (a new record, not an
-// edit). EmpId is the Koenig employee code (dashboard ids are 'EMP' + code).
+// Builds the Insert PiP Records request, mapped from the RMS stored-procedure
+// parameters (@type=2 new record, @EID = the employee's EmpId, @CreatedBy = the
+// logged-in user's EmpId, @status/@resign/@...Checked as 1/0). EmpId is the Koenig
+// employee code (dashboard ids are 'EMP' + code). Id stays empty (new record).
+// RMS stores dates as "7 Oct 2025" (day without padding, short month, year).
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function rmsDate(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
+  return m ? `${Number(m[3])} ${MON[Number(m[2]) - 1]} ${m[1]}` : String(iso || '');
+}
+
 export function buildInsertPipRequest({ employeeId, pipType, issuedOn, deadline, comment }) {
+  const empCode = String(employeeId).replace(/^EMP/i, '');
   return {
+    type: 2,
     SearchText: '',
     Id: '',
-    Eid: '',
-    From: issuedOn,
-    To: deadline,
+    Eid: empCode,
+    From: rmsDate(issuedOn),
+    To: rmsDate(deadline),
     CreatedBy: process.env.KOENIG_PIP_INSERT_CREATED_BY || '',
-    EmpId: String(employeeId).replace(/^EMP/i, ''),
-    comment: String(comment || ''),
-    status: '',
-    resign: '',
-    PerformanceAlertChecked: pipType === 'PA',
-    PIPChecked: pipType === 'PIP',
+    EmpId: empCode,
+    comment: String(comment || '').trim(),
+    status: '1',
+    resign: '0',
+    PerformanceAlertChecked: pipType === 'PA' ? '1' : '0',
+    PIPChecked: pipType === 'PIP' ? '1' : '0',
     selectedInitiator: process.env.KOENIG_PIP_INSERT_INITIATOR || 'hr',
-    EIChecked: '',
+    EIChecked: '0',
   };
 }
 
