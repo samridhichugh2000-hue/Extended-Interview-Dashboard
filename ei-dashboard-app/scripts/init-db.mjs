@@ -43,6 +43,14 @@ try {
 } catch (err) {
   if (!String(err.message).includes('duplicate column')) throw err;
 }
+// Outcome of the RMS Insert PiP Records call for dashboard-issued PA/PIPs.
+for (const col of ['rms_status', 'rms_error', 'rms_posted_at']) {
+  try {
+    await db.execute(`ALTER TABLE pip_status ADD COLUMN ${col} TEXT`);
+  } catch (err) {
+    if (!String(err.message).includes('duplicate column')) throw err;
+  }
+}
 for (const stmt of [
   'ALTER TABLE employees ADD COLUMN sc_raised INTEGER',
   'ALTER TABLE employees ADD COLUMN sc_details TEXT',

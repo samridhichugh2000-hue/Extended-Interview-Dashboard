@@ -108,6 +108,9 @@ export async function getEmployees() {
       due: pip?.review_by || '—',
       breaches: pip?.breaches ? JSON.parse(pip.breaches) : [],
       pipHistory: pipHistoryByEmp.get(e.id) || [],
+      // RMS outcome of a dashboard-issued case ('posted' | 'failed'); null for Koenig-synced rows.
+      rmsStatus: pip && pip.source_id == null ? pip.rms_status || null : null,
+      rmsError: pip && pip.source_id == null ? pip.rms_error || null : null,
       v: [e.metric1, e.metric2, e.metric3, e.metric4, e.metric5, e.metric6],
       alert: e.alert || 'Alert',
       weeks: weeksByEmp.get(e.id) || [],

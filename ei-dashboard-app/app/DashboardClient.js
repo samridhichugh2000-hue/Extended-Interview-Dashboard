@@ -119,7 +119,7 @@ function useEmployeeActions() {
       });
       const json = await res.json();
       window.alert(json.ok
-        ? (testMode ? `Test email sent to ${TEST_RECIPIENTS_LABEL}${json.threaded ? ' as a reply in the earlier test thread' : ''} — ${emp.name}'s status was not changed.` : `${pipType} saved and alert email sent${json.threaded ? ' as a reply in the previous PA/PIP email thread' : ''}. ${json.rms?.ok === false ? `⚠ RMS was NOT updated (${json.rms.error}) — please add it in RMS manually.` : 'Also posted to RMS.'}`)
+        ? (testMode ? `Test email sent to ${TEST_RECIPIENTS_LABEL}${json.threaded ? ' as a reply in the earlier test thread' : ''} — ${emp.name}'s status was not changed.` : `${pipType} saved and alert email sent${json.threaded ? ' as a reply in the previous PA/PIP email thread' : ''}. ${json.rms?.ok === false ? `\n\n⚠ RMS was NOT updated (${json.rms.error}).\nThe email went out and the record is saved here, but it is not in RMS yet. It is flagged "Not in RMS" on the PA/PIP tracking screen — use Retry there.` : '\n\nAlso posted to RMS.'}`)
         : `Failed: ${json.error}`);
       if (json.ok) {
         setAlertTarget(null);
@@ -1265,6 +1265,35 @@ function MaternityBadge({ e }) {
   return (
     <span title={`Maternity leave ${fmt(l.from)} to ${fmt(l.to)}${l.approval === 'In process' ? ' (approval in process)' : ''}`} style={{ alignSelf: 'flex-start', fontSize: 9.5, letterSpacing: '.04em', padding: '2px 8px', borderRadius: 999, background: 'rgba(244,114,182,0.14)', color: '#F472B6', border: '1px solid rgba(244,114,182,0.35)', textTransform: 'uppercase' }}>
       Maternity
+    </span>
+  );
+}
+
+// Shown on a dashboard-issued PA/PIP whose post to RMS failed: the record exists only here until it is
+// re-posted. Retry re-sends it (the server only re-sends a row still marked failed, so no duplicates).
+function RmsBadge({ e }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  if (e.rmsStatus !== 'failed') return null;
+  const retry = async (ev) => {
+    ev.stopPropagation();
+    if (busy) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/employees/${e.id}/rms-retry`, { method: 'POST' });
+      const json = await res.json();
+      window.alert(json.ok ? `Posted to RMS for ${e.name}.` : `RMS still not updated: ${json.error}`);
+      if (json.ok) router.refresh();
+    } catch (err) {
+      window.alert(`Retry failed: ${err.message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <span title={e.rmsError || ''} style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 10.5, color: '#F87171', background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.3)', borderRadius: 6, padding: '3px 7px', width: 'fit-content' }}>
+      ⚠ Not in RMS
+      <button onClick={retry} disabled={busy} style={{ cursor: busy ? 'default' : 'pointer', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: 4, padding: '1px 6px', fontSize: 10.5 }}>{busy ? 'Posting…' : 'Retry'}</button>
     </span>
   );
 }
@@ -2989,7 +3018,7 @@ function PaPip({ employees, filter, setFilter, setModal }) {
         </div>
         {rows.map((e) => (
           <div key={e.id} className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: trackCols, padding: '14px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontWeight: 600 }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id} · {e.team}</span><ResignedBadge e={e} /><F2fBadge e={e} active={missing} /></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontWeight: 600 }}>{e.name}</span><span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id} · {e.team}</span><ResignedBadge e={e} /><F2fBadge e={e} active={missing} /><RmsBadge e={e} /></div>
             <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: e.statusBg, color: e.statusColor, border: `1px solid ${e.statusBorder}` }}>{e.inactive ? 'Inactive' : e.short}</span>
             <span style={{ fontSize: 12, color: '#A8AEC4' }}>{e.issued}</span>
             <span style={{ fontSize: 12, color: '#A8AEC4' }}>{e.due}</span>

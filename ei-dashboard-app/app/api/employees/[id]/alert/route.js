@@ -141,7 +141,7 @@ export async function POST(request, { params }) {
     // case shows up in PA/PIP tracking straight away. source_id stays NULL: that marks it as issued here, which
     // keeps syncPip from wiping it before Koenig has the record (see syncPip in lib/syncRunners.js). Any earlier
     // dashboard-issued case for this person is closed so only the new one counts as running.
-    const [, , upd] = await db.batch([
+    const [, ins, upd] = await db.batch([
       { sql: 'UPDATE pip_status SET is_active = 0 WHERE employee_id = ? AND source_id IS NULL AND is_active = 1', args: [id] },
       {
         sql: `INSERT INTO pip_status (employee_id, type, issued_on, review_by, breaches, comment, is_active, source_id)
@@ -162,6 +162,18 @@ export async function POST(request, { params }) {
     } catch (err) {
       console.error(`postPaPipToRms(${id}) failed:`, err.message);
       rms = { ok: false, error: err.message };
+    }
+    // Remember the outcome on the row, so a failed post can be found and retried later
+    // (the "RMS not updated" badge on the PA/PIP tracking screen reads this).
+    try {
+      if (ins.rowsAffected > 0 && ins.lastInsertRowid != null) {
+        await db.execute({
+          sql: 'UPDATE pip_status SET rms_status = ?, rms_error = ?, rms_posted_at = ? WHERE id = ?',
+          args: [rms.ok ? 'posted' : 'failed', rms.ok ? null : String(rms.error).slice(0, 500), new Date().toISOString(), Number(ins.lastInsertRowid)],
+        });
+      }
+    } catch (err) {
+      console.error(`could not store RMS outcome for ${id}:`, err.message);
     }
     return NextResponse.json({ ok: true, threaded: mail.threaded, repliedTo: mail.repliedTo || null, rms });
   } catch (err) {

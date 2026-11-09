@@ -123,7 +123,10 @@ CREATE TABLE IF NOT EXISTS pip_status (
   breaches TEXT,                -- JSON array of breach labels
   comment TEXT,                 -- full incident letter text from Koenig
   is_active INTEGER NOT NULL DEFAULT 1,
-  source_id INTEGER             -- Koenig's own incident Id, for idempotent re-sync
+  source_id INTEGER,            -- Koenig's own incident Id, for idempotent re-sync
+  rms_status TEXT,              -- dashboard-issued rows only (source_id NULL): 'posted' | 'failed' — outcome of the Insert PiP Records call. NULL = not attempted / Koenig-synced row.
+  rms_error TEXT,               -- error message when rms_status = 'failed'
+  rms_posted_at TEXT            -- ISO timestamp of the last RMS attempt (success or failure)
 );
 
 CREATE TABLE IF NOT EXISTS hr_incidents (
