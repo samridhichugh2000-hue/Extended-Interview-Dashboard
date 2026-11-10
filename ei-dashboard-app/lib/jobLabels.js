@@ -3,6 +3,7 @@
 export const JOB_LABELS = {
   weeklyreport: 'Weekly NJ Check-In email (daily 9AM IST)',
   weeklyresponsereport: 'Weekly NJ Response Report + Shoddy auto-mark (Wed 6PM IST)',
+  perfsummaryreminder: 'Quarterly Performance Summary reminder to Rashi (5th of the 2nd month of each quarter)',
   report15: '15-Day Report',
   trainerrc: 'Trainer RC Schedule sync (external cron)',
   rcfullybooked: 'Trainer RC fully-booked check (external cron, ~8AM IST, ahead of the 9AM check-in send)',

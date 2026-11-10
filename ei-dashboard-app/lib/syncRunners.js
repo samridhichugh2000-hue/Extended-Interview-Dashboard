@@ -1923,13 +1923,16 @@ export async function syncTrueNr() {
     return m ? parseInt(m[2], 10) * 12 + MONTHS.indexOf(m[1].toLowerCase()) : -1;
   };
 
-  // One call: every month from 17 months back through the end of the current
-  // month (same trailing history as the NR feed). The end date is capped at
-  // the current month because a later one also returns forward-booked months.
+  // One call: every month from 17 months back through the end of the CURRENT QUARTER. Months up to the current month
+  // go to true_nr_details as before (other screens read that list and must not see forward months); the later months
+  // of the quarter - Koenig's own True NR for revenue already booked - go to true_nr_future_details, so target
+  // achievement is the API's True NR for all three months of the quarter (lib/quarterTrueNr.js).
   const now = new Date();
   const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const startDate = iso(new Date(now.getFullYear(), now.getMonth() - 17, 1));
-  const endDate = iso(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+  const quarterEndMonth = Math.floor(now.getMonth() / 3) * 3 + 2;
+  const endDate = iso(new Date(now.getFullYear(), quarterEndMonth + 1, 0));
+  const currentIdx = now.getFullYear() * 12 + now.getMonth();
   const rows = await getTrueNrAll(startDate, endDate);
   if (!rows.length) throw new Error('True NR API returned no rows — leaving existing data untouched.');
   const byEmpId = new Map(rows.filter((r) => r.empId != null).map((r) => [r.empId, r]));
@@ -1944,11 +1947,13 @@ export async function syncTrueNr() {
     if (!row) { missing++; continue; }
     // Skip months before the employee joined (the API pads them with 0.00).
     const dojIdx = row.doj ? (() => { const d = new Date(row.doj); return Number.isNaN(d.getTime()) ? -1 : d.getFullYear() * 12 + d.getMonth(); })() : -1;
-    const details = Object.entries(row.monthlyRevenue)
+    const all = Object.entries(row.monthlyRevenue)
       .filter(([month]) => monthIdx(month) >= 0 && monthIdx(month) >= dojIdx)
       .map(([month, trueNr]) => ({ month, trueNr }))
       .sort((a, b) => monthIdx(a.month) - monthIdx(b.month));
-    statements.push({ sql: 'UPDATE employees SET true_nr_details = ? WHERE id = ?', args: [JSON.stringify(details), emp.id] });
+    const details = all.filter((m) => monthIdx(m.month) <= currentIdx);
+    const futureDetails = all.filter((m) => monthIdx(m.month) > currentIdx);
+    statements.push({ sql: 'UPDATE employees SET true_nr_details = ?, true_nr_future_details = ? WHERE id = ?', args: [JSON.stringify(details), JSON.stringify(futureDetails), emp.id] });
     updated++;
   }
 
@@ -2165,6 +2170,8 @@ export const SYNC_RUNNERS = {
   },
   // Friday: the Weekly Goals Report (commitments vs. updates, ratings, and who has not submitted) to HR@.
   weeklygoalsreport: async () => (await import('./weeklyGoalsReportRunner.js')).sendWeeklyGoalsReport(),
+  // 5th of Feb/May/Aug/Nov: reminds Rashi that the quarterly performance-summary email is due (lib/performanceSummaryStore.js).
+  perfsummaryreminder: async () => (await import('./performanceSummaryStore.js')).sendPerformanceSummaryReminder(),
   weeklyresponsereport: async () => {
     const { sendWeeklyResponseReport } = await import('./weeklyResponseReportRunner.js');
     return sendWeeklyResponseReport();

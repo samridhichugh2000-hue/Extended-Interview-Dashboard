@@ -5,6 +5,8 @@ import { getIsoWeek } from '../lib/weekUtils';
 import { getFailedJobRuns, getFeedRuns } from '../lib/jobStatus';
 import { loadCsmSeasonality } from '../lib/csmSeasonal';
 import { getDb } from '../lib/db';
+import { getBatchSentAt } from '../lib/performanceSummaryStore';
+import { istToday, quarterOf, quarterKey, quarterLabel, reminderDate } from '../lib/performanceSummary';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,5 +55,11 @@ export default async function Page() {
   const deptCounts = { Sales: 0, Trainer: 0, 'PT Team': 0, 'FM Team': 0, 'Recruitment Team': 0 };
   for (const nj of newJoiners) deptCounts[nj.section]++;
 
-  return <DashboardClient employees={attachExternalMeetingDates(slimEmployeesForClient(employees), graphMeetings)} responses={responses} week={week} newJoiners={newJoiners} deptCounts={deptCounts} failedJobs={failedJobs} graphMeetings={graphMeetings} feedRuns={feedRuns} csmSeasonality={csmSeasonality} />;
+  // Quarterly Performance Summary: the dashboard note stays up from the 5th of the quarter's 2nd month until the email is sent.
+  const today = istToday();
+  const pq = quarterOf(today);
+  const batchSentAt = await getBatchSentAt(quarterKey(pq)).catch((err) => { console.error('Performance summary state failed:', err.message); return null; });
+  const perfSummary = { key: quarterKey(pq), label: quarterLabel(pq), today, dueFrom: reminderDate(pq), batchSentAt };
+
+  return <DashboardClient employees={attachExternalMeetingDates(slimEmployeesForClient(employees), graphMeetings)} responses={responses} week={week} newJoiners={newJoiners} deptCounts={deptCounts} failedJobs={failedJobs} graphMeetings={graphMeetings} feedRuns={feedRuns} csmSeasonality={csmSeasonality} perfSummary={perfSummary} />;
 }

@@ -17,6 +17,8 @@ import { TRAINER_SALARY_TIERS, SALES_REGIONS, TARGET_QUARTERS, quarterMonthKeys,
 import { quarterTargetFor } from '../lib/quarterTarget';
 import { computePaPipProgress } from '../lib/paPipProgress';
 import { draftToHtml } from '../lib/emailDraft';
+import { buildPerformanceSummary, MIN_DAYS_IN_QUARTER, isRecalled, BELOW_PCT, REMINDER_DAY, HR_ADDRESS, formatInr, summarySubject, reminderSubject, summaryEmailHtml } from '../lib/performanceSummary';
+import { getManagerEmail } from '../lib/managerDirectory';
 import { VIDEO_MIN_MEETINGS_TO_SHOW } from '../lib/videoRules';
 
 const card = { border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 16 };
@@ -597,8 +599,9 @@ function MissingFilterChips({ defs, active, onToggle }) {
   );
 }
 
-export default function DashboardClient({ employees, responses, week, newJoiners, deptCounts, failedJobs, graphMeetings, feedRuns, csmSeasonality }) {
+export default function DashboardClient({ employees, responses, week, newJoiners, deptCounts, failedJobs, graphMeetings, feedRuns, csmSeasonality, perfSummary }) {
   const [screen, setScreen] = useState('overview');
+  const [papipTab, setPapipTab] = useState('cases');
   const [dept, setDept] = useState('Sales');
   const [filter, setFilter] = useState(null);
   const [modal, setModal] = useState(null);
@@ -614,7 +617,7 @@ export default function DashboardClient({ employees, responses, week, newJoiners
         <div style={{ padding: '26px 28px 60px', flex: 1 }}>
           {screen === 'overview' && <Overview employees={employees} newJoiners={newJoiners} deptCounts={deptCounts} go={go} setModal={setModal} />}
           {screen === 'dept' && <Dept key={dept} employees={employees} dept={dept} filter={filter} setFilter={setFilter} setModal={setModal} />}
-          {screen === 'papip' && <PaPip employees={employees} filter={filter} setFilter={setFilter} setModal={setModal} />}
+          {screen === 'papip' && <PaPip employees={employees} filter={filter} setFilter={setFilter} setModal={setModal} tab={papipTab} setTab={setPapipTab} perfSummary={perfSummary} />}
           {screen === 'paalgo' && <PaAlgo employees={employees} filter={filter} setFilter={setFilter} setModal={setModal} />}
           {screen === 'worryindex' && <WorryIndex employees={employees} filter={filter} setFilter={setFilter} setModal={setModal} />}
           {screen === 'analysis' && <AnalysisPanel employees={employees} setModal={setModal} csmSeasonality={csmSeasonality} />}
@@ -2938,7 +2941,7 @@ function hasOngoingPaPip(e) {
 // ISO date of the employee's most recently issued PA or PIP ('' when none is on file).
 const latestIssueIso = (e) => (e.pipHistory || []).map((p) => displayDateToIso(p.issuedOn) || '').sort().pop() || '';
 
-function PaPip({ employees, filter, setFilter, setModal }) {
+function PaPipCases({ employees, filter, setFilter, setModal }) {
   const [search, setSearch] = useState('');
   const [includeInactive, setIncludeInactive] = useState(false);
   // Off by default — unlike Worry Index/department tables, this screen's
@@ -3036,6 +3039,197 @@ function PaPip({ employees, filter, setFilter, setModal }) {
   );
 }
 
+// ---- PA/PIP tracking: top-level tabs + the quarterly "CSMs below 30%" Performance Summary tab ----
+function PaPip({ employees, filter, setFilter, setModal, tab, setTab, perfSummary }) {
+  const summary = buildPerformanceSummary(employees, { today: perfSummary.today });
+  const tabs = [['cases', 'Active PA / PIP'], ['perf', `CSMs below ${BELOW_PCT}% · ${summary.label}`]];
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div style={{ display: 'flex', gap: 8, borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: 12 }}>
+        {tabs.map(([k, label]) => (
+          <div key={k} onClick={() => setTab(k)} style={{ cursor: 'pointer', padding: '8px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: `1px solid ${tab === k ? 'rgba(99,102,241,0.5)' : 'rgba(255,255,255,0.1)'}`, background: tab === k ? 'rgba(99,102,241,0.2)' : 'transparent', color: tab === k ? '#C7C9F8' : '#A8AEC4', display: 'flex', gap: 8, alignItems: 'center' }}>
+            {label}
+            {k === 'perf' && <span className="mono" style={{ fontSize: 11, opacity: 0.8 }}>{summary.groups.eligible.length}</span>}
+            {k === 'perf' && !perfSummary.batchSentAt && perfSummary.today >= perfSummary.dueFrom && <span style={{ width: 7, height: 7, borderRadius: 99, background: '#F59E0B' }} />}
+          </div>
+        ))}
+      </div>
+      {tab === 'cases' ? <PaPipCases employees={employees} filter={filter} setFilter={setFilter} setModal={setModal} /> : <PerfSummaryTab employees={employees} summary={summary} perfSummary={perfSummary} />}
+    </div>
+  );
+}
+
+function PerfSummaryTab({ employees, summary, perfSummary }) {
+  const [srv, setSrv] = useState(null); // { excluded:[], sends:[], emailed:{}, emailedError, batchSentAt }
+  const [loadErr, setLoadErr] = useState(null);
+  const [excluded, setExcluded] = useState(new Set());
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(null); // 'send'
+  const [result, setResult] = useState(null); // { ok, text }
+  const [preview, setPreview] = useState(null);
+  const [openSec, setOpenSec] = useState({ elig: true, emailed: false, nj: false, pa: false }); // which lists are expanded
+  const flip = (k) => setOpenSec((o) => ({ ...o, [k]: !o[k] }));
+
+  const load = async () => {
+    try {
+      const r = await fetch('/api/performance-summary', { cache: 'no-store' });
+      const j = await r.json();
+      if (!j.ok) throw new Error(j.error || 'failed');
+      setSrv(j); setExcluded(new Set(j.excluded)); setLoadErr(null);
+    } catch (err) { setLoadErr(err.message); }
+  };
+  useEffect(() => { load(); }, []);
+
+  const emailedAt = (row) => {
+    const s = (srv?.sends || []).find((x) => x.empId === row.id && x.status === 'sent');
+    if (s) return s.sentAt;
+    return row.email ? srv?.emailed?.[row.email.toLowerCase()] || null : null;
+  };
+  // Emailed this quarter (and not recalled) wins over every other group — those people were mailed and, for most,
+  // put on PA as a result, so they are listed here rather than under "Already on PA / PIP" or "first quarter".
+  const recalled = (r) => isRecalled(summary.key, r.id);
+  const emailedDone = (r) => !recalled(r) && !!emailedAt(r);
+  const everyone = [...summary.groups.eligible, ...summary.groups.onPaPip, ...summary.groups.newJoiner];
+  const eligible = summary.groups.eligible;
+  const alreadyEmailed = everyone.filter(emailedDone).sort((x, y) => x.pct - y.pct);
+  const open = eligible.filter((r) => !emailedDone(r)); // a recalled email counts as not sent, so those people stay here
+  const onPaPipShown = summary.groups.onPaPip.filter((r) => !emailedDone(r));
+  const notEligible = summary.groups.newJoiner.filter((r) => !emailedDone(r));
+  const selectable = (r) => !!r.email;
+  const selected = open.filter((r) => selectable(r) && !excluded.has(r.id));
+  const canSend = selected.length > 0 && !!srv && !srv.emailedError && !busy;
+
+  const toggle = async (row) => {
+    const nowExcluded = !excluded.has(row.id);
+    setExcluded((s) => { const n = new Set(s); nowExcluded ? n.add(row.id) : n.delete(row.id); return n; }); // optimistic
+    try {
+      const r = await fetch('/api/performance-summary', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'exclude', empId: row.id, excluded: nowExcluded }) });
+      if (!(await r.json()).ok) throw new Error('save failed');
+    } catch {
+      setExcluded((s) => { const n = new Set(s); nowExcluded ? n.delete(row.id) : n.add(row.id); return n; });
+      setResult({ ok: false, text: `Could not save the change for ${row.name} — try again.` });
+    }
+  };
+  const setAll = async (on) => {
+    for (const r of open.filter(selectable)) if (excluded.has(r.id) === on) await toggle(r);
+  };
+  const post = async (body, busyKey) => {
+    setBusy(busyKey); setResult(null);
+    try {
+      const r = await fetch('/api/performance-summary', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      return await r.json();
+    } catch (err) { return { ok: false, error: err.message }; } finally { setBusy(null); }
+  };
+  const send = async () => {
+    setConfirming(false);
+    const j = await post({ action: 'send', empIds: selected.map((r) => r.id) }, 'send');
+    if (j.error && j.sent === undefined) setResult({ ok: false, text: j.error });
+    else setResult({ ok: j.ok, text: `Sent ${j.sent} email${j.sent === 1 ? '' : 's'}${j.skipped?.length ? ` · ${j.skipped.length} skipped (${j.skipped.map((s) => `${s.name}: ${s.reason}`).join('; ')})` : ''}${j.failed?.length ? ` · ${j.failed.length} FAILED (${j.failed.map((f) => `${f.name}: ${f.error}`).join('; ')}) — fix and press Send again; anyone already sent is skipped.` : ''}` });
+    await load();
+    if (j.ok && j.sent > 0) setTimeout(() => window.location.reload(), 2500); // clears the dashboard-wide note
+  };
+  const cols = '34px 1.5fr 1fr .85fr .95fr .65fr 1.35fr';
+  const th = { fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase' };
+  const dmy = (iso) => (iso ? new Date(iso).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric' }) : '');
+  const chip = (text, c) => <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: c.bg, color: c.fg, border: `1px solid ${c.bd}` }}>{text}</span>;
+  const C = { green: { bg: 'rgba(20,184,166,0.12)', fg: '#5EEAD4', bd: 'rgba(20,184,166,0.3)' }, amber: { bg: 'rgba(245,158,11,0.12)', fg: '#F59E0B', bd: 'rgba(245,158,11,0.3)' }, red: { bg: 'rgba(244,63,94,0.12)', fg: '#F87171', bd: 'rgba(244,63,94,0.3)' }, grey: { bg: 'rgba(255,255,255,0.05)', fg: '#A8AEC4', bd: 'rgba(255,255,255,0.14)' } };
+  const Box = ({ on, disabled }) => <span style={{ width: 16, height: 16, borderRadius: 4, border: `1px solid ${on ? '#818CF8' : 'rgba(255,255,255,0.3)'}`, background: on ? '#6366F1' : 'transparent', opacity: disabled ? 0.35 : 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#fff' }}>{on ? '✓' : ''}</span>;
+  const renderRow = (r, kind) => {
+    const isOpen = kind === 'open';
+    const on = isOpen && selectable(r) && !excluded.has(r.id);
+    const status = kind === 'paPip' ? chip(`Already on ${r.paType}${r.reviewBy ? ` · till ${r.reviewBy}` : ''}`, r.paType === 'PIP' ? C.red : C.amber)
+      : kind === 'emailed' ? chip(`Already emailed ${dmy(emailedAt(r))}`, C.grey)
+      : kind === 'nj' ? chip(recalled(r) ? 'New joiner · email recalled' : 'New joiner · first quarter', C.grey)
+      : !r.email ? chip('No email on file', C.red)
+      : on ? chip('Will receive email', C.green) : chip('Excluded from Alert', C.amber);
+    return (
+      <div key={`${kind}-${r.id}`} className="hoverrow" style={{ display: 'grid', gridTemplateColumns: cols, padding: '12px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13, opacity: isOpen ? 1 : 0.72 }}>
+        <span onClick={() => isOpen && selectable(r) && toggle(r)} style={{ cursor: isOpen && selectable(r) ? 'pointer' : 'default' }}><Box on={on} disabled={!isOpen || !selectable(r)} /></span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontWeight: 600 }}>{r.name}</span>
+          <span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{r.id} · {r.designation || 'CSM'} · joined {r.doj}</span>
+          {r.resigned && <span style={{ fontSize: 10.5, color: '#F59E0B' }}>Resigned</span>}
+        </div>
+        <span style={{ fontSize: 12, color: '#A8AEC4' }}>{r.manager || '—'}</span>
+        <span className="mono" style={{ fontSize: 12, textAlign: 'right' }}>{formatInr(r.target)}</span>
+        <span className="mono" style={{ fontSize: 12, textAlign: 'right', color: r.achieved < 0 ? '#F87171' : undefined }}>{formatInr(r.achieved)}</span>
+        <span className="mono" style={{ fontSize: 12.5, textAlign: 'right', fontWeight: 600, color: '#F87171' }}>{r.pct.toFixed(1)}%</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 14, flexWrap: 'wrap' }}>
+          {status}
+          {kind !== 'nj' && r.email && <span onClick={() => setPreview(r)} style={{ cursor: 'pointer', fontSize: 11, color: '#818CF8' }}>Preview</span>}
+        </div>
+      </div>
+    );
+  };
+  const sectionTitle = (title, sub) => <div style={{ padding: '14px 18px 8px', background: 'rgba(255,255,255,0.025)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}><div style={{ fontSize: 12.5, fontWeight: 600 }}>{title}</div><div style={{ fontSize: 11.5, color: '#6E7488', marginTop: 2 }}>{sub}</div></div>;
+  const dropSection = (key, title, sub) => <div onClick={() => flip(key)} style={{ cursor: 'pointer' }}>{sectionTitle(`${title} ${openSec[key] ? '▾' : '▸'}`, sub)}</div>;
+
+  const sent = !!(srv?.batchSentAt || perfSummary.batchSentAt);
+  const previewMgr = preview ? getManagerEmail(preview.manager, 'Sales') : null;
+  const btn = { cursor: 'pointer', fontSize: 12, padding: '8px 12px', borderRadius: 9, border: '1px solid rgba(255,255,255,0.14)', color: '#A8AEC4' };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ ...card, padding: 18, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ fontSize: 13, color: '#A8AEC4', lineHeight: 1.6 }}>
+          CSMs whose <b style={{ color: '#E4E6F0' }}>{summary.label} True NR achievement is below {BELOW_PCT}%</b> of target. Left out automatically: CSMs in their first quarter, and anyone already on a running PA / PIP (listed lower down). Everyone ticked gets the <b style={{ color: '#E4E6F0' }}>{summarySubject(summary.quarter)}</b> email from HR, cc their manager and HR. Untick a CSM to mark them <i>Excluded from Alert</i>.
+        </div>
+        {sent && <div style={{ fontSize: 12.5, color: '#5EEAD4' }}>✓ {summary.label} summary was sent{srv?.batchSentAt ? ` on ${dmy(srv.batchSentAt)}` : ''}{srv?.sentCount ? ` (${srv.sentCount} email${srv.sentCount === 1 ? '' : 's'})` : ''}. The dashboard reminder is cleared.</div>}
+        {loadErr && <div style={{ fontSize: 12.5, color: '#F87171' }}>Could not load saved state: {loadErr}</div>}
+        {srv?.emailedError && <div style={{ fontSize: 12.5, color: '#F59E0B' }}>Could not check Sent Items for earlier emails ({srv.emailedError}) — Send is blocked until that works, to avoid double-emailing.</div>}
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div onClick={() => setAll(true)} style={{ cursor: 'pointer', fontSize: 12, color: '#818CF8' }}>Select all</div>
+          <div onClick={() => setAll(false)} style={{ cursor: 'pointer', fontSize: 12, color: '#818CF8' }}>Select none</div>
+          <div style={{ flex: 1 }} />
+          {!confirming ? (
+            <div onClick={() => canSend && setConfirming(true)} style={{ cursor: canSend ? 'pointer' : 'not-allowed', opacity: canSend ? 1 : 0.45, fontSize: 13, fontWeight: 700, padding: '9px 18px', borderRadius: 9, background: '#6366F1', color: '#fff' }}>{busy === 'send' ? 'Sending…' : `Send to ${selected.length} CSM${selected.length === 1 ? '' : 's'}`}</div>
+          ) : (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', border: '1px solid rgba(244,63,94,0.4)', background: 'rgba(244,63,94,0.1)', borderRadius: 10, padding: '6px 10px' }}>
+              <span style={{ fontSize: 12.5, color: '#F0AFAF' }}>Email {selected.length} CSM{selected.length === 1 ? '' : 's'} now? This sends real emails from HR.</span>
+              <span onClick={send} style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 700, padding: '6px 12px', borderRadius: 8, background: '#F43F5E', color: '#fff' }}>Yes, send</span>
+              <span onClick={() => setConfirming(false)} style={{ cursor: 'pointer', fontSize: 12.5, color: '#A8AEC4' }}>Cancel</span>
+            </div>
+          )}
+        </div>
+        {result && <div style={{ fontSize: 12.5, color: result.ok ? '#5EEAD4' : '#F87171' }}>{result.text}</div>}
+      </div>
+
+      <div style={{ ...card, overflow: 'hidden' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: cols, padding: '11px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)', ...th }}>
+          <span /><span>CSM</span><span>Manager</span><span style={{ textAlign: 'right' }}>{summary.label} target</span><span style={{ textAlign: 'right' }}>True NR achieved</span><span style={{ textAlign: 'right' }}>% achieved</span><span style={{ paddingLeft: 14 }}>Status</span>
+        </div>
+        {dropSection('elig', `Eligible · ${open.length}`, `${selected.length} selected — below ${BELOW_PCT}%, not in their first quarter, not on PA / PIP`)}
+        {openSec.elig && open.map((r) => renderRow(r, 'open'))}
+        {openSec.elig && !open.length && <div style={{ padding: 18, fontSize: 12.5, color: '#6E7488' }}>No eligible CSMs left to email.</div>}
+        {alreadyEmailed.length > 0 && <>
+          {dropSection('emailed', `Already emailed this quarter · ${alreadyEmailed.length}`, 'Found in Sent Items or sent from here — not emailed again')}
+          {openSec.emailed && alreadyEmailed.map((r) => renderRow(r, 'emailed'))}
+        </>}
+        {dropSection('nj', `Not eligible — first quarter · ${notEligible.length}`, `Joined this quarter, or joined last quarter with under ${MIN_DAYS_IN_QUARTER} days in it — not enough time to measure`)}
+        {openSec.nj && notEligible.map((r) => renderRow(r, 'nj'))}
+        {dropSection('pa', `Already on PA / PIP · ${onPaPipShown.length}`, 'Not emailed this quarter — their PA / PIP is running right now')}
+        {openSec.pa && onPaPipShown.map((r) => renderRow(r, 'paPip'))}
+        {openSec.pa && !onPaPipShown.length && <div style={{ padding: '12px 18px', fontSize: 12.5, color: '#6E7488' }}>None.</div>}
+      </div>
+
+      <div style={{ fontSize: 11.5, color: '#6E7488', lineHeight: 1.7 }}>
+        Reminder automation: on the {REMINDER_DAY}th of the 2nd month of every quarter (Feb · May · Aug · Nov, 10:00 IST) an email “{reminderSubject(summary.quarter)}” goes to Rashi, cc Samridhi. For {summary.label} that is {perfSummary.dueFrom}.
+      </div>
+
+      {preview && (
+        <div onClick={() => setPreview(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: 640, maxHeight: '86vh', overflow: 'auto', background: '#14161F', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14, padding: 20 }}>
+            <div style={{ fontSize: 12, color: '#A8AEC4', lineHeight: 1.8, marginBottom: 12 }}>
+              <div><b>From:</b> {HR_ADDRESS}</div><div><b>To:</b> {preview.name} &lt;{preview.email}&gt;</div><div><b>Cc:</b> {[HR_ADDRESS, previewMgr].filter(Boolean).join(', ')}{!previewMgr && ' (manager not in directory)'}</div><div><b>Subject:</b> {summarySubject(summary.quarter)}</div>
+            </div>
+            <div style={{ background: '#fff', borderRadius: 8, padding: 16 }} dangerouslySetInnerHTML={{ __html: summaryEmailHtml(preview, summary.quarter) }} />
+            <div onClick={() => setPreview(null)} style={{ cursor: 'pointer', marginTop: 12, fontSize: 12.5, color: '#818CF8', textAlign: 'right' }}>Close</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const PA_ALGO_TIER_LABELS = {
   [TRAINER_SALARY_TIERS.UNDER_125K]: '< 1.25L',
   [TRAINER_SALARY_TIERS.BETWEEN_125K_200K]: '1.25L - 2L',
@@ -3101,7 +3295,6 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
   const [futureNrDetail, setFutureNrDetail] = useState(null);
   const [targetDetail, setTargetDetail] = useState(null);
   const [utilDetail, setUtilDetail] = useState(null); // Trainer: click the utilization cell for the last 6 months + averages
-  const [nrMode, setNrMode] = useState('nr'); // Sales only: which NR the quarter-target column uses
 
   // 'ASM' / 'ATM' are sections split out of Sales / Trainer by designation.
   const baseTeam = team === 'ATM' ? 'Trainer' : team === 'ASM' ? 'Sales' : team;
@@ -3227,7 +3420,6 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
           placeholder="Search by name or employee ID…"
           style={{ flex: 1, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#E4E6F0', outline: 'none' }}
         />
-        {!isTrainer && <NrModeToggle value={nrMode} onChange={setNrMode} />}
         <FiredOnlyToggle value={firedOnly} onChange={setFiredOnly} allLabel={isTrainer ? 'All Trainers' : 'All Sales'} />
         <IncludeInactiveToggle value={includeInactive} onChange={setIncludeInactive} />
       </div>
@@ -3235,7 +3427,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
         <div style={{ display: 'grid', gridTemplateColumns: gridCols, columnGap: isTrainer ? 0 : 18, padding: '11px 18px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           {isTrainer
             ? <><span>Employee</span><span>This month</span><span>Salary tier</span><span>Tenure band</span><span>Rule</span><span>Status</span><span style={{ textAlign: 'right' }}>Neg. feedback (7d)</span><span /></>
-            : <><span>Employee</span><span>Region</span><span>Quarter targets ({TARGET_QUARTERS.map((q) => q.name).join(' · ')} {TARGET_QUARTERS[0].year}{nrMode === 'true' ? ' · True NR' : ''})</span><span>Tenure band</span><span>Rule</span><span style={{ textAlign: 'right' }}>Status</span><span>Future NR</span><span /></>}
+            : <><span>Employee</span><span>Region</span><span>Quarter targets ({TARGET_QUARTERS.map((q) => q.name).join(' · ')} {TARGET_QUARTERS[0].year} · True NR)</span><span>Tenure band</span><span>Rule</span><span style={{ textAlign: 'right' }}>Status</span><span>Future NR</span><span /></>}
         </div>
         {rows.map((e) => {
           const algo = e[algoKey];
@@ -3248,7 +3440,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
           const hasEvidence = algo.evidence?.length > 0 || !isTrainer;
           const isExpanded = expandedId === e.id;
           const util = isTrainer ? thisMonthUtil(e) : null;
-          const targets = !isTrainer ? TARGET_QUARTERS.map((q) => ({ q, t: quarterTargetLabel(e, nrMode, q) })) : [];
+          const targets = !isTrainer ? TARGET_QUARTERS.map((q) => ({ q, t: quarterTargetLabel(e, 'true', q) })) : [];
           const futureNr = !isTrainer ? futureNrSummary(e) : null;
           return (
             <Fragment key={e.id}>
@@ -3381,13 +3573,16 @@ function futureNrSummary(e) {
   return { label: lakhs(e.nrFutureDetails.reduce((sum, m) => sum + (m.nr || 0), 0)) };
 }
 
-// How the PA Algo "target / achieved" figure is worked out: achieved is this
-// quarter's NR (same nr_monthly_details the NR-based checks use) summed over
-// the three calendar months of the quarter, against Koenig's CSM target.
+// How the "target / achieved" figure is worked out: achieved is the employee's True NR from the Koenig API for all
+// three months of the quarter (lib/quarterTrueNr.js), against Koenig's CSM target.
 function QuarterTargetModal({ emp, target, onClose }) {
   const lakhs = (n) => '₹' + (n / 100000).toFixed(1) + 'L';
+  // An upcoming month = later than the current calendar month (month keys look like 'Dec-2026').
+  const MON3 = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  const nowIdx = new Date().getFullYear() * 12 + new Date().getMonth();
+  const isUpcoming = (key) => { const [mo, yr] = String(key).split('-'); return Number(yr) * 12 + MON3.indexOf(mo.slice(0, 3).toLowerCase()) > nowIdx; };
   const q = target.q;
-  const gridCols = target.withTeam ? '1fr 1fr 1fr 1fr 1fr' : '1fr 1fr 1fr';
+  const gridCols = '1fr 1fr';
   const color = target.achieved ? '#5EEAD4' : '#F87171';
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,12,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, zIndex: 60 }}>
@@ -3401,32 +3596,24 @@ function QuarterTargetModal({ emp, target, onClose }) {
         </div>
         <div style={{ padding: '8px 24px 24px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '10px 0', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-            <span>Month</span>{target.withTeam && <span style={{ textAlign: 'right' }}>Own NR</span>}{target.withTeam && <span style={{ textAlign: 'right' }}>Team NR</span>}<span style={{ textAlign: 'right' }}>{target.withTeam ? 'Total' : 'NR'}</span><span style={{ textAlign: 'right' }}>True NR</span>
+            <span>Month</span><span style={{ textAlign: 'right' }}>True NR (Koenig API)</span>
           </div>
           {target.breakdown.map((m) => (
             <div key={m.month} style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
               <span style={{ color: '#C7CBDA' }}>{m.month.replace('-', ' ')}{m.isFuture && <span style={{ fontSize: 10.5, color: '#A5A7FA' }}> (booked)</span>}</span>
-              {target.withTeam && <span className="mono" style={{ textAlign: 'right', color: '#A8AEC4' }}>{lakhs(m.own)}</span>}
-              {target.withTeam && <span className="mono" style={{ textAlign: 'right', color: '#A8AEC4' }}>{lakhs(m.team)}</span>}
-              <span className="mono" style={{ textAlign: 'right', color: m.nr > 0 ? '#5EEAD4' : '#6E7488' }}>{lakhs(m.nr)}</span>
-              <span className="mono" style={{ textAlign: 'right', color: m.trueNr == null ? '#6E7488' : m.trueNr < 0 ? '#F87171' : '#5EEAD4' }}>{m.trueNr == null ? '—' : lakhs(m.trueNr)}</span>
+              {m.trueNr == null ? (isUpcoming(m.month) ? <span style={{ textAlign: 'right', fontSize: 11.5, fontStyle: 'italic', color: '#A8AEC4' }}>No numbers returned from API</span> : <span />) : <span className="mono" style={{ textAlign: 'right', color: m.trueNr < 0 ? '#F87171' : '#5EEAD4' }}>{lakhs(m.trueNr)}</span>}
             </div>
           ))}
           <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '10px 0', fontSize: 13, fontWeight: 600 }}>
-            <span style={{ color: '#FFFFFF' }}>Achieved (sum)</span>
-            {target.withTeam && <span />}{target.withTeam && <span />}
-            <span className="mono" style={{ textAlign: 'right', color: '#FFFFFF' }}>{target.nrLabel}</span><span />
+            <span style={{ color: '#FFFFFF' }}>Achieved (sum of 3 months)</span>
+            <span className="mono" style={{ textAlign: 'right', color: '#FFFFFF' }}>{target.nrLabel}</span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '4px 0 10px', fontSize: 13 }}>
-            <span style={{ color: '#A8AEC4' }}>Target ({q.name} {target.withTeam ? 'manager target' : 'CSM target'})</span>
-            {target.withTeam && <span />}{target.withTeam && <span />}
-            <span className="mono" style={{ textAlign: 'right', color: '#A8AEC4' }}>{target.targetLabel}</span><span />
+            <span style={{ color: '#A8AEC4' }}>Target ({q.name} CSM target)</span>
+            <span className="mono" style={{ textAlign: 'right', color: '#A8AEC4' }}>{target.targetLabel}</span>
           </div>
           <div style={{ fontSize: 11.5, color: '#6E7488', marginTop: 8, lineHeight: 1.55 }}>
-            {target.isTrue && <><b>Showing True NR</b> (net of salary and marketing cost) — only the {target.monthsAvailable} of 3 quarter months Koenig has returned so far count. The PA Algo's band checks decide on NR before salary and marketing cost; only its two ROI rules use True NR.<br /></>}
-            Achieved % = {target.nrLabel} ÷ {target.targetLabel} × 100 = <b style={{ color }}>{target.pct}</b>. {target.withTeam
-              ? <>Achieved is the manager's own NR plus the NR of their team ({target.teamSize} direct reports), summed across the three calendar months of {q.name} {q.year}, counting NR already booked for months still to come; the target is the manager-level target Koenig holds for this quarter.</>
-              : <>Achieved is the employee's NR summed across the three calendar months of {q.name} {q.year}: actual NR for the months so far, plus the NR already booked (Future NR) for the months still to come, marked "booked" (a month with nothing counts as ₹0.0L). The target is the CSM target Koenig holds for this quarter.</>}
+            Achieved % = {target.nrLabel} ÷ {target.targetLabel} × 100 = <b style={{ color }}>{target.pct}</b>. Achieved is True NR (net of salary and marketing cost) exactly as Koenig's API returns it, summed across the three calendar months of {q.name} {q.year}. A month marked "booked" has not finished yet: its figure is Koenig's True NR for revenue already booked for it. A month with no number is left blank and adds nothing to the total; for an upcoming month the API has not returned anything for, the row says so. The target is the CSM target Koenig holds for this quarter.
           </div>
         </div>
       </div>
