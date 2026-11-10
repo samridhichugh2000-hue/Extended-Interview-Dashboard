@@ -28,6 +28,10 @@ const GROUPS = [
   { key: 'nj', title: 'NJ check-in' },
 ];
 
+// Koenig's feed sometimes sends a manager as a first name only; show the full name (see managerDirectory.js).
+const MANAGER_DISPLAY = { simone: 'Neha Shah' };
+const managerName = (m) => MANAGER_DISPLAY[String(m || '').trim().toLowerCase()] || m;
+
 const SCALE_NOTE = 'Ratings are suggested automatically by comparing each person\'s commitment with their update. Scale: 5 = fully delivered, 3 = partly done or vague, 1 = not done.';
 
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
@@ -59,7 +63,7 @@ const TD = 'border:1px solid #d9d9d9;padding:8px 10px;font-size:12.5px;vertical-
 const TABLE = 'border-collapse:collapse;width:100%;margin:8px 0 18px;';
 
 // Builds the report for ISO week `week` (default: this week) and returns { subject, html, stats, rows }.
-export async function buildWeeklyGoalsReport({ week } = {}) {
+export async function buildWeeklyGoalsReport({ week, overrides } = {}) {
   const db = getDb();
   const { getIsoWeek } = await import('./weekUtils.js');
   const { EXTRA_CHECKIN_EMPLOYEE_IDS, EXTRA_CHECKIN_MANAGERS } = await import('./weeklyReportRunner.js');
@@ -73,11 +77,25 @@ export async function buildWeeklyGoalsReport({ week } = {}) {
 
   // Every check-in sent this week, with the employee, plus anyone who should have had one.
   const wkMarks = historyWeeks.map(() => '?').join(',');
-  const rows = (await db.execute({
+  const rows = [...(await db.execute({
     sql: `SELECT wr.employee_id, wr.week, wr.state, wr.received_at, wr.a1, wr.a2, wr.a3, wr.attachment_name, wr.ai_rating, wr.ai_rating_reason
           FROM weekly_responses wr WHERE wr.week IN (${wkMarks})`,
     args: historyWeeks,
-  })).rows;
+  })).rows];
+  // `overrides` ({ employee_id: { thisWeek: {...row}, lastWeek: {...row} } }) stands in for people who did not
+  // answer on the dashboard but whose update is known from elsewhere (e.g. the hand-compiled report) — each
+  // entry is treated as a received check-in for that week, only where the dashboard has no received reply.
+  for (const [employee_id, o] of Object.entries(overrides || {})) {
+    // Keys may be `thisWeek` / `lastWeek` or an ISO week ('2026-W44') for older history weeks.
+    const byWeek = [[thisWeek, o.thisWeek], [lastWeek, o.lastWeek], ...Object.entries(o).filter(([k]) => /^\d{4}-W\d{2}$/.test(k))];
+    for (const [wk, row] of byWeek) {
+      if (!row || !historyWeeks.includes(wk)) continue;
+      const i = rows.findIndex((r) => r.employee_id === employee_id && r.week === wk);
+      if (i >= 0 && rows[i].state === 'Received') continue;
+      const full = { employee_id, week: wk, state: 'Received', attachment_name: null, a3: null, ...row };
+      if (i >= 0) rows[i] = full; else rows.push(full);
+    }
+  }
   const byEmpWeek = new Map(rows.map((r) => [`${r.employee_id}|${r.week}`, r]));
   const get = (id, wk) => byEmpWeek.get(`${id}|${wk}`) || null;
   const received = (r) => !!r && r.state === 'Received';
@@ -88,7 +106,7 @@ export async function buildWeeklyGoalsReport({ week } = {}) {
     sql: `SELECT id, name, team, manager, status, tenure_days, rc_fully_booked_week, rc_fully_booked_sc_hours FROM employees
           WHERE active = 1 AND dor IS NULL AND team IN (${teamMarks})`,
     args: CHECKIN_TEAMS,
-  })).rows.filter((e) => sentIds.has(e.id) || rohitIds.has(e.id) || raahilNames.has(String(e.manager || '').trim().toLowerCase())
+  })).rows.map((e) => ({ ...e, manager: managerName(e.manager) })).filter((e) => sentIds.has(e.id) || rohitIds.has(e.id) || raahilNames.has(String(e.manager || '').trim().toLowerCase())
     || e.tenure_days < NJ_DAYS || e.status === 'PA Issued' || e.status === 'PIP Issued');
 
   const thisMon = mondayOf(thisWeek);

@@ -126,7 +126,7 @@ const AMBIGUOUS_FIRST_NAME_ALIASES = {
   // (checked against employees.name / email on 2026-11-02). "Jessica" is left out on purpose: it fits
   // both Jessica Saluja and Neha Shah (jessica@), which needs a human call.
   manish: 'manish.kumar@koenig-solutions.com', // the Trainer Manish — Manish Kumar, EMP844 (his 13 reports are Trainers)
-  simone: 'simone@koenig-solutions.com', // Shipra Jaiswal, Sales
+  simone: 'jessica@koenig-solutions.com', // Neha Shah, Sales (confirmed by HR 2026-11-10; the feed sends her manager as "Simone")
   sunil: 'Sunilkumar.kushwaha@koenig-solutions.com', // Sunil Kushwaha, PT Team
   aloysious: 'aloysious.ambrose@koenig-solutions.com', // Aloysious Ambrose, Trainer
   prem: 'premnidhi.sharma@koenig-solutions.com', // Prem Sharma, Trainer
