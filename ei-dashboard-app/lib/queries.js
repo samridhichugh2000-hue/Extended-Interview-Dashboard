@@ -374,7 +374,7 @@ const SLIM_KEYS = {
   inHouseSkillsDetails: ['markDate'],
   techCallsConvertedDetails: ['date', 'converted'],
   assignmentsDetails: ['startDate', 'endDate'],
-  negFeedbackDetails: ['feedbackDate'],
+  negFeedbackDetails: ['feedbackDate', 'assignmentId'], // assignmentId is quoted in the PA / PIP email
 };
 // Never read by the client at all.
 const CLIENT_UNUSED = ['rcMainAssignmentsDetails', 'externalEmailDetails', 'rosterDetails'];

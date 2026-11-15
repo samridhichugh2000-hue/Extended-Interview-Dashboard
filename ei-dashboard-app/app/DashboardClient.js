@@ -168,6 +168,16 @@ const TEST_RECIPIENTS_LABEL = TEST_RECIPIENTS.join(' and ');
 // `s` is a signalReport row (or one of the extra rows built in
 // AlertPreviewModal); `emp` supplies the raw figures where the row only
 // carries a shortfall.
+// Negative feedback on delivery from the last month only (calendar month back from today), not the all-time total.
+const NEG_MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+function negFeedbackLastMonth(emp) {
+  const since = new Date(); since.setHours(0, 0, 0, 0); since.setMonth(since.getMonth() - 1);
+  return (emp?.negFeedbackDetails || []).filter((f) => {
+    const m = /^(\d{1,2})-([A-Za-z]{3})-(\d{4})/.exec(String(f.feedbackDate || ''));
+    const d = m ? new Date(Number(m[3]), NEG_MONTHS.indexOf(m[2].toLowerCase()), Number(m[1])) : new Date(f.feedbackDate);
+    return !Number.isNaN(d.getTime()) && d >= since;
+  });
+}
 function signalSentence(s, emp) {
   const pl = (n, one, many) => `${n} ${n === 1 ? one : many}`;
   const n = s.count;
@@ -189,7 +199,13 @@ function signalSentence(s, emp) {
     case 'Negative enquiry audit':
       return fired ? `${pl(n, 'negative enquiry audit has', 'negative enquiry audits have')} been recorded against you.` : 'No negative enquiry audits have been recorded.';
     case 'Negative feedback on delivery':
-      return fired ? `${pl(n, 'negative feedback was', 'negative feedbacks were')} received on your training delivery.` : 'No negative feedback has been received on your delivery.';
+      {
+        // Only the last month's negative feedback, each with its assignment ID.
+        const recent = negFeedbackLastMonth(emp);
+        const ids = [...new Set(recent.map((f) => f.assignmentId).filter(Boolean).map(String))];
+        const idText = ids.length ? ` (assignment ID${ids.length === 1 ? '' : 's'} ${ids.join(', ')})` : '';
+        return recent.length ? `${pl(recent.length, 'negative feedback was', 'negative feedbacks were')} received on your training delivery in the last month${idText}.` : 'No negative feedback has been received on your delivery in the last month.';
+      }
     case 'Failure in exam':
       return fired ? `You have ${pl(n, 'exam failure', 'exam failures')} on record.` : 'You have no exam failures on record.';
     case 'Passed exam':
@@ -269,7 +285,7 @@ function AlertPreviewModal({ emp, pending, onClose, onSend }) {
   // audits" in the email, not "-15". Boolean-only signals (no count fn, e.g.
   // "Zero assignments since joining") fall back to Yes/No since there's no
   // number to show.
-  const displayVal = (s) => (s.isMetric ? 'Table' : s.isTarget ? s.text : s.status === 'fired' ? (s.count != null ? String(s.count) : 'Yes') : '0');
+  const displayVal = (s) => (s.isMetric ? 'Table' : s.isTarget ? s.text : s.label === 'Negative feedback on delivery' ? String(negFeedbackLastMonth(emp).length) : s.status === 'fired' ? (s.count != null ? String(s.count) : 'Yes') : '0');
   // Reflects the employee's actual monthly figures rather than a scored
   // pass/fail signal — treated as just another checkbox row (pre-checked) so
   // HR can drop it from the email like any other parameter, but rendered as
@@ -330,7 +346,7 @@ function AlertPreviewModal({ emp, pending, onClose, onSend }) {
     // Only fired negative signals start ticked; the month-wise table and the
     // CSM target rows are included only when HR ticks them.
     return new Set([
-      ...all.filter((x) => x.status === 'fired' && x.pts < 0).map((x) => x.label),
+      ...all.filter((x) => x.status === 'fired' && x.pts < 0 && !(x.label === 'Negative feedback on delivery' && !negFeedbackLastMonth(emp).length)).map((x) => x.label),
       ...scItems.filter((x) => x.scRecent === 0).map((x) => x.label),
     ]);
   });
@@ -2881,6 +2897,16 @@ function PaPipProgressModal({ emp, p, onClose }) {
             {p.verdict === 'early' && <> — the first comparisons appear a week after it was issued.</>}
             {p.verdict === 'nodata' && <> — none of the parameters has enough history on both sides yet.</>}
             {p.note && <> {p.note}</>}
+            {p.verdict !== 'early' && p.verdict !== 'nodata' && ['better', 'worse'].map((v) => {
+              const list = (p.rows || []).filter((r) => r.verdict === v);
+              if (!list.length) return null;
+              return (
+                <div key={v} style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.6 }}>
+                  <b style={{ color: v === 'better' ? '#5EEAD4' : '#F87171' }}>{v === 'better' ? 'Improved' : 'Dipped'}:</b>{' '}
+                  {list.map((r, i) => <span key={r.key}>{i ? ' · ' : ''}<b style={{ color: '#E4E6F0' }}>{r.label}</b> <span className="mono" style={{ color: '#A8AEC4' }}>{fmt(r.kind, r.before)} → {fmt(r.kind, r.after)}</span></span>)}
+                </div>
+              );
+            })}
           </div>
           {/* Sales and Trainer see only the month-by-month grid below; the other teams keep this summary. */}
           {!['Sales', 'Trainer'].includes(emp.team) && (
@@ -3329,7 +3355,11 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
   const algoKey = isTrainer ? 'trainerPaAlgo' : 'salesPaAlgo';
   const tabKey = isTrainer ? 'tier' : 'region';
 
-  const pool = employees.filter((e) => e.team === baseTeam && inSection(e) && e[algoKey] && !ML_IDS.has(e.id) && (includeInactive || e.active !== false));
+  // Everyone is listed, including people who have come back from maternity leave. Only someone whose last working day has
+  // passed is left out; people on leave right now stay but go to the bottom, highlighted pink.
+  const todayIstIso = new Date(Date.now() + 5.5 * 3600000).toISOString().slice(0, 10);
+  const lwdPassed = (e) => !!e.lastWorkingDay && String(e.lastWorkingDay).slice(0, 10) < todayIstIso;
+  const pool = employees.filter((e) => e.team === baseTeam && inSection(e) && e[algoKey] && !lwdPassed(e) && (includeInactive || e.active !== false));
   const firedCount = pool.filter((e) => e[algoKey].status === 'fired').length;
   const clearCount = pool.filter((e) => e[algoKey].status === 'clear').length;
   const noDataCount = pool.filter((e) => isPaAlgoMissing(e[algoKey])).length;
@@ -3380,7 +3410,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
     // Tenure band order — youngest first (0-3 months, then 3-6, etc.),
     // same for both teams since it's driven by raw tenure_days rather than
     // each tier's own differently-worded band labels.
-    .sort((a, b) => (a.tenure ?? 0) - (b.tenure ?? 0) || a.name.localeCompare(b.name));
+    .sort((a, b) => (Number(!!maternityNow(a.id)) - Number(!!maternityNow(b.id))) || (a.tenure ?? 0) - (b.tenure ?? 0) || a.name.localeCompare(b.name));
 
   const gridCols = isTrainer ? '1.2fr .6fr .7fr .8fr 1.5fr .8fr .8fr 26px' : '1.4fr .8fr 1.5fr .8fr 1.5fr .8fr 1fr 26px';
   // Current calendar month's utilization, read off the same trailing
@@ -3462,7 +3492,7 @@ function PaAlgo({ employees, filter, setFilter, setModal }) {
           const futureNr = !isTrainer ? futureNrSummary(e) : null;
           return (
             <Fragment key={e.id}>
-              <div className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: gridCols, columnGap: isTrainer ? 0 : 18, padding: '14px 18px', alignItems: 'center', borderBottom: isExpanded ? 'none' : '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle }}>
+              <div className="hoverrow" onClick={() => setModal(e)} style={{ display: 'grid', gridTemplateColumns: gridCols, columnGap: isTrainer ? 0 : 18, padding: '14px 18px', alignItems: 'center', borderBottom: isExpanded ? 'none' : '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...e.rowStyle, ...(maternityNow(e.id) ? { background: 'rgba(244,114,182,0.08)', borderLeft: '3px solid rgba(244,114,182,0.55)' } : {}) }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                   <span style={{ fontWeight: 600 }}>{e.name}</span>
                   <span className="mono" style={{ fontSize: 10.5, color: '#6E7488' }}>{e.id}{e.inactive ? ' · Inactive' : ''}</span>
