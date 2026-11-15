@@ -3858,7 +3858,8 @@ function WorryIndex({ employees, filter, setFilter, setModal }) {
     .filter((e) => !filter || e.team === filter)
     .filter((e) => !q || e.name.toLowerCase().includes(q) || String(e.id).toLowerCase().includes(q))
     .filter((e) => !missing.length || missing.every((k) => missingDefs.find((d) => d.key === k)?.test(e)))
-    .sort((a, b) => a.score - b.score);
+    // People on maternity leave today go to the bottom (still ranked by score among themselves).
+    .sort((a, b) => (Number(!!maternityNow(a.id)) - Number(!!maternityNow(b.id))) || a.score - b.score);
   const bandCounts = ranked.reduce((acc, e) => {
     acc[e.bandLabel] = (acc[e.bandLabel] || 0) + 1;
     return acc;
