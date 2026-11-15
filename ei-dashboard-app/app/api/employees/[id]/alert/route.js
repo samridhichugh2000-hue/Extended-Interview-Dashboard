@@ -148,7 +148,9 @@ export async function POST(request, { params }) {
               SELECT ?, ?, ?, ?, ?, ?, 1, NULL WHERE EXISTS (SELECT 1 FROM employees WHERE id = ?)`,
         args: [id, pipType, todayIstDisplay(), displayDate(deadline), JSON.stringify((signals || []).map((s) => s.label).filter(Boolean)), String(draft || ''), id],
       },
-      { sql: 'UPDATE employees SET status = ? WHERE id = ?', args: [PIP_STATUS[pipType], id] },
+      // hr_note is what the "HR notes" box in the employee popup shows; syncPip only fills it for people Koenig already
+      // lists, so a case issued here sets it straight away (same text as the PA/PIP comment).
+      { sql: 'UPDATE employees SET status = ?, hr_note = ? WHERE id = ?', args: [PIP_STATUS[pipType], String(draft || '') || null, id] },
     ], 'write');
     if (upd.rowsAffected === 0) {
       return NextResponse.json({ ok: false, error: `Email sent, but no employee found with id ${id} to update status.` }, { status: 404 });
