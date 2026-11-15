@@ -39,8 +39,28 @@ export async function getGraphToken({ forceRefresh = false } = {}) {
 
 // Every Graph caller in this app follows the same shape: try with the cached
 // token, force-refresh once and retry on a 401.
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const isGet = (options) => !options.method || String(options.method).toUpperCase() === 'GET';
+
 export async function graphFetch(url, options = {}) {
-  const call = async (token) => fetch(url, { ...options, headers: { ...options.headers, Authorization: `Bearer ${token.accessToken}` } });
+  // Transient failures are retried here for every caller: a thrown network error ("fetch failed" /
+  // connect timeout — the local sync box's connection drops now and then) and Graph's own 502/503/504.
+  // Reads are retried on both; a non-GET (e.g. sendMail) is only retried when the request never went
+  // out (thrown error), because a 5xx on a POST may mean the mail was accepted — sendMail handles that itself.
+  const rawCall = async (token) => {
+    const get = isGet(options);
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const r = await fetch(url, { ...options, headers: { ...options.headers, Authorization: `Bearer ${token.accessToken}` } });
+        if (get && [502, 503, 504].includes(r.status) && attempt < 3) { await sleep(1500 * 2 ** attempt); continue; }
+        return r;
+      } catch (err) {
+        if (attempt >= 3) throw err;
+        await sleep(1500 * 2 ** attempt);
+      }
+    }
+  };
+  const call = rawCall;
 
   let token = await getGraphToken();
   let res = await call(token);

@@ -84,7 +84,8 @@ export async function sendMail({ to, cc, subject, html, attachments, from, sendA
     contentBytes: a.content,
   }));
 
-  const res = await graphFetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}/sendMail`, {
+  const sendUrl = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}/sendMail`;
+  const sendOptions = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -98,7 +99,23 @@ export async function sendMail({ to, cc, subject, html, attachments, from, sendA
       },
       saveToSentItems: true,
     }),
-  });
+  };
+
+  // Graph sometimes answers sendMail with a bare 502/503/504 (the Weekly Goals Report failed this way on
+  // 2026-11-13). Retry a couple of times with a pause. A 5xx can in theory mean the mail was accepted, so
+  // before each retry look in Sent Items for this exact subject sent in the last few minutes and stop if found.
+  let res;
+  for (let attempt = 0; ; attempt++) {
+    res = await graphFetch(sendUrl, sendOptions);
+    if (res.ok || ![502, 503, 504].includes(res.status) || attempt >= 2) break;
+    await new Promise((resolve) => setTimeout(resolve, 5000 * (attempt + 1)));
+    try {
+      const since = new Date(Date.now() - 10 * 60_000).toISOString();
+      const filter = `sentDateTime ge ${since} and subject eq '${String(subject).replace(/'/g, "''")}'`;
+      const chk = await graphFetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}/mailFolders/sentitems/messages?$filter=${encodeURIComponent(filter)}&$select=id&$top=1`);
+      if (chk.ok && (await chk.json()).value?.length) return; // it went out despite the 5xx
+    } catch { /* could not check — fall through and retry */ }
+  }
 
   if (!res.ok) {
     const text = await res.text().catch(() => '');

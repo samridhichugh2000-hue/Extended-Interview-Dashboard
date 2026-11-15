@@ -23,6 +23,26 @@ import { VIDEO_MIN_MEETINGS_TO_SHOW } from '../lib/videoRules';
 
 const card = { border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 16 };
 
+// Newest-first ordering for every dated list on the dashboard. The feeds carry dates in several shapes
+// (ISO '2026-11-05T16:21:12', '15 Nov 2026', '03-Aug-2026', '19-Jun-2026 16:12 PM'), so one parser reads them all.
+// Entries with no readable date go last; ties keep their original order. Returns a new array.
+const MON_IDX = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+function dateMs(v) {
+  if (v == null || v === '') return NaN;
+  if (v instanceof Date) return v.getTime();
+  const str = String(v).trim();
+  const m = /^(\d{1,2})[\s-]([A-Za-z]{3})[A-Za-z]*[\s-](\d{4})(?:\s+(\d{1,2}):(\d{2}))?/.exec(str);
+  if (m) return Date.UTC(+m[3], MON_IDX[m[2].toLowerCase()], +m[1], +(m[4] || 0), +(m[5] || 0));
+  const t = Date.parse(str);
+  return Number.isFinite(t) ? t : NaN;
+}
+// 'Q3 2026' -> sortable number (year, then quarter)
+const quarterRank = (label) => { const m = /Q(\d)\s+(\d{4})/.exec(String(label)); return m ? Number(m[2]) * 10 + Number(m[1]) : 0; };
+const newestFirst = (list, ...keys) => {
+  const key = (x) => { for (const k of keys) { const t = dateMs(typeof k === 'function' ? k(x) : x?.[k]); if (Number.isFinite(t)) return t; } return -Infinity; };
+  return (list || []).map((x, i) => [x, i, key(x)]).sort((a, b) => (b[2] - a[2]) || (a[1] - b[1])).map((r) => r[0]);
+};
+
 // "Without X" quick filters — every department table + Worry Index screen
 // can multi-select these on top of the existing status/search filters. Not
 // applied to fields that mean something different at zero (e.g. neg. audits
@@ -556,7 +576,7 @@ function IndexCard({ emp, indexKey }) {
 function NrComparison({ emp }) {
   const nrByMonth = new Map((emp.nrMonthlyDetails || []).map((m) => [m.month, m.nr]));
   const trueByMonth = new Map((emp.trueNrDetails || []).map((m) => [m.month, m.trueNr]));
-  const rows = [5, 4, 3, 2, 1, 0].map((ago) => {
+  const rows = [0, 1, 2, 3, 4, 5].map((ago) => {
     const month = nrMonthKey(ago);
     const nr = nrByMonth.has(month) ? nrByMonth.get(month) : null;
     const tn = trueByMonth.has(month) ? trueByMonth.get(month) : null;
@@ -951,8 +971,8 @@ function AppraisalImpactView({ employees, setModal, mode = 'appraisal', index = 
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('all');
   const [detail, setDetail] = useState(null);
-  const quarters = [...new Set(RNR_WINNERS.map((w) => `${w.quarter} ${w.year}`))].sort();
-  const [quarter, setQuarter] = useState(quarters[quarters.length - 1]);
+  const quarters = [...new Set(RNR_WINNERS.map((w) => `${w.quarter} ${w.year}`))].sort((a, b) => quarterRank(b) - quarterRank(a));
+  const [quarter, setQuarter] = useState(quarters[0]);
   const metrics = [...metricsFor(team), ...EXTRA_INDEX_METRICS.filter((x) => employees.some((e) => e.team === team && e[INDEX_FIELDS[x.key]]?.length))];
   const isCsmView = team === 'Sales';
   // No seasonal adjustment anywhere now: every view (appraisal, RnR, PA, PIP) is the plain before vs after.
@@ -1381,7 +1401,8 @@ function LowActivityDaysModal({ emp, signalLabel, since, until, windowLabel, onC
         </div>
         <div style={{ padding: '16px 24px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
           {byMonth.size === 0 && <div style={{ fontSize: 13, color: '#8A90A8' }}>No low days in this window.</div>}
-          {[...byMonth.entries()].map(([k, list]) => {
+          {[...byMonth.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([k, list0]) => {
+            const list = [...list0].sort().reverse();
             const [y, m] = k.split('-');
             return (
               <div key={k}>
@@ -1407,8 +1428,8 @@ function LowActivityDaysModal({ emp, signalLabel, since, until, windowLabel, onC
 // employees by employee code where the sheet has one (Q3), otherwise by exact
 // name, so the list can show their team and Worry band.
 function RnrWinnersSection({ employees, setModal }) {
-  const quarters = [...new Set(RNR_WINNERS.map((w) => `${w.quarter} ${w.year}`))].sort();
-  const [quarter, setQuarter] = useState(quarters[quarters.length - 1]);
+  const quarters = [...new Set(RNR_WINNERS.map((w) => `${w.quarter} ${w.year}`))].sort((a, b) => quarterRank(b) - quarterRank(a));
+  const [quarter, setQuarter] = useState(quarters[0]);
   const [search, setSearch] = useState('');
   const link = rnrLinker(employees);
   const chip = (active, label, onClick) => (
@@ -1482,13 +1503,13 @@ function RnrWinnersSection({ employees, setModal }) {
 // team and current Worry band; people with no match (e.g. HR/admin, EAs not
 // tracked in the dashboard) still appear from the event sheet itself.
 function F2fAttendeesSection({ employees, setModal }) {
-  const quarters = [...new Set(F2F_EVENTS.map((ev) => `${ev.quarter} ${ev.year}`))];
-  const [quarter, setQuarter] = useState(quarters[quarters.length - 1]);
+  const quarters = [...new Set(F2F_EVENTS.map((ev) => `${ev.quarter} ${ev.year}`))].sort((a, b) => quarterRank(b) - quarterRank(a));
+  const [quarter, setQuarter] = useState(quarters[0]);
   const [search, setSearch] = useState('');
   const [flag, setFlag] = useState(null);
   const [open, setOpen] = useState(null);
   const byEmail = new Map(employees.filter((e) => e.email).map((e) => [e.email.toLowerCase(), e]));
-  const events = F2F_EVENTS.filter((ev) => `${ev.quarter} ${ev.year}` === quarter);
+  const events = newestFirst(F2F_EVENTS.filter((ev) => `${ev.quarter} ${ev.year}` === quarter), 'date');
   const fmtDay = (d) => { const [y, m, day] = d.split('-'); return `${day} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m) - 1]} ${y}`; };
   const chip = (active, label, onClick) => (
     <div key={label} onClick={onClick} style={{ cursor: 'pointer', border: `1px solid ${active ? 'rgba(99,102,241,0.5)' : 'rgba(255,255,255,0.1)'}`, background: active ? 'rgba(99,102,241,0.14)' : 'transparent', color: active ? '#A5A7FA' : '#8A90A8', borderRadius: 10, padding: '7px 12px', fontSize: 12.5 }}>{label}</div>
@@ -1765,7 +1786,7 @@ function Overview({ employees, newJoiners, deptCounts, go, setModal }) {
   // Worst-first — only NJs currently running a negative Worry Index score,
   // the ones that actually need review, not just the first 5 in DB order.
   const reviewQueue = njWindowed.map(decorate).filter((e) => e.score < 0).sort((a, b) => a.score - b.score);
-  const paPipList = njActiveEmployees.filter((e) => e.status === 'PA Issued' || e.status === 'PIP Issued').map((e) => ({ name: e.name, due: e.due, type: e.status === 'PIP Issued' ? 'PIP' : 'PA', active: e.active, ...STATUS[e.status] }));
+  const paPipList = newestFirst(njActiveEmployees.filter((e) => e.status === 'PA Issued' || e.status === 'PIP Issued'), (e) => latestIssueIso(e)).map((e) => ({ name: e.name, due: e.due, type: e.status === 'PIP Issued' ? 'PIP' : 'PA', active: e.active, ...STATUS[e.status] }));
   // Real band breakdown across every currently-scored employee (was
   // hardcoded mock numbers — 7/11/13/11 — that never reflected live data).
   const scoredEmployees = njWindowed.filter((e) => e.score != null).map(decorate);
@@ -2190,7 +2211,7 @@ function ScListModalBody({ emp, onClose }) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr .9fr .9fr', padding: '10px 0', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
             <span>SC ID</span><span>Created</span><span>Status</span><span>Quotation</span>
           </div>
-          {emp.scDetails.map((s) => (
+          {newestFirst(emp.scDetails, 'createdOn').map((s) => (
             <div key={s.scId} style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr .9fr .9fr', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
               <span className="mono" style={{ color: '#C7CBDA' }}>{s.scId}</span>
               <span style={{ color: '#A8AEC4' }}>{s.createdOn ? s.createdOn.slice(0, 10) : '—'}</span>
@@ -2229,7 +2250,7 @@ function TechCallsModal({ emp, onClose }) {
           <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
         </div>
         <div style={{ padding: '8px 24px 20px' }}>
-          {emp.techCallsDetails.map((c, i) => (
+          {newestFirst(emp.techCallsDetails, 'startDate', 'createdOn').map((c, i) => (
             <div key={c.techcallId ?? i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 12.5 }}>
               <div style={{ color: '#C7CBDA' }}>
                 Call #{c.techcallId}
@@ -2306,7 +2327,7 @@ function PollsModal({ emp, onClose }) {
           <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
         </div>
         <div style={{ padding: '8px 24px 20px' }}>
-          {emp.pollsDetails.map((p) => (
+          {newestFirst(emp.pollsDetails, 'submittedAt').map((p) => (
             <div key={p.pollId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 12.5 }}>
               <span style={{ color: '#C7CBDA' }}>{p.topic}{p.department && <span style={{ display: 'block', fontSize: 10.5, color: '#6E7488', marginTop: 2 }}>{p.department}</span>}</span>
               <span style={{ flex: 'none', fontSize: 11, color: '#8A90A8' }}>{p.submittedAt ? new Date(p.submittedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '—'}</span>
@@ -2423,7 +2444,7 @@ function KgtModal({ emp, onClose }) {
           <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
         </div>
         <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {emp.kgtDetails.map((kgt, i) => (
+          {newestFirst(emp.kgtDetails, 'submitted_at', 'release_date').map((kgt, i) => (
             <div key={i} style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
               {[['topic', kgt.topic], ['submitted_at', kgt.submitted_at]].map(([k, v]) => (
                 <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 12.5 }}>
@@ -2455,7 +2476,7 @@ function IdeasModal({ emp, onClose }) {
           <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
         </div>
         <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {emp.ideasDetails.map((task, i) => {
+          {newestFirst(emp.ideasDetails, 'createdDateTime').map((task, i) => {
             // Koenig's own feed leaves TaskStatus blank rather than sending
             // an explicit "Pending" — anything not (yet) marked Complete
             // reads as Pending here so every task gets an unambiguous state.
@@ -2557,7 +2578,7 @@ function MgrFeedbackModal({ emp, onClose }) {
           <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
         </div>
         <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {emp.mgrFeedbackDetails.map((f, i, all) => {
+          {newestFirst(emp.mgrFeedbackDetails, 'date').map((f, i, all) => {
             // Only the LAST (newest rated) feedback carries a rating - it is the
             // one the Worry Index scores; older entries are shown as plain text.
             const rating = i === all.findIndex((x) => feedbackRating(x) != null) ? feedbackRating(f) : null;
@@ -2603,7 +2624,7 @@ function TbtModal({ emp, onClose }) {
           <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 1fr', padding: '10px 0', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
             <span>Topic</span><span>Requested</span><span>TBT Date</span>
           </div>
-          {emp.tbtDetails.map((t, i) => (
+          {newestFirst(emp.tbtDetails, 'requestedOn').map((t, i) => (
             <div key={i} style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 1fr', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
               <span style={{ color: '#C7CBDA' }}>{t.topic || '—'}</span>
               <span style={{ color: '#A8AEC4' }}>{t.requestedOn || '—'}</span>
@@ -2632,7 +2653,7 @@ function ShoddyModal({ emp, onClose }) {
           <div>
             <div className="mono" style={{ fontSize: 10.5, letterSpacing: '.09em', color: '#F87171', textTransform: 'uppercase', marginBottom: 10 }}>Negative Shoddies</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {(emp.shoddyNegDetails || []).map((s, i) => (
+              {newestFirst(emp.shoddyNegDetails, 'reportedDate').map((s, i) => (
                 <div key={i} style={{ border: '1px solid rgba(244,63,94,0.25)', background: 'rgba(244,63,94,0.05)', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, fontSize: 11 }}>
                     <span className="mono" style={{ color: '#F87171' }}>{s.reportedDate || '—'}</span>
@@ -2648,7 +2669,7 @@ function ShoddyModal({ emp, onClose }) {
           <div>
             <div className="mono" style={{ fontSize: 10.5, letterSpacing: '.09em', color: '#5EEAD4', textTransform: 'uppercase', marginBottom: 10 }}>Positive Incidents</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {(emp.shoddyPosDetails || []).map((s, i) => (
+              {newestFirst(emp.shoddyPosDetails, 'reportedDate').map((s, i) => (
                 <div key={i} style={{ border: '1px solid rgba(94,234,212,0.25)', background: 'rgba(94,234,212,0.05)', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, fontSize: 11 }}>
                     <span className="mono" style={{ color: '#5EEAD4' }}>{s.reportedDate || '—'}</span>
@@ -2684,7 +2705,7 @@ function ExamSummaryModal({ emp, onClose }) {
           <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
         </div>
         <div style={{ padding: '8px 24px 20px' }}>
-          {emp.examDetails.map((x, i) => (
+          {newestFirst(emp.examDetails, 'scheduledOn', 'createdOn').map((x, i) => (
             <div key={x.certificationId ?? i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 12.5 }}>
               <div style={{ color: '#C7CBDA' }}>
                 {x.examName}
@@ -2721,7 +2742,7 @@ function NegFeedbackModalBody({ emp, onClose }) {
           <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
         </div>
         <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {emp.negFeedbackDetails.map((f, i) => (
+          {newestFirst(emp.negFeedbackDetails, 'feedbackDate').map((f, i) => (
             <div key={i} style={{ border: '1px solid rgba(244,63,94,0.25)', background: 'rgba(244,63,94,0.05)', borderRadius: 12, padding: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
                 <span className="mono" style={{ fontSize: 11, color: '#F87171' }}>Assignment #{f.assignmentId} · {f.feedbackDate}</span>
@@ -2756,7 +2777,7 @@ function AssignmentsModalBody({ emp, onClose }) {
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr .6fr .8fr', padding: '10px 0', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
             <span>Course</span><span>Start</span><span>End</span><span>Pax</span><span>Mode</span>
           </div>
-          {emp.assignmentsDetails.map((a) => (
+          {newestFirst(emp.assignmentsDetails, 'startDate').map((a) => (
             <div key={a.assignmentId} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr .6fr .8fr', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
               <span style={{ color: '#C7CBDA' }}>{a.courseName}</span>
               <span style={{ color: '#A8AEC4' }}>{a.startDate || '—'}</span>
@@ -2787,7 +2808,7 @@ function SkillsModalBody({ emp, onClose }) {
           <div onClick={onClose} style={{ cursor: 'pointer', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A90A8', fontSize: 15, flex: 'none' }}>×</div>
         </div>
         <div style={{ padding: '8px 24px 24px' }}>
-          {emp.skillsDetails.map((s) => (
+          {newestFirst(emp.skillsDetails, 'skillAvailableDate').map((s) => (
             <div key={s.courseId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
               <span style={{ color: '#C7CBDA' }}>{s.courseName}{s.skillAvailableDate && <span style={{ display: 'block', fontSize: 11, color: '#6E7488', marginTop: 2 }}>Available from {s.skillAvailableDate}</span>}</span>
               <div style={{ display: 'flex', gap: 6, flex: 'none' }}>
@@ -2821,7 +2842,7 @@ function InHouseSkillsModalBody({ emp, onClose }) {
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.3fr .9fr', padding: '10px 0', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
             <span>Course</span><span>Trainer</span><span>Marked on</span>
           </div>
-          {emp.inHouseSkillsDetails.map((s) => (
+          {newestFirst(emp.inHouseSkillsDetails, 'markDate').map((s) => (
             <div key={s.courseId} style={{ display: 'grid', gridTemplateColumns: '2fr 1.3fr .9fr', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
               <span style={{ color: '#C7CBDA' }}>{s.courseName}</span>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -3031,8 +3052,8 @@ function PaPipCases({ employees, filter, setFilter, setModal }) {
     })
     .map(decorate)
     .filter((e) => !missing.length || missing.every((k) => missingDefs.find((d) => d.key === k)?.test(e)))
-    // All records lists the most recently issued PA/PIP first, then older ones; the default view keeps its score order.
-    .sort((a, b) => (showAll ? latestIssueIso(b).localeCompare(latestIssueIso(a)) : a.score - b.score));
+    // Both views list the most recently issued PA/PIP first, then older ones (ties keep the worse score on top).
+    .sort((a, b) => latestIssueIso(b).localeCompare(latestIssueIso(a)) || a.score - b.score);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>

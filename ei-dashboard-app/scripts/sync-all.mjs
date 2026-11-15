@@ -53,6 +53,7 @@ const SCRIPTS = [
   'sync-graph-subscription.mjs',
   'sync-external-emails.mjs',
   'sync-unreplied-emails.mjs',
+  'post-failed-rms.mjs', // PA/PIPs issued from the dashboard whose RMS post failed
   'sync-lowactivity.mjs', // RMS clicks / emails sent / meetings attended per day (feeds the Low RMS / No emails Worry Index signals); before the snapshot so it is scored
   'snapshot-ei.mjs',
 ];
