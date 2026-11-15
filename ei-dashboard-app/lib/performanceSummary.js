@@ -104,11 +104,11 @@ export function buildPerformanceSummary(employees, { today, quarter } = {}) {
   const q = quarter || quarterOf(todayIso);
   const groups = { eligible: [], onPaPip: [], newJoiner: [] };
   for (const e of employees) {
-    if (e.team !== 'Sales' || e.active === false) continue;
+    if (e.team !== 'Sales' || e.active === false || e.resignedOn || e.lastWorkingDay) continue; // resigned people are not listed or emailed
     const a = quarterAchievement(e, q);
     if (!a || !(a.pct < BELOW_PCT)) continue;
     const doj = parseDoj(e.doj);
-    const row = { id: e.id, name: e.name, email: e.email || null, manager: e.manager || null, designation: e.designation || null, doj: e.doj, dojIso: doj, resigned: !!e.dor, ...a };
+    const row = { id: e.id, name: e.name, email: e.email || null, manager: e.manager || null, designation: e.designation || null, doj: e.doj, dojIso: doj, resigned: !!e.resignedOn, ...a };
     if (joinedTooRecently(doj, q)) { groups.newJoiner.push(row); continue; }
     const pa = ongoingPaPip(e, todayIso);
     if (pa) groups.onPaPip.push({ ...row, paType: pa.type, reviewBy: pa.reviewBy });

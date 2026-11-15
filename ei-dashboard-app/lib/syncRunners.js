@@ -1930,7 +1930,8 @@ export async function syncTrueNr() {
   const now = new Date();
   const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const startDate = iso(new Date(now.getFullYear(), now.getMonth() - 17, 1));
-  const quarterEndMonth = Math.floor(now.getMonth() / 3) * 3 + 2;
+  // End date = the later of the quarter end and the end of the month after next, so the report's "next 2 months True NR" is covered too.
+  const quarterEndMonth = Math.max(Math.floor(now.getMonth() / 3) * 3 + 2, now.getMonth() + 2);
   const endDate = iso(new Date(now.getFullYear(), quarterEndMonth + 1, 0));
   const currentIdx = now.getFullYear() * 12 + now.getMonth();
   const rows = await getTrueNrAll(startDate, endDate);
@@ -2171,6 +2172,8 @@ export const SYNC_RUNNERS = {
   // Friday: the Weekly Goals Report (commitments vs. updates, ratings, and who has not submitted) to HR@.
   weeklygoalsreport: async () => (await import('./weeklyGoalsReportRunner.js')).sendWeeklyGoalsReport(),
   // 5th of Feb/May/Aug/Nov: reminds Rashi that the quarterly performance-summary email is due (lib/performanceSummaryStore.js).
+  // Wednesday: Trainer + Sales "PA Algo today and 30-day Worry Index prediction" reports (lib/predictionReports.js).
+  predictionreports: async () => (await import('./predictionReports.js')).sendWeeklyPredictionReports(),
   perfsummaryreminder: async () => (await import('./performanceSummaryStore.js')).sendPerformanceSummaryReminder(),
   weeklyresponsereport: async () => {
     const { sendWeeklyResponseReport } = await import('./weeklyResponseReportRunner.js');

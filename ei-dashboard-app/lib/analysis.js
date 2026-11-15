@@ -128,7 +128,30 @@ export function computeEventImpact(e, eventDate, maxMonths) {
   for (const [key, field] of Object.entries(INDEX_FIELDS)) {
     if (e[field]?.length || (key === 'csmIndex' && e.team === 'Sales') || (key === 'trainerIndex' && e.team === 'Trainer')) metrics[key] = change(monthlyAvg(e[field], 'score', win, doj));
   }
-  return { eventDate, k: win.k, metrics };
+  // Where there is no usable "before" (joined too recently, feed starts later), still give the "after" figure on its own.
+  const afterOnly = {};
+  const afterMonthly = (details, field) => {
+    if (!details?.length) return null;
+    const byMonth = new Map();
+    for (const d of details) { const i = keyIdx(d.month); if (i != null && Number.isFinite(Number(d[field]))) byMonth.set(i, Number(d[field])); }
+    const vals = range(win.after).map((i) => byMonth.get(i));
+    return vals.some((v) => v === undefined) ? null : sum(vals) / vals.length;
+  };
+  const afterEvents = (records, dateOf, perMonth) => {
+    const n = (records || []).filter((x) => { const i = dateIdx(dateOf(x)); return i != null && i >= win.after[0] && i <= win.after[1]; }).length;
+    return perMonth ? n / win.k : n;
+  };
+  const setAfter = (key, v) => { if (!metrics[key] && v != null) afterOnly[key] = v; };
+  if (e.team === 'Sales') {
+    setAfter('nr', afterMonthly(e.nrMonthlyDetails, 'nr'));
+    setAfter('trueNr', afterMonthly(e.trueNrDetails, 'trueNr'));
+    if (!metrics.sc && (e.scDetails || []).length) setAfter('sc', afterEvents(e.scDetails, (x) => x.createdOn, true));
+  } else if (e.team === 'Trainer') {
+    setAfter('util', afterMonthly(e.utilMonthlyDetails, 'util'));
+    if (!metrics.neg && e.negFeedbackDetails) setAfter('neg', afterEvents(e.negFeedbackDetails, (x) => x.feedbackDate, false));
+  }
+  for (const [key, field] of Object.entries(INDEX_FIELDS)) if (e[field]?.length) setAfter(key, afterMonthly(e[field], 'score'));
+  return { eventDate, k: win.k, metrics, afterOnly };
 }
 
 // Koenig lists a new joiner's joining salary as their first "appraisal", dated on
@@ -181,10 +204,10 @@ export function displayDateToIso(s) {
 export function latestPipEvent(e, type) {
   const cases = (e.pipHistory || [])
     .filter((p) => p.type === type)
-    .map((p) => ({ date: displayDateToIso(p.issuedOn), reviewBy: p.reviewBy }))
+    .map((p) => ({ date: displayDateToIso(p.issuedOn), reviewBy: p.reviewBy, isActive: p.isActive }))
     .filter((p) => p.date)
     .sort((a, b) => b.date.localeCompare(a.date));
-  return cases[0] ? { date: cases[0].date, label: cases[0].reviewBy ? `review by ${cases[0].reviewBy}` : '' } : null;
+  return cases[0] ? { date: cases[0].date, label: cases[0].reviewBy ? `review by ${cases[0].reviewBy}` : '', isActive: cases[0].isActive, reviewByIso: displayDateToIso(cases[0].reviewBy) } : null;
 }
 
 // Awards are for the quarter just ended and handed out after it, so the event

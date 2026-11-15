@@ -49,11 +49,11 @@ const SCRIPTS = [
   'sync-trainerindex.mjs',
   'sync-asmindex.mjs',
   'sync-dmindex.mjs',
-  'sync-pipeline.mjs',
   'sync-graph-meetings.mjs',
   'sync-graph-subscription.mjs',
   'sync-external-emails.mjs',
   'sync-unreplied-emails.mjs',
+  'sync-lowactivity.mjs', // RMS clicks / emails sent / meetings attended per day (feeds the Low RMS / No emails Worry Index signals); before the snapshot so it is scored
   'snapshot-ei.mjs',
 ];
 

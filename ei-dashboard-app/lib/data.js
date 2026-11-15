@@ -192,6 +192,7 @@ export const WORRY_BANDS = [
 // below only remains as a fallback for entries synced before this existed.
 // Returns 'below' | 'satisfactory' | 'above' | null (no signal either way — not-applicable,
 // or a blank/unrated entry).
+const RATING_ALIAS = { 'below average': 'below average', average: 'average', 'above average': 'above average', below: 'below average', satisfactory: 'average', above: 'above average' };
 export function feedbackRating(entry) {
   // The manager's own per-question picks (lib/feedbackStructured.js) outrank
   // the AI read of the free-text comment, including for entries whose stored
@@ -199,22 +200,24 @@ export function feedbackRating(entry) {
   const picked = structuredFeedbackRating(entry);
   if (picked) return picked;
   if (entry?.aiRating) {
-    if (entry.aiRating === 'below' || entry.aiRating === 'satisfactory' || entry.aiRating === 'above') return entry.aiRating;
+    // Stored values are 'below average' | 'average' | 'above average'; the older 'below' | 'satisfactory' | 'above' still read correctly.
+    const canon = RATING_ALIAS[entry.aiRating];
+    if (canon) return canon;
     return null; // 'not-applicable'
   }
   const text = [entry?.strength, entry?.improvement, entry?.other].filter(Boolean).join(' ').toLowerCase();
   if (!text) return null;
-  if (/below average|below satisfactory|unsatisfactory/.test(text)) return 'below';
-  if (/above average|excellent/.test(text)) return 'above';
-  if (/average|satisfactory|good/.test(text)) return 'satisfactory';
+  if (/below average|below satisfactory|unsatisfactory/.test(text)) return 'below average';
+  if (/above average|excellent/.test(text)) return 'above average';
+  if (/average|satisfactory|good/.test(text)) return 'average';
   return null;
 }
 
 // Display for the three categories - shared by every place a rating is shown.
 export const FEEDBACK_RATING_UI = {
-  below: { label: 'Below satisfactory', color: '#F87171', border: 'rgba(244,63,94,0.4)', bg: 'rgba(244,63,94,0.06)' },
-  satisfactory: { label: 'Satisfactory', color: '#A5A7FA', border: 'rgba(139,140,246,0.4)', bg: 'rgba(139,140,246,0.06)' },
-  above: { label: 'Above satisfactory', color: '#5EEAD4', border: 'rgba(20,184,166,0.4)', bg: 'rgba(20,184,166,0.05)' },
+  'below average': { label: 'Below average', color: '#F87171', border: 'rgba(244,63,94,0.4)', bg: 'rgba(244,63,94,0.06)' },
+  'average': { label: 'Average', color: '#A5A7FA', border: 'rgba(139,140,246,0.4)', bg: 'rgba(139,140,246,0.06)' },
+  'above average': { label: 'Above average', color: '#5EEAD4', border: 'rgba(20,184,166,0.4)', bg: 'rgba(20,184,166,0.05)' },
 };
 
 // `count` is only present on signals backed by a real occurrence count (not
@@ -237,7 +240,7 @@ export function assignmentsOverlapping(details, since, until) {
 }
 
 export function belowSatisfactoryCount(e) {
-  return (e.mgrFeedbackDetails || []).filter((f) => feedbackRating(f) === 'below').length;
+  return (e.mgrFeedbackDetails || []).filter((f) => feedbackRating(f) === 'below average').length;
 }
 
 // Scoring uses only the single most recent applicable feedback entry, not a
@@ -248,7 +251,7 @@ export function belowSatisfactoryCount(e) {
 // exists, applicable or not — what matters is where they stand now.
 export function lastFeedbackIsBelow(e) {
   const latest = (e.mgrFeedbackDetails || []).find((f) => feedbackRating(f) != null);
-  return latest ? feedbackRating(latest) === 'below' : false;
+  return latest ? feedbackRating(latest) === 'below average' : false;
 }
 
 // Same rule, scoped to a date window: the newest applicable entry dated
@@ -410,7 +413,7 @@ export function missedWeeksInWindow(e, since, until) {
 
 export function belowSatisfactoryCountInWindow(e, since, until) {
   return (e.mgrFeedbackDetails || []).filter((f) => {
-    if (feedbackRating(f) !== 'below' || !f.date) return false;
+    if (feedbackRating(f) !== 'below average' || !f.date) return false;
     const dt = new Date(f.date);
     return dt >= since && (!until || dt <= until);
   }).length;
@@ -608,10 +611,10 @@ export const SIGNAL_DEFS = [
     countInWindow: missedWeeksInWindow },
   // Flat -5 if the most recent applicable feedback is 'below' — not a count,
   // since only the latest entry counts at all (see lastFeedbackIsBelow).
-  { label: 'Manager feedback below satisfactory (last feedback)', teams: 'All', pts: -5, live: true,
+  { label: 'Manager feedback below average (last feedback)', teams: 'All', pts: -5, live: true,
     hasData: (e) => e.mgrFeedbackCount != null,
     fires: (e) => lastFeedbackIsBelow(e),
-    countInWindow: (e, since, until) => (feedbackRating(latestFeedbackInWindow(e, since, until)) === 'below' ? 1 : 0),
+    countInWindow: (e, since, until) => (feedbackRating(latestFeedbackInWindow(e, since, until)) === 'below average' ? 1 : 0),
     // Shown next to the signal so HR sees the actual rating, not just fired/clear.
     detail: (e, since, until) => {
       const latest = latestFeedbackInWindow(e, since, until);

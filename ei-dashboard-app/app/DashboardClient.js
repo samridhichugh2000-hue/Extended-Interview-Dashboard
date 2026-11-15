@@ -179,11 +179,11 @@ function signalSentence(s, emp) {
     }
     case 'Zero assignments since joining, including future':
       return fired ? 'You have no assignments on record since joining, including any scheduled for the coming weeks.' : 'You have assignments on record, including upcoming ones.';
-    case 'Manager feedback below satisfactory (last feedback)': {
+    case 'Manager feedback below average (last feedback)': {
       // detail is "<rating> · <date>" (see SIGNAL_DEFS)
       const [rating, date] = String(s.detail || '').split(' · ');
       const when = date && date !== 'undated' ? ` dated ${date}` : '';
-      if (fired) return `Your last manager feedback${when} was rated below satisfactory.`;
+      if (fired) return `Your last manager feedback${when} was rated below average.`;
       return rating ? `Your last manager feedback${when} was rated: ${rating}.` : 'No rated manager feedback is on record.';
     }
     case 'Negative enquiry audit':
@@ -910,20 +910,21 @@ function rnrLinker(employees) {
   return (w) => (w.empCode && byId.get(`EMP${w.empCode}`)) || byName.get(w.name.toLowerCase()) || null;
 }
 
-// Sales (CSMs are the Sales team) is compared on NR only, and the change is adjusted for last year's same-month seasonality
-// (lib/csmSeasonal.js).
+// Sales (CSMs are the Sales team) is compared on NR only — plain before vs after, no seasonal adjustment (lib/csmSeasonal.js is no longer used by the views).
 // People who have been on maternity leave are left out of the appraisal comparison (lib/pastMl.js).
 const ML_IDS = new Set(PAST_ML.cases.map((c) => c.id));
 // Who each window lists: the 3-month view has everyone whose event is at least
 // 3 full months old, the 6-month view at least 6 — but never an event a year or
 // more old.
-function inAgeBand(eventDate, months) {
+// PA / PIP views: exactly `months` completed months after the issue month — the 3-month view is the people whose
+// PA/PIP was issued 3 months ago, the 6-month view those issued 6 months ago, each compared months-before vs months-after.
+function inAgeBand(eventDate, months, exact = false) {
   const a = new Date(`${eventDate}T00:00:00`);
   if (Number.isNaN(a.getTime())) return false;
   const now = new Date();
   const first = a.getFullYear() * 12 + a.getMonth() + (a.getDate() <= 1 ? 0 : 1);
   const completed = now.getFullYear() * 12 + now.getMonth() - first;
-  return completed >= months && completed < 12;
+  return exact ? completed === months : completed >= months && completed < 12;
 }
 const CSM_METRICS = [{ key: 'nr', label: 'NR / month', good: 'up', kind: 'money' }, { key: 'csmIndex', label: 'CSM Index (avg)', good: 'up', kind: 'rate' }];
 const metricsFor = (team) => (team === 'Sales' ? CSM_METRICS : ANALYSIS_METRICS[team]);
@@ -938,8 +939,12 @@ function AppraisalImpactView({ employees, setModal, mode = 'appraisal', index = 
   const [quarter, setQuarter] = useState(quarters[quarters.length - 1]);
   const metrics = [...metricsFor(team), ...EXTRA_INDEX_METRICS.filter((x) => employees.some((e) => e.team === team && e[INDEX_FIELDS[x.key]]?.length))];
   const isCsmView = team === 'Sales';
-  // Season adjustment applies to appraisal and RnR only; PA / PIP are the plain before vs after.
-  const useSeason = isCsmView && (mode === 'appraisal' || mode === 'rnr');
+  // No seasonal adjustment anywhere now: every view (appraisal, RnR, PA, PIP) is the plain before vs after.
+  const useSeason = false;
+  // PA / PIP: "removed" = the case is closed, or its review-by window has passed, and nothing is running for the person now (still employed).
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const isRemoved = (e, ev) => (mode === 'pa' || mode === 'pip') && !hasOngoingPaPip(e) && (ev.isActive === false || (!!ev.reviewByIso && ev.reviewByIso < todayIso));
+  const exactCohort = false; // PA / PIP keep the original band: everyone whose event is at least `months` old, up to 12 months
   const mm = IMPACT_MODES[mode];
 
   // The dated event each employee is compared around: their latest appraisal,
@@ -961,7 +966,7 @@ function AppraisalImpactView({ employees, setModal, mode = 'appraisal', index = 
     return latestPipEvent(e, mode === 'pa' ? 'PA' : 'PIP');
   };
   const withEvent = employees
-    .filter((e) => e.active && e.team === team && !(mode === 'appraisal' && ML_IDS.has(e.id)))
+    .filter((e) => e.active && e.team === team && !(mode === 'appraisal' && ML_IDS.has(e.id)) && !((mode === 'pa' || mode === 'pip') && (e.resignedOn || e.lastWorkingDay)))
     .map((e) => { const ev = eventFor(e); return ev ? { e, ev, r: computeEventImpact(e, ev.date, months), s: isCsmView ? csmSeasonalImpact(e, ev.date, months, index) : null } : null; })
     .filter(Boolean);
 
@@ -969,7 +974,7 @@ function AppraisalImpactView({ employees, setModal, mode = 'appraisal', index = 
   // 3-month view excludes anyone it happened to in the last 3 months (the
   // window would otherwise shrink to fewer months for them). Cards below count
   // this list.
-  const rows = withEvent.filter(({ r, ev }) => !r.tooRecent && r.k === months && inAgeBand(ev.date, months));
+  const rows = withEvent.filter(({ r, ev }) => !r.tooRecent && r.k === months && inAgeBand(ev.date, months, exactCohort));
   const q = search.trim().toLowerCase();
   const shown0 = rows.filter(({ e }) => !q || e.name.toLowerCase().includes(q));
   // Sort by the first metric's change (NR for Sales, utilization for Trainer).
@@ -977,6 +982,9 @@ function AppraisalImpactView({ employees, setModal, mode = 'appraisal', index = 
   // CSMs / trainers first, then the assistant managers (ASMs / ATMs); within each, by size of change.
   const mgrRank = (e) => (/assistant (sales|technical) manager/i.test(e.designation || '') ? 1 : 0);
   shown0.sort((a, b) => {
+    // PA / PIP views: most recently issued first, then older ones.
+    // People on maternity leave go to the bottom.
+    if (mode === 'pa' || mode === 'pip') return (Number(!!maternityNow(a.e.id)) - Number(!!maternityNow(b.e.id))) || b.ev.date.localeCompare(a.ev.date) || a.e.name.localeCompare(b.e.name);
     if (mgrRank(a.e) !== mgrRank(b.e)) return mgrRank(a.e) - mgrRank(b.e);
     const av = useSeason ? a.s?.adjPct : a.r.metrics[lead]?.pct, bv = useSeason ? b.s?.adjPct : b.r.metrics[lead]?.pct;
     if (av == null && bv == null) return a.e.name.localeCompare(b.e.name);
@@ -1009,7 +1017,8 @@ function AppraisalImpactView({ employees, setModal, mode = 'appraisal', index = 
     return { label: 'Mixed', color: '#F59E0B' };
   };
 
-  const shown = sort === 'all' ? shown0 : shown0.filter(({ r, s }) => overall(r, s).label === (sort === 'dip' ? 'Dip' : 'Gain'));
+  const shown = sort === 'all' ? shown0 : sort === 'removed' ? shown0.filter(({ e, ev, r, s }) => isRemoved(e, ev) && overall(r, s).label === 'Gain') : shown0.filter(({ r, s }) => overall(r, s).label === (sort === 'dip' ? 'Dip' : 'Gain'));
+  const removedCount = shown0.filter(({ e, ev, r, s }) => isRemoved(e, ev) && overall(r, s).label === 'Gain').length;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <div style={{ border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(99,102,241,0.06)', borderRadius: 14, padding: '14px 18px', fontSize: 12.5, color: '#A8AEC4', lineHeight: 1.6 }}>
@@ -1021,7 +1030,7 @@ function AppraisalImpactView({ employees, setModal, mode = 'appraisal', index = 
         <span style={{ width: 10 }} />
         <span style={{ fontSize: 12, color: '#8A90A8' }}>Compare</span>
         {[3, 6].map((n) => chip(months === n, `${n} months`, () => setMonths(n)))}
-        <span style={{ fontSize: 12, color: '#6E7488' }}>before vs after — people {mm.who} {months} to 12 months ago</span>
+        <span style={{ fontSize: 12, color: '#6E7488' }}>before vs after — people {mm.who} {exactCohort ? `${months} months ago (${months} months before vs ${months} months after)` : `${months} to 12 months ago`}</span>
         {mode === 'rnr' && <><span style={{ width: 10 }} />{quarters.map((qt) => chip(quarter === qt, qt, () => setQuarter(qt)))}</>}
       </div>
 
@@ -1096,6 +1105,7 @@ function AppraisalImpactView({ employees, setModal, mode = 'appraisal', index = 
         {chip(sort === 'all', 'All', () => setSort('all'))}
         {chip(sort === 'dip', 'Dip only', () => setSort('dip'))}
         {chip(sort === 'gain', 'Gain only', () => setSort('gain'))}
+        {(mode === 'pa' || mode === 'pip') && chip(sort === 'removed', `Improved (${removedCount})`, () => setSort('removed'))}
       </div>
 
       <div style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, background: 'rgba(255,255,255,0.02)', overflow: 'hidden' }}>
@@ -1103,12 +1113,13 @@ function AppraisalImpactView({ employees, setModal, mode = 'appraisal', index = 
           <span>Employee</span><span>{mm.col}</span>
           {useSeason
             ? <><span style={{ textAlign: 'right' }}>Before</span><span style={{ textAlign: 'right' }}>After</span><span style={{ textAlign: 'right' }}>Season expects</span><span style={{ textAlign: 'right' }}>Net</span><span style={{ textAlign: 'right' }}>Dip / gain %</span></>
-            : metrics.map((m) => <Fragment key={m.key}><span style={{ textAlign: 'right' }}>{m.label.split(' ')[0]} before</span><span style={{ textAlign: 'right' }}>after</span><span style={{ textAlign: 'right' }}>Dip / gain %</span></Fragment>)}
+            : metrics.map((m) => { const isIdx = !!INDEX_FIELDS[m.key]; const nm = isIdx ? m.label.replace(/ \(avg\)$/, '') : m.label.split(' ')[0]; return <Fragment key={m.key}><span style={{ textAlign: 'right' }}>{nm} before</span><span style={{ textAlign: 'right' }}>{isIdx ? `${nm} after` : 'after'}</span><span style={{ textAlign: 'right' }}>Dip / gain %</span></Fragment>; })}
         </div>
-        {shown.map(({ e, ev, r, s }) => (
-          <div key={e.id} className="hoverrow" onClick={() => setDetail({ e, ev })} style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, padding: '12px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13 }}>
+        {shown.map(({ e, ev, r, s }) => { const removed = isRemoved(e, ev), improved = removed && overall(r, s).label === 'Gain'; return (
+          <div key={e.id} className="hoverrow" onClick={() => setDetail({ e, ev })} style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, padding: '12px 18px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', fontSize: 13, ...(improved ? { background: 'rgba(94,234,212,0.10)', borderLeft: '3px solid #5EEAD4' } : {}) }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <span style={{ fontWeight: 600 }}>{e.name}</span>
+              {improved && <span style={{ fontSize: 10.5, color: '#5EEAD4', fontWeight: 600 }}>✓ Improved</span>}
               <span style={{ fontSize: 11, color: '#6E7488' }}>{e.id}</span>
               <ResignedBadge e={e} />
             </div>
@@ -1131,6 +1142,13 @@ function AppraisalImpactView({ employees, setModal, mode = 'appraisal', index = 
               </>;
             })() : metrics.map((m) => {
               const c = r.metrics[m.key];
+              if (!c && r.afterOnly?.[m.key] != null) {
+                return <Fragment key={m.key}>
+                  <span className="mono" style={{ textAlign: 'right', fontSize: 12, color: '#6E7488' }} title={blankReason(e, r.eventDate, months, m.key === 'neg' ? 'feedback' : m.label.split(' ')[0])}>—</span>
+                  <span className="mono" style={{ textAlign: 'right', fontSize: 12, color: '#C7CBDA' }}>{fmtVal(m.kind, r.afterOnly[m.key])}</span>
+                  <span style={{ textAlign: 'right', fontSize: 10.5, color: '#6E7488', lineHeight: 1.3 }}>no before data</span>
+                </Fragment>;
+              }
               if (!c && INDEX_FIELDS[m.key]) {
                 const now = [...(e[INDEX_FIELDS[m.key]] || [])].pop();
                 return <span key={m.key} style={{ gridColumn: 'span 3', textAlign: 'right', fontSize: 11.5, lineHeight: 1.35 }}>
@@ -1150,7 +1168,7 @@ function AppraisalImpactView({ employees, setModal, mode = 'appraisal', index = 
               );
             })}
           </div>
-        ))}
+        ); })}
         {!shown.length && <div style={{ padding: 18, fontSize: 12.5, color: '#6E7488' }}>No one in this view has a completed month after their {mm.word} yet.</div>}
       </div>
       {detail && <AnalysisModal emp={detail.e} ev={detail.ev} mode={mode} months={months} csm={useSeason ? index : null} onClose={() => setDetail(null)} onOpenEmployee={() => { setModal(detail.e); setDetail(null); }} />}
@@ -3197,11 +3215,11 @@ function PerfSummaryTab({ employees, summary, perfSummary }) {
         <div style={{ display: 'grid', gridTemplateColumns: cols, padding: '11px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)', ...th }}>
           <span /><span>CSM</span><span>Manager</span><span style={{ textAlign: 'right' }}>{summary.label} target</span><span style={{ textAlign: 'right' }}>True NR achieved</span><span style={{ textAlign: 'right' }}>% achieved</span><span style={{ paddingLeft: 14 }}>Status</span>
         </div>
-        {dropSection('elig', `Eligible · ${open.length}`, `${selected.length} selected — below ${BELOW_PCT}%, not in their first quarter, not on PA / PIP`)}
+        {dropSection('elig', `Eligible · ${open.length}`, `${selected.length} selected`)}
         {openSec.elig && open.map((r) => renderRow(r, 'open'))}
         {openSec.elig && !open.length && <div style={{ padding: 18, fontSize: 12.5, color: '#6E7488' }}>No eligible CSMs left to email.</div>}
         {alreadyEmailed.length > 0 && <>
-          {dropSection('emailed', `Already emailed this quarter · ${alreadyEmailed.length}`, 'Found in Sent Items or sent from here — not emailed again')}
+          {dropSection('emailed', `Already emailed this quarter · ${alreadyEmailed.length}`)}
           {openSec.emailed && alreadyEmailed.map((r) => renderRow(r, 'emailed'))}
         </>}
         {dropSection('nj', `Not eligible — first quarter · ${notEligible.length}`, `Joined this quarter, or joined last quarter with under ${MIN_DAYS_IN_QUARTER} days in it — not enough time to measure`)}
@@ -4199,8 +4217,13 @@ function GraphMeetingsPanel({ meetings: allMeetings, employees, filter, setFilte
     return (!rangeFrom || day >= rangeFrom) && (!rangeTo || day <= rangeTo);
   };
   const ranged = allMeetings.filter(inRange);
-  const meetings = ranged.filter((m) => (scope === 'ATM' ? m.team === 'Trainer' : m.team === 'Sales'));
-  const scopeCounts = { Sales: ranged.filter((m) => m.team === 'Sales').length, ATM: ranged.filter((m) => m.team === 'Trainer').length };
+  // ATMs: every meeting is kept; split into External (an outside attendee/organizer) and Internal (company-only invite).
+  const [kind, setKind] = useState('all');
+  const isExt = (m) => (m.clientEmails || []).length > 0;
+  const atmRanged = ranged.filter((m) => m.team === 'Trainer');
+  const kindCounts = { all: atmRanged.length, external: atmRanged.filter(isExt).length, internal: atmRanged.filter((m) => !isExt(m)).length };
+  const meetings = ranged.filter((m) => (scope === 'ATM' ? m.team === 'Trainer' && (kind === 'all' || (kind === 'external') === isExt(m)) : m.team === 'Sales'));
+  const scopeCounts = { Sales: ranged.filter((m) => m.team === 'Sales').length, ATM: atmRanged.length };
   const allDays = allMeetings.map((m) => istDayKey(m.scheduledStart)).sort();
   const dataFrom = allDays[0], dataTo = allDays[allDays.length - 1];
   const presetDays = (n) => {
@@ -4273,7 +4296,7 @@ function GraphMeetingsPanel({ meetings: allMeetings, employees, filter, setFilte
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ border: '1px solid rgba(99,102,241,0.25)', background: 'rgba(99,102,241,0.06)', borderRadius: 12, padding: '12px 16px', fontSize: 12.5, color: '#A8AEC4', lineHeight: 1.5 }}>
-        Sourced from each Sales rep's (and Assistant Technical Manager's) Outlook calendar and Teams attendance reports via Microsoft Graph — meetings organized by Gunjan Setia (recurring internal briefings) and meetings titled ILO, tech call or Course Advice are excluded, everything else stays in, internal and external alike. Audio/video quality only appears once a callRecords webhook notification arrives for that meeting — "No Data" there just means none has landed yet, not a clean call. Roster is a separate feed (Koenig's Get CSM Roster) — click it to see that rep's on-file shift history. A meeting with any non-@koenig-solutions.com attendee or organizer counts as a client meeting (shown in each meeting's detail) and feeds the "External meetings &lt; 1 per week" Worry Index signal — timing/A-V quality here don't feed the score yet.
+        Sourced from each Sales rep's (and Assistant Technical Manager's) Outlook calendar and Teams attendance reports via Microsoft Graph — meetings organized by Gunjan Setia (recurring internal briefings) and meetings titled ILO, tech call or Course Advice are excluded, everything else stays in. Sales shows client (external) meetings only; Assistant Technical Managers show all meetings, split into External and Internal. Audio/video quality only appears once a callRecords webhook notification arrives for that meeting — "No Data" there just means none has landed yet, not a clean call. Roster is a separate feed (Koenig's Get CSM Roster) — click it to see that rep's on-file shift history. A meeting with any non-@koenig-solutions.com attendee or organizer counts as a client meeting (shown in each meeting's detail) and feeds the "External meetings &lt; 1 per week" Worry Index signal — timing/A-V quality here don't feed the score yet.
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 10 }}>
@@ -4294,6 +4317,18 @@ function GraphMeetingsPanel({ meetings: allMeetings, employees, filter, setFilte
           </div>
         ))}
       </div>
+
+      {scope === 'ATM' && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span style={{ fontSize: 12, color: '#8A90A8' }}>Meeting type</span>
+          {[{ key: 'all', label: 'All meetings' }, { key: 'external', label: 'External' }, { key: 'internal', label: 'Internal' }].map((t) => (
+            <div key={t.key} onClick={() => setKind(t.key)}
+              style={{ cursor: 'pointer', borderRadius: 10, padding: '7px 12px', fontSize: 12.5, border: `1px solid ${kind === t.key ? 'rgba(99,102,241,0.6)' : 'rgba(255,255,255,0.1)'}`, background: kind === t.key ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.03)', color: kind === t.key ? '#A5A7FA' : '#A8AEC4' }}>
+              {t.label} <span style={{ opacity: 0.7, fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 11.5 }}>({kindCounts[t.key]})</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <span style={{ fontSize: 12, color: '#8A90A8' }}>Date range</span>
@@ -4458,6 +4493,9 @@ function EmployeeMeetingsModal({ emp, onClose, onSelectMeeting }) {
                     <span style={{ color: '#C7CBDA', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.subject}</span>
                     {m.clientEmails?.length > 0 && (
                       <span className="mono" style={{ fontSize: 10.5, color: '#A5A7FA', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Client: {m.clientEmails.join(', ')}</span>
+                    )}
+                    {!(m.clientEmails?.length > 0) && m.team === 'Trainer' && (
+                      <span className="mono" style={{ fontSize: 10.5, color: '#8A90A8' }}>Internal</span>
                     )}
                   </div>
                   <span className="mono" style={{ fontSize: 11.5, color: '#8A90A8' }}>{fmtIstTime(m.scheduledStart)}</span>

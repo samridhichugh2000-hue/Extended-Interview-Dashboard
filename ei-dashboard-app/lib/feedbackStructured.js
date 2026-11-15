@@ -6,11 +6,11 @@
 // read of "Areas of Improvement- Time management" once turned an Above
 // Average / Average / Above Average entry into "below satisfactory").
 //
-// Returns 'below' | 'satisfactory' | 'above', or null when the entry has no
+// Returns 'below average' | 'average' | 'above average', or null when the entry has no
 // structured ratings (plain prose - left to the AI classifier).
-//   - any "Below Average" pick          -> 'below'
-//   - every pick "Above Average"        -> 'above'
-//   - otherwise (Average / Above mix)   -> 'satisfactory'
+//   - any "Below Average" pick          -> 'below average'
+//   - every pick "Above Average"        -> 'above average'
+//   - otherwise (Average / Above mix)   -> 'average'
 export function structuredFeedbackRating(entry) {
   const text = [entry?.strength, entry?.improvement, entry?.other].filter(Boolean).join(' ');
   if (!text) return null;
@@ -19,7 +19,7 @@ export function structuredFeedbackRating(entry) {
   const head = text.split(/comment\s*:/i)[0];
   const picks = [...head.matchAll(/[:\-]\s*(above average|below average|average)\s*(?:;|$)/gi)].map((m) => m[1].toLowerCase());
   if (!picks.length) return null;
-  if (picks.includes('below average')) return 'below';
-  if (picks.every((p) => p === 'above average')) return 'above';
-  return 'satisfactory';
+  if (picks.includes('below average')) return 'below average';
+  if (picks.every((p) => p === 'above average')) return 'above average';
+  return 'average';
 }
