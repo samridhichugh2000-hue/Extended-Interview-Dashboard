@@ -430,7 +430,7 @@ function legend(team) {
   return `<p>Rows highlighted <span style="background:#FFD966;padding:1px 6px">yellow</span> are on a <b>PA</b> and <span style="background:#F4B183;padding:1px 6px">orange</span> on a <b>PIP</b> that is running today (today falls between its issue date and review-by date). Rows without a highlight have no PA/PIP running.</p>`;
 }
 
-export function buildTrainerEmail(data, { greeting = 'Hi Samridhi and Rashi,' } = {}) {
+export function buildTrainerEmail(data, { greeting = 'Hi team,' } = {}) {
   const now = data.now;
   const { m3, cur } = trainerMonths(now);
   const t = data.Trainer;
@@ -493,7 +493,7 @@ function salesWeightsSection() {
     + `<p>Two overrides: (1) True NR booked for the next 2 months of ₹2 L or more (from the Koenig API) = "On track": the True NR and SC points are dropped and the level is at most Watch. (2) Reached 75% of the quarter target at any point of the running quarter and 75% or more in the last quarter: the SC and True NR points are set aside and the level is at most Watch.</p>`;
 }
 
-export function buildSalesEmail(data, { greeting = 'Hi Samridhi and Rashi,' } = {}) {
+export function buildSalesEmail(data, { greeting = 'Hi team,' } = {}) {
   const now = data.now;
   const s = data.Sales;
   const d30 = shortDate(s.T30); const fd = forecastDay(now);
@@ -620,7 +620,7 @@ export async function buildReports({ now = new Date(), greeting, excludeIds } = 
   };
 }
 
-export const REPORT_TO = ['Samridhi.Chugh@koenig-solutions.com', 'Rashi.Oberoi@koenig-solutions.com'];
+export const REPORT_TO = ['HR@koenig-solutions.com'];
 
 export async function sendPredictionReports({ to = REPORT_TO, cc, prefix = '', greeting, now } = {}) {
   const { sendMail } = await import('./graphMailer.js');
