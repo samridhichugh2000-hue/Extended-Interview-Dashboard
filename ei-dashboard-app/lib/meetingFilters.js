@@ -34,6 +34,10 @@ const SALES_TRAINING_SOFT_RE = /\btrainings?\b|\bsessions?\b|\bworkshops?\b|\bex
 // not a client meeting, so it never counts as one.
 const NON_CLIENT_RE = /^\s*koenig\s+sales\s+enablement\b/i;
 
+// True for classroom / course-day / webinar style subjects. For an ATM such an invite carries outside addresses (the
+// learners), but it is training delivery, not a client meeting, so the ATM view does not call it External.
+export const isTrainingMeetingSubject = (subject) => SALES_TRAINING_HARD_RE.test(subject || '');
+
 export function isExcludedGraphMeeting(subject, team, clientEmails) {
   if (isExcludedMeeting(subject)) return true;
   const s = subject || '';

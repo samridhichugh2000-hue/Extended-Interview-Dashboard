@@ -20,7 +20,12 @@ import { draftToHtml } from '../lib/emailDraft';
 import { buildPerformanceSummary, MIN_DAYS_IN_QUARTER, isRecalled, BELOW_PCT, REMINDER_DAY, HR_ADDRESS, formatInr, summarySubject, reminderSubject, summaryEmailHtml } from '../lib/performanceSummary';
 import { getManagerEmail } from '../lib/managerDirectory';
 import { VIDEO_MIN_MEETINGS_TO_SHOW } from '../lib/videoRules';
+import { isTrainingMeetingSubject } from '../lib/meetingFilters';
 
+// ATM external meetings are short client calls: scheduled slot of at most 1.5 hours (+5 min grace).
+const EXTERNAL_MAX_MINUTES = 95;
+// ATM meeting with an outside attendee that is a short client call (not classroom/training, <= 1.5 h slot).
+const atmIsExternal = (m) => (m.clientEmails || []).length > 0 && !isTrainingMeetingSubject(m.subject) && (new Date(m.scheduledEnd) - new Date(m.scheduledStart)) / 60000 <= EXTERNAL_MAX_MINUTES;
 const card = { border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.02)', borderRadius: 16 };
 
 // Newest-first ordering for every dated list on the dashboard. The feeds carry dates in several shapes
@@ -4271,10 +4276,19 @@ function GraphMeetingsPanel({ meetings: allMeetings, employees, filter, setFilte
   const ranged = allMeetings.filter(inRange);
   // ATMs: every meeting is kept; split into External (an outside attendee/organizer) and Internal (company-only invite).
   const [kind, setKind] = useState('all');
-  const isExt = (m) => (m.clientEmails || []).length > 0;
+  // An outside address on the invite is not enough. Classroom / course-day / webinar invites carry the learners'
+  // addresses and run for hours — that is training, so it counts as Internal. A real external ATM meeting is a short
+  // client call (like a tech call) of about 30 min, 1 hour or 1.5 hours, and its title cannot be relied on.
+  const isExt = atmIsExternal;
+  const kindOf = (m) => (isExt(m) ? 'external' : 'internal');
   const atmRanged = ranged.filter((m) => m.team === 'Trainer');
   const kindCounts = { all: atmRanged.length, external: atmRanged.filter(isExt).length, internal: atmRanged.filter((m) => !isExt(m)).length };
-  const meetings = ranged.filter((m) => (scope === 'ATM' ? m.team === 'Trainer' && (kind === 'all' || (kind === 'external') === isExt(m)) : m.team === 'Sales'));
+  const meetings = ranged.filter((m) => (scope === 'ATM' ? m.team === 'Trainer' && (kind === 'all' || kindOf(m) === kind) : m.team === 'Sales'));
+  // Of the External ones: did the ATM actually join, and was the camera on?
+  const extList = atmRanged.filter(isExt);
+  // A camera record means the ATM was on the call even where Teams attendance could not be read (timing 'No Data').
+  const extJoined = extList.filter((m) => m.joinedAt || m.timingStatus === 'On Time' || m.timingStatus === 'Late' || m.cameraOn != null);
+  const extStats = { total: extList.length, joined: extJoined.length, didNotJoin: extList.filter((m) => m.timingStatus === 'Did Not Join').length, notCheckable: extList.filter((m) => m.timingStatus === 'No Data' && m.cameraOn == null).length, camOn: extJoined.filter((m) => m.cameraOn === true).length, camOff: extJoined.filter((m) => m.cameraOn === false).length, camUnknown: extJoined.filter((m) => m.cameraOn == null).length };
   const scopeCounts = { Sales: ranged.filter((m) => m.team === 'Sales').length, ATM: atmRanged.length };
   const allDays = allMeetings.map((m) => istDayKey(m.scheduledStart)).sort();
   const dataFrom = allDays[0], dataTo = allDays[allDays.length - 1];
@@ -4379,6 +4393,12 @@ function GraphMeetingsPanel({ meetings: allMeetings, employees, filter, setFilte
               {t.label} <span style={{ opacity: 0.7, fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 11.5 }}>({kindCounts[t.key]})</span>
             </div>
           ))}
+        </div>
+      )}
+      {scope === 'ATM' && extStats.total > 0 && (
+        <div style={{ fontSize: 12, color: '#8A90A8', lineHeight: 1.6 }}>
+          External (client) invites: <b style={{ color: '#C7CBDA' }}>{extStats.total}</b> · ATM joined <b style={{ color: '#5EEAD4' }}>{extStats.joined}</b> · did not join <b style={{ color: extStats.didNotJoin ? '#F87171' : '#C7CBDA' }}>{extStats.didNotJoin}</b> · attendance not checkable <b style={{ color: '#C7CBDA' }}>{extStats.notCheckable}</b>
+          {' '}— of those joined, camera on <b style={{ color: '#5EEAD4' }}>{extStats.camOn}</b>, off <b style={{ color: extStats.camOff ? '#F59E0B' : '#C7CBDA' }}>{extStats.camOff}</b>, unknown <b style={{ color: '#C7CBDA' }}>{extStats.camUnknown}</b>
         </div>
       )}
 
@@ -4511,7 +4531,8 @@ function istDayLabel(iso) {
 
 function EmployeeMeetingsModal({ emp, onClose, onSelectMeeting }) {
   const meetings = [...emp.meetings].sort((a, b) => new Date(b.scheduledStart) - new Date(a.scheduledStart));
-  const gridCols = '1.8fr .9fr .9fr .9fr .8fr .9fr .9fr';
+  const showCam = meetings.some((m) => m.team === 'Trainer');
+  const gridCols = showCam ? '1.8fr .9fr .9fr .9fr .8fr .8fr .8fr .8fr' : '1.8fr .9fr .9fr .9fr .8fr .9fr .9fr';
 
   const days = new Map();
   for (const m of meetings) {
@@ -4537,14 +4558,14 @@ function EmployeeMeetingsModal({ emp, onClose, onSelectMeeting }) {
                 {istDayLabel(dayMeetings[0].scheduledStart)} <span style={{ color: '#5C6178' }}>· {dayMeetings.length} meeting{dayMeetings.length === 1 ? '' : 's'}</span>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '0 0 6px', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 9.5, letterSpacing: '.09em', color: '#5C6178', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-                <span>Meeting</span><span>Time</span><span>Joined</span><span>Timing</span><span style={{ textAlign: 'right' }}>Duration</span><span style={{ textAlign: 'right' }}>A/V Quality</span><span style={{ textAlign: 'right' }}>Recording</span>
+                <span>Meeting</span><span>Time</span><span>Joined</span><span>Timing</span><span style={{ textAlign: 'right' }}>Duration</span>{showCam && <span style={{ textAlign: 'right' }}>Camera</span>}<span style={{ textAlign: 'right' }}>A/V Quality</span><span style={{ textAlign: 'right' }}>Recording</span>
               </div>
               {dayMeetings.map((m) => (
                 <div key={m.id} className="hoverrow" onClick={() => onSelectMeeting(m)} style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '11px 0', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 12.5, cursor: 'pointer' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 2, overflow: 'hidden' }}>
                     <span style={{ color: '#C7CBDA', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.subject}</span>
                     {m.clientEmails?.length > 0 && (
-                      <span className="mono" style={{ fontSize: 10.5, color: '#A5A7FA', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Client: {m.clientEmails.join(', ')}</span>
+                      <span className="mono" style={{ fontSize: 10.5, color: m.team === 'Trainer' && !atmIsExternal(m) ? '#8A90A8' : '#A5A7FA', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.team === 'Trainer' && !atmIsExternal(m) ? 'Training — learners: ' : 'Client: '}{m.clientEmails.join(', ')}</span>
                     )}
                     {!(m.clientEmails?.length > 0) && m.team === 'Trainer' && (
                       <span className="mono" style={{ fontSize: 10.5, color: '#8A90A8' }}>Internal</span>
@@ -4558,6 +4579,11 @@ function EmployeeMeetingsModal({ emp, onClose, onSelectMeeting }) {
                   <span style={{ justifySelf: 'start', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, background: `${TIMING_COLORS[m.timingStatus]}1F`, color: TIMING_COLORS[m.timingStatus], border: `1px solid ${TIMING_COLORS[m.timingStatus]}55` }}>{m.timingStatus}</span>
                   <span style={{ textAlign: 'right', fontFamily: 'var(--font-ibm-plex-mono)', fontSize: 12, color: '#C7CBDA' }}>{fmtDuration(m.attendanceSeconds)}</span>
                   </>)}
+                  {showCam && (
+                    <span title={m.cameraOn == null ? (m.timingStatus === 'Did Not Join' ? 'Did not join' : 'No call record found for this meeting yet') : m.cameraOn ? 'Camera was on' : 'Camera stayed off'} style={{ textAlign: 'right', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, justifySelf: 'end', background: m.cameraOn === true ? 'rgba(20,184,166,0.14)' : m.cameraOn === false ? 'rgba(245,158,11,0.14)' : 'rgba(255,255,255,0.05)', color: m.cameraOn === true ? '#5EEAD4' : m.cameraOn === false ? '#F59E0B' : '#6E7488' }}>
+                      {m.cameraOn == null ? (m.timingStatus === 'Did Not Join' ? 'Not joined' : 'No data') : m.cameraOn ? 'On' : 'Off'}
+                    </span>
+                  )}
                   <span style={{ textAlign: 'right', fontSize: 10.5, padding: '4px 9px', borderRadius: 999, justifySelf: 'end', background: m.avIssue == null ? 'rgba(255,255,255,0.05)' : m.avIssue ? 'rgba(244,63,94,0.14)' : 'rgba(20,184,166,0.14)', color: m.avIssue == null ? '#6E7488' : m.avIssue ? '#F87171' : '#5EEAD4', border: `1px solid ${m.avIssue == null ? 'rgba(255,255,255,0.12)' : m.avIssue ? 'rgba(244,63,94,0.35)' : 'rgba(20,184,166,0.35)'}` }}>
                     {m.avIssue == null ? 'No Data' : m.avIssue ? 'Issue' : 'Clean'}
                   </span>

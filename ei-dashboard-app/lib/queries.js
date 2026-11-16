@@ -271,11 +271,39 @@ export async function getGraphMeetings() {
     `,
     args: EXCLUDED_ORGANIZERS,
   });
-  return res.rows.filter((r) => {
+  const kept = res.rows.filter((r) => {
     let clients = [];
     try { clients = JSON.parse(r.client_emails || '[]'); } catch { /* treat as internal */ }
     return !isExcludedGraphMeeting(r.subject, r.emp_team, clients);
-  }).map((r) => ({
+  });
+  // Camera on/off for ATM meetings (team 'Trainer'), from the video_meetings feed (syncVideo): matched by call record
+  // when the meeting has one, else by the ATM's own call overlapping the scheduled slot. null = no call record found.
+  const atmStarts = kept.filter((r) => r.emp_team === 'Trainer').map((r) => r.scheduled_start).sort();
+  const camByCall = new Map();
+  const camByEmp = new Map();
+  if (atmStarts.length) {
+    const since = new Date(new Date(atmStarts[0]).getTime() - 864e5).toISOString();
+    const vr = await db.execute({
+      sql: `SELECT v.call_record_id, v.employee_id, v.started_at, v.ended_at, v.camera_on FROM video_meetings v
+            JOIN employees e ON e.id = v.employee_id WHERE e.team = 'Trainer' AND v.started_at >= ?`,
+      args: [since],
+    }).catch(() => ({ rows: [] }));
+    for (const v of vr.rows) {
+      const cam = !!v.camera_on;
+      camByCall.set(`${v.call_record_id}|${v.employee_id}`, cam);
+      if (!camByEmp.has(v.employee_id)) camByEmp.set(v.employee_id, []);
+      camByEmp.get(v.employee_id).push({ s: new Date(v.started_at).getTime(), e: new Date(v.ended_at || v.started_at).getTime(), cam });
+    }
+  }
+  const cameraFor = (r) => {
+    if (r.emp_team !== 'Trainer' || r.timing_status === 'Did Not Join') return null; // never joined: no camera to report
+    if (r.call_record_id && camByCall.has(`${r.call_record_id}|${r.employee_id}`)) return camByCall.get(`${r.call_record_id}|${r.employee_id}`);
+    const s = new Date(r.scheduled_start).getTime(), e = new Date(r.scheduled_end).getTime();
+    const hit = (camByEmp.get(r.employee_id) || []).find((c) => c.s < e && c.e > s);
+    return hit ? hit.cam : null;
+  };
+  return kept.map((r) => ({
+    cameraOn: cameraFor(r),
     id: r.id,
     employeeId: r.employee_id,
     employeeName: r.emp_name,
