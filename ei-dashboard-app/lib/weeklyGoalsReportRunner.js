@@ -13,7 +13,7 @@ import { escHtml } from './emailDraft.js';
 // and the goal for next week. Everyone who has not submitted is listed at the end, across all
 // sections, with their record of misses over the last MISS_HISTORY_WEEKS check-ins. The whole report
 // is also attached as one Excel sheet for filtering.
-export const GOALS_REPORT_RECIPIENT = 'HR@koenig-solutions.com';
+export const GOALS_REPORT_RECIPIENT = ['HR@koenig-solutions.com', 'EA@koenig-solutions.com'];
 const TEAM_GROUPS_FROM_WEEK = '2026-W45';
 const MISS_HISTORY_WEEKS = 8;
 const FULLY_BOOKED_SC_HOURS = 40;
@@ -346,5 +346,5 @@ export async function sendWeeklyGoalsReport(opts = {}) {
     }],
   });
   const parts = Object.entries(stats.sections).filter(([, s]) => s.sent).map(([k, s]) => `${GROUPS.find((g) => g.key === k).title}: ${s.responded}/${s.sent}`);
-  return { message: `Sent the Weekly Goals Report for ${stats.week} to ${to}: ${stats.responded} of ${stats.sent} responded (${parts.join('; ')})${stats.skipped ? `, ${stats.skipped} skipped (40+ SC hours)` : ''}${stats.notSent ? `, ${stats.notSent} not sent a check-in` : ''}.` };
+  return { message: `Sent the Weekly Goals Report for ${stats.week} to ${[].concat(to).join(', ')}: ${stats.responded} of ${stats.sent} responded (${parts.join('; ')})${stats.skipped ? `, ${stats.skipped} skipped (40+ SC hours)` : ''}${stats.notSent ? `, ${stats.notSent} not sent a check-in` : ''}.` };
 }

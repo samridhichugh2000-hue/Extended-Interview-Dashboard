@@ -65,8 +65,11 @@ const SCRIPTS = [
 const STEP_TIMEOUT_MS = 40 * 60 * 1000; // a hung feed must not block the rest
 const stateFile = path.join(appDir, 'logs', 'sync-state.json');
 const today = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD, local time
-let state = { date: today, done: [], finished: false };
-try { const s = JSON.parse(fs.readFileSync(stateFile, 'utf8')); if (s.date === today) state = s; } catch {}
+let state = { date: today, done: [], finished: false, attempts: {} };
+try { const s = JSON.parse(fs.readFileSync(stateFile, 'utf8')); if (s.date === today) state = { attempts: {}, ...s }; } catch {}
+// A step that fails is NOT marked done, so the next trigger of the day retries it (e.g. after the laptop's network was down
+// overnight) — but at most MAX_ATTEMPTS times a day, so a feed that is broken for good cannot loop.
+const MAX_ATTEMPTS = 3;
 const saveState = () => { try { fs.writeFileSync(stateFile, JSON.stringify(state)); } catch {} };
 
 function run(script) {
@@ -105,14 +108,16 @@ for (const script of SCRIPTS.slice(startIdx)) {
   console.log(`\n--- ${script} ---`);
   const { code, tail } = await run(script);
   results.push({ script, code });
-  state.done.push(script); saveState(); // only reached if the step ended on its own; a killed machine re-runs it
+  state.attempts[script] = (state.attempts[script] || 0) + 1;
+  if (code === 0 || state.attempts[script] >= MAX_ATTEMPTS) state.done.push(script); // failed steps are retried by the next trigger
+  saveState(); // only reached if the step ended on its own; a killed machine re-runs it
   const lines = tail.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !/MODULE_TYPELESS|Reparsing|To eliminate|trace-warnings|injected env|dotenv/i.test(l));
   await recordFeedRun(script, code === 0, code === 0 ? lines.filter((l) => /^Synced|^Updated/i.test(l)).pop() || lines[lines.length - 1] : lines.filter((l) => /fail|error/i.test(l)).slice(-2).join(' | ') || `exit code ${code}`);
   if (code !== 0) console.error(`${script} exited with code ${code} — continuing with remaining syncs.`);
 }
 
 const failed = results.filter((r) => r.code !== 0);
-state.finished = true; saveState();
+state.finished = !SCRIPTS.some((x) => !state.done.includes(x)); saveState(); // not finished while a failed step still has attempts left
 console.log(`\n=== sync-all finished at ${new Date().toISOString()} ===`);
 console.log(`${results.length - failed.length}/${results.length} feeds synced successfully.`);
 if (failed.length) {
