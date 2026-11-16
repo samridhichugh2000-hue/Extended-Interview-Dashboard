@@ -28,6 +28,11 @@ async function fetchToken() {
 // GetToken invalidates the previous token for these credentials, so concurrent
 // callers share one in-flight fetch.
 async function getToken({ forceRefresh = false } = {}) {
+  // Fixed tokens issued for this Koenig user (apiAccessKey / loginKey): used as-is,
+  // so no GetToken call is ever made. Falls back to GetToken only if they're unset.
+  if (process.env.KOENIG_PIP_INSERT_ACCESS_TOKEN && process.env.KOENIG_PIP_INSERT_DEVICE_TOKEN) {
+    return { accessToken: process.env.KOENIG_PIP_INSERT_ACCESS_TOKEN, deviceToken: process.env.KOENIG_PIP_INSERT_DEVICE_TOKEN };
+  }
   if (forceRefresh) { tokenCache = null; tokenPromise = null; }
   if (tokenCache) return tokenCache;
   if (!tokenPromise) {
